@@ -152,27 +152,34 @@ class BridgeDiscoveryService: ObservableObject {
         error = nil
         showNoBridgesAlert = false
         
+        var bridges: [BridgeInfo] = []
+        
+        // Try mDNS discovery first (works on local network)
         do {
-            // Try mDNS discovery first (works on local network)
-            let bridges = try await performHueBridgeDiscoveryWithMDNS()
-            
-            // If no bridges found via mDNS, fallback to discovery endpoint
-            if bridges.isEmpty {
+            bridges = try await performHueBridgeDiscoveryWithMDNS()
+            print("Loaded bridges via mDNS")
+        } catch {
+            print("mDNS discovery failed: \(error.localizedDescription), falling back to discovery endpoint")
+            bridges = [] // Ensure bridges is empty to trigger fallback
+        }
+        
+        // If no bridges found via mDNS (either empty result or failure), fallback to discovery endpoint
+        if bridges.isEmpty {
+            do {
                 let fallbackBridges = try await performHueBridgeDiscoveryWithDiscoveryEndpoint()
                 discoveredBridges = fallbackBridges
                 print("Loaded bridges via Discovery endpoint fallback")
-            } else {
-                print("Loaded bridges via mDNS")
-                discoveredBridges = bridges
+            } catch {
+                self.error = error
+                print("Failed to load bridges via both methods: \(error.localizedDescription)")
             }
-            
-            // Show alert if no bridges found at all
-            if discoveredBridges.isEmpty {
-                showNoBridgesAlert = true
-            }
-        } catch {
-            self.error = error
-            print("Failed to load any bridges")
+        } else {
+            discoveredBridges = bridges
+        }
+        
+        // Show alert if no bridges found at all
+        if discoveredBridges.isEmpty && error == nil {
+            showNoBridgesAlert = true
         }
         
         isLoading = false
@@ -207,7 +214,7 @@ class BridgeDiscoveryService: ObservableObject {
         let url = URL(string: "https://discovery.meethue.com")!
         let (data, _) = try await URLSession.shared.data(from: url)
         return try JSONDecoder().decode([BridgeInfo].self, from: data)
-        */
+         */
         
         // Simulate network delay
         try await Task.sleep(nanoseconds: 1_000_000_000) // 1 second
@@ -219,7 +226,7 @@ class BridgeDiscoveryService: ObservableObject {
             {"id":"001788fffe123456","internalipaddress":"192.168.1.125","port":443,"serviceName":null}
         ]
         """.data(using: .utf8)!
-        
+         
         return try JSONDecoder().decode([BridgeInfo].self, from: json)
     }
     
@@ -328,10 +335,7 @@ class BridgeDiscoveryService: ObservableObject {
                             interface: nil
                         )
                         
-                        // Create a connection to get TXT record data
-                        let host = NWEndpoint.Host("\"\(name)\" \(type) \(domain)")
-                        
-                        print("Connecting to endpoint: \(endpoint)")
+                        print("Connecting to validated endpoint: \(endpoint)")
                         
                         let connection = NWConnection(to: endpoint, using: .tcp)
                         
@@ -356,6 +360,7 @@ class BridgeDiscoveryService: ObservableObject {
                                     case .ipv6(let ipv6):
                                         ipAddress = ipv6.debugDescription
                                     default:
+                                        print("   ⚠️ Unsupported host type for \(name)")
                                         break
                                     }
                                     
@@ -378,18 +383,36 @@ class BridgeDiscoveryService: ObservableObject {
                                         } else {
                                             print("   🔁 Bridge already in results (duplicate)")
                                         }
+                                    } else {
+                                        print("   ⚠️ Failed to extract IP address or bridge ID for \(name)")
                                     }
+                                } else {
+                                    print("   ⚠️ No remote endpoint available for \(name)")
                                 }
                                 connection.cancel()
-                            case .failed:
-                                print("   ❌ Connection failed for service: \(name)")
+                            case .failed(let error):
+                                print("   ❌ Connection failed for service: \(name) - \(error)")
                                 connection.cancel()
-                            default:
-                                break
+                            case .cancelled:
+                                print("   ⏹️ Connection cancelled for service: \(name)")
+                            case .waiting(let error):
+                                print("   ⏳ Connection waiting for service: \(name) - \(error)")
+                            case .preparing:
+                                print("   🔄 Connection preparing for service: \(name)")
+                            case .setup:
+                                print("   ⚙️ Connection setup for service: \(name)")
+                            @unknown default:
+                                print("   ❓ Unknown connection state for service: \(name) - \(state)")
                             }
                         }
                         
-                        connection.start(queue: .main)
+                        // Add error handling for connection start
+                        do {
+                            connection.start(queue: .main)
+                        } catch {
+                            print("   ❌ Failed to start connection for service: \(name) - \(error)")
+                            connection.cancel()
+                        }
                         
                     case .hostPort(let host, let port):
                         print("   - Host/Port endpoint: \(host):\(port)")
@@ -414,7 +437,7 @@ class BridgeDiscoveryService: ObservableObject {
                     browser.cancel()
                     // The cancellation will trigger the state handler which will resume
                 } else {
-                    print("⏰ 10-second fallback timeout reached,but mDNS browser already cancelled...")
+                    print("⏰ 10-second fallback timeout reached, but mDNS browser already cancelled...")
                 }
             }
         }
