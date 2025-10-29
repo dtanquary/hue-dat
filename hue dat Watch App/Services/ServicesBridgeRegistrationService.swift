@@ -46,30 +46,38 @@ class BridgeRegistrationService: ObservableObject {
     }
     
     func registerWithBridge(_ bridge: BridgeInfo) async {
-        registeringBridge = bridge
-        error = nil
-        successfulBridge = nil
-        registrationResponse = nil
-        showLinkButtonAlert = false
-        linkButtonBridge = nil
+        await MainActor.run {
+            registeringBridge = bridge
+            error = nil
+            successfulBridge = nil
+            registrationResponse = nil
+            showLinkButtonAlert = false
+            linkButtonBridge = nil
+        }
         
         do {
             let registrationResult = try await performBridgeRegistration(bridge: bridge)
             print("Registration successful: \(registrationResult)")
-            registrationResponse = registrationResult
-            successfulBridge = bridge
+            await MainActor.run {
+                registrationResponse = registrationResult
+                successfulBridge = bridge
+            }
         } catch {
-            // Check if this is a "link button not pressed" error
-            if let errorData = error as? BridgeRegistrationError,
-               case .linkButtonNotPressed = errorData {
-                linkButtonBridge = bridge
-                showLinkButtonAlert = true
-            } else {
-                self.error = error
+            await MainActor.run {
+                // Check if this is a "link button not pressed" error
+                if let errorData = error as? BridgeRegistrationError,
+                   case .linkButtonNotPressed = errorData {
+                    linkButtonBridge = bridge
+                    showLinkButtonAlert = true
+                } else {
+                    self.error = error
+                }
             }
         }
         
-        registeringBridge = nil
+        await MainActor.run {
+            registeringBridge = nil
+        }
     }
     
     private func performBridgeRegistration(bridge: BridgeInfo) async throws -> BridgeRegistrationResponse {

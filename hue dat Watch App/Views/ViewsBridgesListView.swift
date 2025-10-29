@@ -64,7 +64,10 @@ struct BridgesListView: View {
                 }
             }
         }
-        .alert("Error", isPresented: .constant(registrationService.error != nil)) {
+        .alert("Error", isPresented: Binding(
+            get: { registrationService.error != nil },
+            set: { if !$0 { registrationService.error = nil } }
+        )) {
             Button("OK") {
                 registrationService.error = nil
             }
@@ -73,7 +76,10 @@ struct BridgesListView: View {
                 Text(error.localizedDescription)
             }
         }
-        .alert("Success", isPresented: .constant(registrationService.successfulBridge != nil)) {
+        .alert("Success", isPresented: Binding(
+            get: { registrationService.successfulBridge != nil },
+            set: { _ in }
+        )) {
             Button("OK") {
                 if let bridge = registrationService.successfulBridge,
                    let response = registrationService.registrationResponse {

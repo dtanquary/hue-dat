@@ -24,9 +24,12 @@ class BridgeDiscoveryService: ObservableObject {
     private var activeBrowser: NWBrowser?
     
     func discoverBridges() async {
-        isLoading = true
-        error = nil
-        showNoBridgesAlert = false
+        // Ensure we're on the main actor for all state updates
+        await MainActor.run {
+            isLoading = true
+            error = nil
+            showNoBridgesAlert = false
+        }
         
         var bridges: [BridgeInfo] = []
         
@@ -43,29 +46,38 @@ class BridgeDiscoveryService: ObservableObject {
         if bridges.isEmpty {
             do {
                 let fallbackBridges = try await performHueBridgeDiscoveryWithDiscoveryEndpoint()
-                discoveredBridges = fallbackBridges
+                await MainActor.run {
+                    discoveredBridges = fallbackBridges
+                }
                 print("Loaded bridges via Discovery endpoint fallback")
             } catch {
-                self.error = error
+                await MainActor.run {
+                    self.error = error
+                }
                 print("Failed to load bridges via both methods: \(error.localizedDescription)")
             }
         } else {
-            discoveredBridges = bridges
+            await MainActor.run {
+                discoveredBridges = bridges
+            }
         }
         
         // Show alert if no bridges found at all
-        if discoveredBridges.isEmpty && error == nil {
-            showNoBridgesAlert = true
+        await MainActor.run {
+            if discoveredBridges.isEmpty && error == nil {
+                showNoBridgesAlert = true
+            }
+            isLoading = false
         }
-        
-        isLoading = false
     }
     
     func cancelDiscovery() {
         print("🛑 Manually cancelling bridge discovery")
         activeBrowser?.cancel()
         activeBrowser = nil
-        isLoading = false
+        Task { @MainActor in
+            isLoading = false
+        }
     }
     
     private func performHueBridgeDiscoveryWithDiscoveryEndpoint() async throws -> [BridgeInfo] {

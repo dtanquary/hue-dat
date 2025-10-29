@@ -121,7 +121,10 @@ struct ContentView: View {
         } message: {
             Text("Are you sure you want to disconnect? You'll need to set up the connection again.")
         }
-        .alert("Discovery Error", isPresented: .constant(discoveryService.error != nil)) {
+        .alert("Discovery Error", isPresented: Binding(
+            get: { discoveryService.error != nil },
+            set: { if !$0 { discoveryService.error = nil } }
+        )) {
             Button("OK") {
                 discoveryService.error = nil
             }
