@@ -18,17 +18,6 @@ struct ContentView: View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: 24) {
-                    // Header
-                    VStack(spacing: 12) {
-                        Image(systemName: "lightbulb.fill")
-                            .font(.system(size: 36))
-                            .foregroundStyle(.orange)
-                            .accessibilityLabel("Hue Bridge Discovery")
-                        
-                        Text("Hue Control")
-                            .font(.title3.weight(.medium))
-                    }
-                    
                     // Main content
                     if let connectedBridge = bridgeManager.connectedBridge {
                         // Connected state

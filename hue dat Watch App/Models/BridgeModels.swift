@@ -8,7 +8,7 @@
 import Foundation
 
 // MARK: - Bridge Info
-struct BridgeInfo: Codable, Identifiable {
+struct BridgeInfo: Codable, Identifiable, Equatable {
     let id: String
     let internalipaddress: String
     let port: Int

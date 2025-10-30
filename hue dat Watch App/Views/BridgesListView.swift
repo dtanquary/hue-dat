@@ -81,16 +81,19 @@ struct BridgesListView: View {
             set: { _ in }
         )) {
             Button("OK") {
-                if let bridge = registrationService.successfulBridge,
-                   let response = registrationService.registrationResponse {
-                    bridgeManager.saveConnection(bridge: bridge, registrationResponse: response)
-                }
                 registrationService.clearSuccess()
                 dismiss()
             }
         } message: {
             if let bridge = registrationService.successfulBridge {
                 Text("Connected to \(bridge.displayName)")
+            }
+        }
+        // Save connection immediately when registration succeeds
+        .onChange(of: registrationService.successfulBridge) { _, newBridge in
+            if let bridge = newBridge,
+               let response = registrationService.registrationResponse {
+                bridgeManager.saveConnection(bridge: bridge, registrationResponse: response)
             }
         }
         .alert("Press Link Button", isPresented: $registrationService.showLinkButtonAlert) {
