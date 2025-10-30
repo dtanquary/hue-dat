@@ -55,6 +55,7 @@ struct ContentView: View {
                                 showDisconnectAlert = true
                             }
                             .accessibilityLabel("Disconnect from current bridge")
+                            .glassEffect()
                         }
                     } else {
                         // Discovery state
@@ -80,9 +81,9 @@ struct ContentView: View {
                                 .frame(maxWidth: .infinity)
                                 .padding()
                             }
-                            .background(.thinMaterial)
                             .disabled(discoveryService.isLoading)
                             .accessibilityLabel("Discover Hue bridges on network")
+                            .glassEffect()
                             
                             // Tappable bridge count
                             if !discoveryService.discoveredBridges.isEmpty && !discoveryService.isLoading {

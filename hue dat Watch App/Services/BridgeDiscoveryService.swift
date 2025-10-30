@@ -33,6 +33,7 @@ class BridgeDiscoveryService: ObservableObject {
         
         var bridges: [BridgeInfo] = []
         
+        /*
         // Try mDNS discovery first (works on local network)
         do {
             bridges = try await performHueBridgeDiscoveryWithMDNS()
@@ -41,6 +42,7 @@ class BridgeDiscoveryService: ObservableObject {
             print("mDNS discovery failed: \(error.localizedDescription), falling back to discovery endpoint")
             bridges = [] // Ensure bridges is empty to trigger fallback
         }
+         */
         
         // If no bridges found via mDNS (either empty result or failure), fallback to discovery endpoint
         if bridges.isEmpty {
@@ -81,13 +83,46 @@ class BridgeDiscoveryService: ObservableObject {
     }
     
     private func performHueBridgeDiscoveryWithDiscoveryEndpoint() async throws -> [BridgeInfo] {
-        // For production, uncomment the network call:
-        /*
+        let cacheKey = "hue_bridge_discovery_cache"
+        let cacheTimestampKey = "hue_bridge_discovery_timestamp"
+        let cacheExpirationInterval: TimeInterval = 15 * 60 // 15 minutes in seconds
+        
+        // Check if we have cached data and if it's still valid
+        if let cachedData = UserDefaults.standard.data(forKey: cacheKey),
+           let cacheTimestamp = UserDefaults.standard.object(forKey: cacheTimestampKey) as? Date {
+            
+            let cacheAge = Date().timeIntervalSince(cacheTimestamp)
+            
+            if cacheAge < cacheExpirationInterval {
+                print("📦 Using cached bridge discovery data (age: \(Int(cacheAge/60)) minutes)")
+                do {
+                    let cachedBridges = try JSONDecoder().decode([BridgeInfo].self, from: cachedData)
+                    return cachedBridges
+                } catch {
+                    print("⚠️ Failed to decode cached bridge data, fetching fresh data: \(error)")
+                    // Continue to fetch fresh data if cache is corrupted
+                }
+            } else {
+                print("🕐 Cache expired (age: \(Int(cacheAge/60)) minutes), fetching fresh data")
+            }
+        } else {
+            print("📭 No cache found, fetching fresh data")
+        }
+        
+        // Fetch fresh data from the API
+        print("🌐 Fetching bridge discovery data from API")
         let url = URL(string: "https://discovery.meethue.com")!
         let (data, _) = try await URLSession.shared.data(from: url)
-        return try JSONDecoder().decode([BridgeInfo].self, from: data)
-         */
+        let bridges = try JSONDecoder().decode([BridgeInfo].self, from: data)
         
+        // Cache the fresh data
+        UserDefaults.standard.set(data, forKey: cacheKey)
+        UserDefaults.standard.set(Date(), forKey: cacheTimestampKey)
+        print("💾 Cached fresh bridge discovery data")
+        
+        return bridges
+        
+        /*
         // Simulate network delay
         try await Task.sleep(nanoseconds: 1_000_000_000) // 1 second
         
@@ -100,6 +135,7 @@ class BridgeDiscoveryService: ObservableObject {
         """.data(using: .utf8)!
          
         return try JSONDecoder().decode([BridgeInfo].self, from: json)
+         */
     }
     
     private func performHueBridgeDiscoveryWithMDNS() async throws -> [BridgeInfo] {
@@ -109,7 +145,12 @@ class BridgeDiscoveryService: ObservableObject {
             var discoveredBridges: [BridgeInfo] = []
             var hasResumed = false
             var debounceTimer: DispatchWorkItem?
-            let browser = NWBrowser(for: .bonjour(type: "_hue._tcp", domain: "local."), using: .tcp)
+            
+            let parameters = NWParameters.tcp
+            parameters.requiredInterfaceType = .wifi // Prefer WiFi for local network discovery
+            parameters.requiredLocalEndpoint = NWEndpoint.hostPort(host: .ipv4(.any), port: .any) // Force IPv4
+            
+            let browser = NWBrowser(for: .bonjour(type: "_hue._tcp", domain: "local."), using: parameters)
             
             // Store reference for manual cancellation
             activeBrowser = browser
@@ -143,12 +184,43 @@ class BridgeDiscoveryService: ObservableObject {
                 
                 // Create new debounced timer (1 second after last bridge added)
                 debounceTimer = DispatchWorkItem {
-                    print("⏱️ Debounce completed - found \(discoveredBridges.count) bridge(s), stopping discovery")
+                    print("⏱️ Debounce completed - found \(discoveredBridges.count) bridge(s)")
                     browser.cancel()
+                    /*
+                    // Run additional lookups before completing discovery
+                    Task {
+                        await performAdditionalBridgeLookups(for: discoveredBridges)
+                        // Complete discovery after additional lookups are done
+                        // browser.cancel()
+                    }
+                     */
                 }
                 
                 DispatchQueue.main.asyncAfter(deadline: .now() + 1.0, execute: debounceTimer!)
             }
+            
+            /*
+            // Function to perform additional mDNS lookups on discovered bridges
+            func performAdditionalBridgeLookups(for bridges: [BridgeInfo]) async {
+                print("🔍 Starting additional mDNS lookups for \(bridges.count) bridge(s)")
+                
+                for bridge in bridges {
+                    do {
+                        try await performAdditionalBridgeLookup(for: bridge)
+                    } catch {
+                        print("❌ Additional lookup failed for bridge \(bridge.id): \(error)")
+                    }
+                }
+                
+                print("✅ Completed additional mDNS lookups for all bridges")
+            }
+            
+            // Function to perform additional mDNS lookup for a single bridge
+            func performAdditionalBridgeLookup(for bridge: BridgeInfo) async throws {
+                print(bridge)
+                print("✅ Additional lookup completed for bridge: \(bridge.id)")
+            }
+             */
             
             browser.stateUpdateHandler = { state in
                 print("📡 mDNS browser state changed to: \(state)")
@@ -204,16 +276,16 @@ class BridgeDiscoveryService: ObservableObject {
                             name: name,
                             type: "_hue._tcp",
                             domain: "local.",
-                            interface: nil
+                            interface: nil,
                         )
                         
-                        print("Connecting to validated endpoint: \(endpoint)")
-                        
-                        let connection = NWConnection(to: endpoint, using: .tcp)
+                        let connection = NWConnection(to: endpoint, using: parameters)
                         
                         connection.stateUpdateHandler = { state in
                             switch state {
                             case .ready:
+                                print("🔍 Raw connection ready state: \(state)")
+                                
                                 // For now, generate a bridge ID from the service name
                                 // In a real implementation, you'd want to query the bridge's API
                                 // to get the actual bridge ID
@@ -230,7 +302,15 @@ class BridgeDiscoveryService: ObservableObject {
                                             return "\(addr[0]).\(addr[1]).\(addr[2]).\(addr[3])"
                                         }
                                     case .ipv6(let ipv6):
-                                        ipAddress = ipv6.debugDescription
+                                        // Handle IPv6 addresses properly, removing zone identifier if present
+                                        let ipv6String = ipv6.debugDescription
+                                        // Remove zone identifier (e.g., %en0) from link-local addresses
+                                        if let percentIndex = ipv6String.firstIndex(of: "%") {
+                                            ipAddress = String(ipv6String[..<percentIndex])
+                                        } else {
+                                            ipAddress = ipv6String
+                                        }
+                                        print("   📍 Processed IPv6 address: \(ipv6String) -> \(ipAddress ?? "nil")")
                                     default:
                                         print("   ⚠️ Unsupported host type for \(name)")
                                         break
