@@ -81,72 +81,64 @@ class BridgeRegistrationService: ObservableObject {
     }
     
     private func performBridgeRegistration(bridge: BridgeInfo) async throws -> BridgeRegistrationResponse {
-        // For production, uncomment the network call:
-        
-        print("performBridgeRegistration called")
-        print(bridge)
-
         let testSuffix = "test1"
         let urlString = "https://\(bridge.internalipaddress)/api"
-        let requestBody: [String: Any] = [
-            "devicetype": "hue_dat_watch_app#\(testSuffix)",
-            "generateclientkey": true
-        ]
         
         // Usage
-        let client = APIClient()
-        client.makePostRequest(url: urlString, body: requestBody) { result in
-            switch result {
-            case .success(let data):
-                // Parse response
-                if let json = try? JSONSerialization.jsonObject(with: data) {
-                    print("Response: \(json)")
-                }
-            case .failure(let error):
-                print("Error: \(error)")
-            }
-        }
-        
-        /*
-        let urlString = "https://\(bridge.internalipaddress)/api"
+        let delegate = InsecureURLSessionDelegate()
+        let session = URLSession(configuration: .default, delegate: delegate, delegateQueue: nil)
+
         guard let url = URL(string: urlString) else {
             throw BridgeRegistrationError.bridgeError("Invalid bridge URL: \(bridge.internalipaddress)")
         }
+        
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         
-        let requestBody: [String: Any] = [
+        // Your payload
+        let payload: [String: Any] = [
             "devicetype": "hue_dat_watch_app#\(testSuffix)",
             "generateclientkey": true
         ]
         
-        print(requestBody)
-        
-        request.httpBody = try JSONSerialization.data(withJSONObject: requestBody)
-        
-        // Create a custom URLSession that bypasses SSL verification
-        let session = URLSession(configuration: .default, delegate: SSLBypassDelegate(), delegateQueue: nil)
+        request.httpBody = try JSONSerialization.data(withJSONObject: payload)
         
         let (data, response) = try await session.data(for: request)
         
-        guard let httpResponse = response as? HTTPURLResponse,
-              httpResponse.statusCode == 200 else {
-            throw URLError(.badServerResponse)
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw BridgeRegistrationError.bridgeError("Invalid response type")
         }
         
-        // Parse the response array and extract the success object
-        if let jsonArray = try JSONSerialization.jsonObject(with: data) as? [[String: Any]],
-           let firstResponse = jsonArray.first,
+        // Log the response for debugging
+        if let responseString = String(data: data, encoding: .utf8) {
+            print("Response: \(responseString)")
+        }
+        
+        // Parse the JSON response
+        guard let jsonArray = try JSONSerialization.jsonObject(with: data) as? [[String: Any]] else {
+            throw BridgeRegistrationError.bridgeError("Invalid JSON response format")
+        }
+        
+        // Check if the first response contains an error
+        if let firstResponse = jsonArray.first,
+           let errorData = firstResponse["error"] as? [String: Any],
+           let errorType = errorData["type"] as? Int,
+           errorType == 101 {
+            // This is the "link button not pressed" error
+            let description = errorData["description"] as? String ?? "link button not pressed"
+            throw BridgeRegistrationError.linkButtonNotPressed(description)
+        }
+        
+        // Look for success response
+        if let firstResponse = jsonArray.first,
            let successData = firstResponse["success"] as? [String: Any] {
             let successJson = try JSONSerialization.data(withJSONObject: successData)
             return try JSONDecoder().decode(BridgeRegistrationResponse.self, from: successJson)
-        } else {
-            throw URLError(.cannotParseResponse)
         }
-         
-         */
-
+        
+        // If we get here, it's an unexpected response format
+        throw BridgeRegistrationError.bridgeError("Unexpected response format")
         
         /*
         // Simulate network delay for registration
@@ -165,10 +157,6 @@ class BridgeRegistrationService: ObservableObject {
             clientkey: "mock-client-key-\(UUID().uuidString.prefix(16))"
         )
          */
-        return BridgeRegistrationResponse(
-            username: "mock-username-\(UUID().uuidString.prefix(8))",
-            clientkey: "mock-client-key-\(UUID().uuidString.prefix(16))"
-        )
     }
     
     // Helper methods for demo link button flow
@@ -187,104 +175,18 @@ class BridgeRegistrationService: ObservableObject {
     }
 }
 
-// MARK: - SSL Bypass Delegate
-private class SSLBypassDelegate: NSObject, URLSessionDelegate {
-    func urlSession(_ session: URLSession, didReceive challenge: URLAuthenticationChallenge, completionHandler: @escaping (URLSession.AuthChallengeDisposition, URLCredential?) -> Void) {
-        // Bypass SSL verification for local Hue bridge connections
-        completionHandler(.useCredential, URLCredential(trust: challenge.protectionSpace.serverTrust!))
-    }
-}
-
-// MARK: - Secure URL Session Delegate
-class SecureURLSessionDelegate: NSObject, URLSessionDelegate {
-    
+// MARK: - Insecure URL Session Delegate
+class InsecureURLSessionDelegate: NSObject, URLSessionDelegate {
     func urlSession(_ session: URLSession,
                    didReceive challenge: URLAuthenticationChallenge,
                    completionHandler: @escaping (URLSession.AuthChallengeDisposition, URLCredential?) -> Void) {
-        
-        guard challenge.protectionSpace.authenticationMethod == NSURLAuthenticationMethodServerTrust,
-              let serverTrust = challenge.protectionSpace.serverTrust else {
-            completionHandler(.performDefaultHandling, nil)
-            return
-        }
-        
-        // Load your root CA certificate
-        guard let certPath = Bundle.main.path(forResource: "your-root-ca", ofType: "cer"),
-              let certData = try? Data(contentsOf: URL(fileURLWithPath: certPath)),
-              let certificate = SecCertificateCreateWithData(nil, certData as CFData) else {
-            completionHandler(.cancelAuthenticationChallenge, nil)
-            return
-        }
-        
-        let status = SecTrustSetAnchorCertificates(serverTrust, [certificate] as CFArray)
-        guard status == errSecSuccess else {
-            completionHandler(.cancelAuthenticationChallenge, nil)
-            return
-        }
-        
-        SecTrustSetAnchorCertificatesOnly(serverTrust, false)
-        
-        if evaluateTrust(serverTrust) {
-            let credential = URLCredential(trust: serverTrust)
+        // Accept any certificate (insecure!)
+        if challenge.protectionSpace.authenticationMethod == NSURLAuthenticationMethodServerTrust,
+           let trust = challenge.protectionSpace.serverTrust {
+            let credential = URLCredential(trust: trust)
             completionHandler(.useCredential, credential)
         } else {
-            completionHandler(.cancelAuthenticationChallenge, nil)
+            completionHandler(.performDefaultHandling, nil)
         }
-    }
-    
-    private func evaluateTrust(_ trust: SecTrust) -> Bool {
-        var trustResult: SecTrustResultType = .invalid
-        let status = SecTrustEvaluate(trust, &trustResult)
-        guard status == errSecSuccess else { return false }
-        return trustResult == .unspecified || trustResult == .proceed
-    }
-}
-
-// MARK: - Making the POST Request
-
-class APIClient {
-    let session: URLSession
-    
-    init() {
-        let delegate = SecureURLSessionDelegate()
-        self.session = URLSession(configuration: .default,
-                                 delegate: delegate,
-                                 delegateQueue: nil)
-    }
-    
-    func makePostRequest(url: String, body: [String: Any], completion: @escaping (Result<Data, Error>) -> Void) {
-        guard let url = URL(string: url) else {
-            completion(.failure(NSError(domain: "Invalid URL", code: -1)))
-            return
-        }
-        
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        
-        // Convert to JSON data
-        do {
-            request.httpBody = try JSONSerialization.data(withJSONObject: body)
-        } catch {
-            completion(.failure(error))
-            return
-        }
-        
-        // Make the request
-        let task = session.dataTask(with: request) { data, response, error in
-            if let error = error {
-                completion(.failure(error))
-                return
-            }
-            
-            guard let data = data else {
-                completion(.failure(NSError(domain: "No data", code: -1)))
-                return
-            }
-            
-            completion(.success(data))
-        }
-        
-        task.resume()
     }
 }

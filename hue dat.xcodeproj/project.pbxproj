@@ -39,22 +39,9 @@
 		55911FEF2EB1DCEC005CED54 /* hue dat Watch App.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "hue dat Watch App.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
-/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
-		558828642EB38AB300515224 /* Exceptions for "hue dat Watch App" folder in "hue dat" target */ = {
-			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
-			membershipExceptions = (
-				"hue-bridge-root-ca.cer",
-			);
-			target = 55911FE82EB1DCEC005CED54 /* hue dat */;
-		};
-/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
-
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		55911FF32EB1DCEC005CED54 /* hue dat Watch App */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
-			exceptions = (
-				558828642EB38AB300515224 /* Exceptions for "hue dat Watch App" folder in "hue dat" target */,
-			);
 			path = "hue dat Watch App";
 			sourceTree = "<group>";
 		};
