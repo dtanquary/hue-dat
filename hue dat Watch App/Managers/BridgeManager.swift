@@ -72,6 +72,7 @@ class BridgeManager: ObservableObject {
             if let connection = connectedBridge {
                 print("✅ Loaded saved bridge connection:")
                 print("  - Bridge: \(connection.bridge.displayName) (\(connection.bridge.shortId))")
+                print("  - Address: \(connection.bridge.displayAddress)")
                 print("  - Username: \(connection.username)")
                 print("  - ClientKey: \(connection.clientkey ?? "nil")")
                 print("  - Connected Date: \(connection.connectedDate)")

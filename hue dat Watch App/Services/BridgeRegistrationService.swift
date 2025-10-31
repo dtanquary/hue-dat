@@ -174,6 +174,7 @@ class BridgeRegistrationService: ObservableObject {
          */
     }
     
+    /*
     // Helper methods for demo link button flow
     private func hasAttemptedLinkButton(for bridge: BridgeInfo) -> Bool {
         return linkButtonAttempts.contains(bridge.id)
@@ -182,12 +183,7 @@ class BridgeRegistrationService: ObservableObject {
     private func markLinkButtonAttempt(for bridge: BridgeInfo) {
         linkButtonAttempts.insert(bridge.id)
     }
-    
-    // Helper method to detect IPv6 addresses
-    private func isIPv6Address(_ ipAddress: String) -> Bool {
-        // IPv6 addresses contain colons and are not IPv4 format
-        return ipAddress.contains(":") && !ipAddress.contains(".")
-    }
+     */
 }
 
 // MARK: - Insecure URL Session Delegate
