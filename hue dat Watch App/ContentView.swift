@@ -13,6 +13,9 @@ struct ContentView: View {
     @StateObject private var bridgeManager = BridgeManager()
     @State private var showBridgesList = false
     @State private var showDisconnectAlert = false
+    @State private var showConnectionValidationAlert = false
+    @State private var connectionValidationErrorMessage = ""
+    @Environment(\.scenePhase) private var scenePhase
     
     var body: some View {
         NavigationStack {
@@ -94,6 +97,22 @@ struct ContentView: View {
             }
             .navigationTitle("Hue Control")
             .navigationBarTitleDisplayMode(.inline)
+            .onAppear {
+                // When the view appears (app launch or wake), validate any restored connection
+                if bridgeManager.connectedBridge != nil {
+                    Task {
+                        await bridgeManager.validateConnection()
+                    }
+                }
+            }
+            .onChange(of: scenePhase) { newPhase in
+                // When the scene becomes active again, re-validate the connection
+                if newPhase == .active, bridgeManager.connectedBridge != nil {
+                    Task {
+                        await bridgeManager.validateConnection()
+                    }
+                }
+            }
         }
         .sheet(isPresented: $showBridgesList, onDismiss: {
             // Cancel any ongoing discovery when sheet is dismissed
@@ -111,6 +130,17 @@ struct ContentView: View {
         } message: {
             Text("Are you sure you want to disconnect? You'll need to set up the connection again.")
         }
+        .alert("Connection Validation Failed", isPresented: $showConnectionValidationAlert) {
+            Button("OK") { }
+            Button("Reconnect") {
+                showBridgesList = true
+                Task {
+                    await discoveryService.discoverBridges()
+                }
+            }
+        } message: {
+            Text("Bridge connection validation failed: \(connectionValidationErrorMessage)")
+        }
         .alert("Discovery Error", isPresented: Binding(
             get: { discoveryService.error != nil },
             set: { if !$0 { discoveryService.error = nil } }
@@ -127,6 +157,16 @@ struct ContentView: View {
             Button("OK") { }
         } message: {
             Text("No Hue bridges could be found on your network. Make sure your bridge is connected and try again.")
+        }
+        .onReceive(bridgeManager.connectionValidationPublisher) { result in
+            switch result {
+            case .success:
+                print("✅ ContentView: Bridge connection validation succeeded")
+            case .failure(let message):
+                print("❌ ContentView: Bridge connection validation failed: \(message)")
+                connectionValidationErrorMessage = message
+                showConnectionValidationAlert = true
+            }
         }
     }
 }
