@@ -13,7 +13,9 @@ struct ZoneDetailView: View {
 
     @State private var isTogglingPower = false
     @State private var brightness: Double = 0
-    @State private var brightnessTask: Task<Void, Never>?
+    @State private var lastBrightnessUpdate: Date = Date()
+    @State private var throttleTimer: Timer?
+    @State private var pendingBrightness: Double?
     @FocusState private var isBrightnessFocused: Bool
 
     private var lightStatus: (isOn: Bool, brightness: Double?) {
@@ -83,7 +85,7 @@ struct ZoneDetailView: View {
 
                             Slider(value: $brightness, in: 0...100, step: 1)
                                 .onChange(of: brightness) { oldValue, newValue in
-                                    debouncedSetBrightness(newValue)
+                                    throttledSetBrightness(newValue)
                                 }
                         }
                         .padding()
@@ -131,20 +133,32 @@ struct ZoneDetailView: View {
         await bridgeManager.getZones()
     }
 
-    private func debouncedSetBrightness(_ value: Double) {
-        // Cancel any pending brightness update
-        brightnessTask?.cancel()
-
-        // Create a new debounced task
-        brightnessTask = Task {
-            // Wait for 400ms
-            try? await Task.sleep(nanoseconds: 400_000_000)
-
-            // Check if task was cancelled
-            guard !Task.isCancelled else { return }
-
-            // Perform the actual API call
-            await setBrightness(value)
+    private func throttledSetBrightness(_ value: Double) {
+        let now = Date()
+        let timeSinceLastUpdate = now.timeIntervalSince(lastBrightnessUpdate)
+        let throttleInterval: TimeInterval = 0.3 // 300ms throttle
+        
+        if timeSinceLastUpdate >= throttleInterval {
+            // Enough time has passed, apply immediately
+            lastBrightnessUpdate = now
+            Task {
+                await setBrightness(value)
+            }
+        } else {
+            // Too soon, schedule for later
+            pendingBrightness = value
+            throttleTimer?.invalidate()
+            
+            let remainingTime = throttleInterval - timeSinceLastUpdate
+            throttleTimer = Timer.scheduledTimer(withTimeInterval: remainingTime, repeats: false) { _ in
+                if let pending = self.pendingBrightness {
+                    self.lastBrightnessUpdate = Date()
+                    self.pendingBrightness = nil
+                    Task {
+                        await self.setBrightness(pending)
+                    }
+                }
+            }
         }
     }
 

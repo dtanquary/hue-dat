@@ -10,10 +10,11 @@ import SwiftUI
 struct RoomsAndZonesListView: View {
     @ObservedObject var bridgeManager: BridgeManager
     @State private var isRefreshing = false
+    @State private var hasLoadedData = false
 
     var body: some View {
         Group {
-            if bridgeManager.rooms.isEmpty && bridgeManager.zones.isEmpty && !isRefreshing {
+            if bridgeManager.rooms.isEmpty && bridgeManager.zones.isEmpty && !isRefreshing && hasLoadedData {
                 VStack(spacing: 12) {
                     Image(systemName: "square.3.layers.3d.slash")
                         .font(.largeTitle)
@@ -70,6 +71,23 @@ struct RoomsAndZonesListView: View {
                 .disabled(isRefreshing)
             }
         }
+        .overlay {
+            if !hasLoadedData && bridgeManager.rooms.isEmpty && bridgeManager.zones.isEmpty {
+                ZStack {
+                    Color.black.opacity(0.3)
+                        .ignoresSafeArea()
+
+                    VStack(spacing: 12) {
+                        ProgressView()
+                            .progressViewStyle(.circular)
+                            .scaleEffect(1.2)
+                        Text("Loading...")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            }
+        }
         .task {
             await refreshData()
         }
@@ -80,6 +98,7 @@ struct RoomsAndZonesListView: View {
         await bridgeManager.getRooms()
         await bridgeManager.getZones()
         isRefreshing = false
+        hasLoadedData = true
     }
 }
 
