@@ -13,6 +13,8 @@ struct ZoneDetailView: View {
 
     @State private var isTogglingPower = false
     @State private var brightness: Double = 0
+    @State private var brightnessTask: Task<Void, Never>?
+    @FocusState private var isBrightnessFocused: Bool
 
     private var lightStatus: (isOn: Bool, brightness: Double?) {
         guard let lights = zone.groupedLights, !lights.isEmpty else {
@@ -81,9 +83,7 @@ struct ZoneDetailView: View {
 
                             Slider(value: $brightness, in: 0...100, step: 1)
                                 .onChange(of: brightness) { oldValue, newValue in
-                                    Task {
-                                        await setBrightness(newValue)
-                                    }
+                                    debouncedSetBrightness(newValue)
                                 }
                         }
                         .padding()
@@ -91,6 +91,9 @@ struct ZoneDetailView: View {
                             RoundedRectangle(cornerRadius: 12)
                                 .fill(.regularMaterial)
                         )
+                        .focusable()
+                        .focused($isBrightnessFocused)
+                        .digitalCrownRotation($brightness, from: 0, through: 100, by: 1, sensitivity: .low)
                     }
                 }
                 .padding(.horizontal)
@@ -126,6 +129,23 @@ struct ZoneDetailView: View {
         let newState = !(groupedLight.on?.on ?? false)
         await setGroupedLightAction(groupedLightId: groupedLight.id, on: newState, bridge: bridge)
         await bridgeManager.getZones()
+    }
+
+    private func debouncedSetBrightness(_ value: Double) {
+        // Cancel any pending brightness update
+        brightnessTask?.cancel()
+
+        // Create a new debounced task
+        brightnessTask = Task {
+            // Wait for 400ms
+            try? await Task.sleep(nanoseconds: 400_000_000)
+
+            // Check if task was cancelled
+            guard !Task.isCancelled else { return }
+
+            // Perform the actual API call
+            await setBrightness(value)
+        }
     }
 
     private func setBrightness(_ value: Double) async {

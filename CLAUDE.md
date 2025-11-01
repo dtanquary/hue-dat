@@ -13,8 +13,8 @@ This is a native watchOS application for controlling Philips Hue lights directly
 # Open in Xcode (spaces in path require escaping)
 open "hue dat.xcodeproj"
 
-# Build for watchOS Simulator
-xcodebuild -project "hue dat.xcodeproj" -scheme "hue dat Watch App" -destination 'platform=watchOS Simulator,name=Apple Watch Series 9 (45mm)' build
+# Build for watchOS Simulator (adjust simulator name as needed)
+xcodebuild -project "hue dat.xcodeproj" -scheme "hue dat Watch App" -destination 'platform=watchOS Simulator,name=Apple Watch Series 11 (46mm)' build
 
 # Build for device
 xcodebuild -project "hue dat.xcodeproj" -scheme "hue dat Watch App" -destination 'generic/platform=watchOS' build
@@ -36,7 +36,7 @@ The app uses a clean service-oriented architecture with three main services:
 
 2. **BridgeRegistrationService** (`Services/BridgeRegistrationService.swift`): Manages the bridge registration/pairing flow
    - Implements the "press link button" workflow required by Hue API
-   - Uses `InsecureURLSessionDelegate` to bypass SSL certificate validation (required for local HTTPS bridges)
+   - Uses `InsecureURLSessionDelegate` (from `Services/InsecureURLSessionDelegate.swift`) to bypass SSL certificate validation
    - Returns `BridgeRegistrationResponse` containing username and client key
 
 3. **BridgeManager** (`Managers/BridgeManager.swift`): Persists and manages the active bridge connection
@@ -49,11 +49,19 @@ The app uses a clean service-oriented architecture with three main services:
    - Includes comprehensive data models for `HueRoom`, `HueZone`, and `HueGroupedLight`
 
 ### Data Models
-All models are defined in `Models/BridgeModels.swift`:
+
+**Bridge Connection Models** (`Models/BridgeModels.swift`):
 - **BridgeInfo**: Basic bridge network information (ID, IP, port)
 - **BridgeConnectionInfo**: Complete connection state including credentials and connection date
 - **BridgeRegistrationResponse**: API response from successful registration
 - **BridgeRegistrationError**: Custom error types for registration failures
+- **HueBridgeError** & **HueBridgeErrorResponse**: Error response structures
+
+**Hue API v2 Models** (nested in `BridgeManager`):
+- **HueRoom**: Room data including metadata (name, archetype), children, services, and grouped lights
+- **HueZone**: Zone data with same structure as HueRoom
+- **HueGroupedLight**: Aggregated light status including on/off, brightness, color temperature, and XY color
+- **ConnectionValidationResult**: Enum for connection validation state (success/failure)
 
 ### View Layer
 The app uses a navigation-based architecture with the following views:
@@ -77,18 +85,25 @@ The app uses a navigation-based architecture with the following views:
 - **RoomDetailView**: Individual room control interface
   - Power toggle button for the grouped light
   - Brightness slider (visible when lights are on)
+  - **Digital Crown support**: Rotate the crown to adjust brightness (0-100%)
+  - **Debounced API calls**: 400ms debounce prevents excessive bridge requests
+  - Focus management with `@FocusState` for crown input
   - Displays grouped light status (on/off, brightness, color temp, XY color)
   - Uses Hue API v2 `/clip/v2/resource/grouped_light/{id}` endpoint
 
 - **ZoneDetailView**: Individual zone control interface
   - Same functionality as RoomDetailView but for zones
   - Dedicated zone icon (square.3.layers.3d)
+  - Includes Digital Crown support and debouncing
 
 - **BridgesListView**: Bridge selection and registration UI
   - Presents discovered bridges
   - Manages per-bridge registration flow
 
-Views use `@StateObject` for service ownership and `@ObservedObject`/`@Published` for reactive updates
+Views use `@StateObject` for service ownership and `@ObservedObject`/`@Published` for reactive updates.
+
+**Utility Extensions** (`ContentView.swift`):
+- **Array\<Double>.average()**: Extension method to calculate average of Double arrays, used for aggregating brightness values across multiple lights in a room/zone
 
 ### State Management
 All services use `@MainActor` to ensure UI updates happen on the main thread. Services are `ObservableObject` instances with `@Published` properties for reactive SwiftUI bindings.
@@ -103,7 +118,7 @@ The app uses `WKInterfaceDevice.current().identifierForVendor` to generate a uni
 - Device registrations appear as `hue_dat_watch_app#A1B2C3D4` (first 8 chars of UUID)
 
 ### SSL Certificate Handling
-The app uses `InsecureURLSessionDelegate` in `BridgeRegistrationService.swift:189` to accept self-signed certificates from local Hue bridges. This is necessary because bridges use HTTPS with self-signed certs. Do not remove this unless implementing proper certificate pinning.
+The app uses `InsecureURLSessionDelegate` (`Services/InsecureURLSessionDelegate.swift`) to accept self-signed certificates from local Hue bridges. This delegate is used by all services that communicate with the bridge (BridgeRegistrationService, BridgeManager). This is necessary because bridges use HTTPS with self-signed certs. Do not remove this unless implementing proper certificate pinning.
 
 ### Discovery Strategy
 The production implementation uses the Philips Hue Discovery API endpoint (`discovery.meethue.com`) rather than local mDNS. The mDNS implementation exists but is commented out. The discovery endpoint approach works reliably but requires internet connectivity.
@@ -126,6 +141,29 @@ Connected bridge information is stored in UserDefaults with the key "ConnectedBr
 ### Live Status Updates
 The app implements a 5-second refresh timer (managed in `ContentView`) that periodically fetches room and zone data when the app is active and connected to a bridge. This provides near-real-time status updates for all lights. The timer is automatically paused when the app goes into the background.
 
+### Digital Crown Support & Debouncing
+Both `RoomDetailView` and `ZoneDetailView` implement Digital Crown support for brightness control with critical debouncing:
+
+**Digital Crown Implementation:**
+- Uses `.digitalCrownRotation($brightness, from: 0, through: 100, by: 1, sensitivity: .low)` modifier
+- Requires `.focusable()` and `.focused($isBrightnessFocused)` for focus management
+- Crown rotation and slider both update the same `brightness` state variable
+- Sensitivity set to `.low` for smoother, more controlled adjustments
+
+**Debouncing Strategy (CRITICAL):**
+- Both slider and crown input trigger `debouncedSetBrightness()` instead of direct API calls
+- Uses `@State private var brightnessTask: Task<Void, Never>?` to track pending updates
+- Previous pending tasks are cancelled when new input arrives
+- 400ms delay (via `Task.sleep(nanoseconds: 400_000_000)`) before API call executes
+- This prevents excessive API requests during rapid crown rotation or slider adjustments
+- Without debouncing, rapid input could generate 100+ API calls, overwhelming the bridge
+
+**Why Debouncing is Essential:**
+- Hue bridges have rate limits and can become unresponsive with excessive requests
+- Digital Crown rotation is continuous and can be very rapid
+- A single brightness adjustment could trigger dozens of API calls without debouncing
+- The 400ms delay balances responsiveness (feels instant) with API efficiency
+
 ## File Organization
 
 ```
@@ -137,8 +175,9 @@ hue dat Watch App/
 ├── Managers/
 │   └── BridgeManager.swift             # Connection persistence & Hue API v2 integration
 ├── Services/
-│   ├── BridgeDiscoveryService.swift    # Network discovery
-│   └── BridgeRegistrationService.swift # Registration/pairing
+│   ├── BridgeDiscoveryService.swift       # Network discovery
+│   ├── BridgeRegistrationService.swift    # Registration/pairing
+│   └── InsecureURLSessionDelegate.swift   # SSL certificate bypass for local bridges
 └── Views/
     ├── MainMenuView.swift              # Primary navigation hub
     ├── RoomsAndZonesListView.swift     # List of all rooms & zones
