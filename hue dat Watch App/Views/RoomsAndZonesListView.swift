@@ -9,6 +9,8 @@ import SwiftUI
 
 struct RoomsAndZonesListView: View {
     @ObservedObject var bridgeManager: BridgeManager
+    @Binding var activeDetailId: String?
+    @Binding var activeDetailType: ActiveDetailType?
     @State private var isRefreshing = false
     @State private var hasLoadedData = false
 
@@ -37,7 +39,7 @@ struct RoomsAndZonesListView: View {
                     if !bridgeManager.rooms.isEmpty {
                         Section("Rooms") {
                             ForEach(bridgeManager.rooms) { room in
-                                NavigationLink(destination: RoomDetailView(room: room, bridgeManager: bridgeManager)) {
+                                NavigationLink(destination: RoomDetailView(roomId: room.id, bridgeManager: bridgeManager, activeDetailId: $activeDetailId, activeDetailType: $activeDetailType)) {
                                     RoomRowView(room: room)
                                 }
                             }
@@ -48,7 +50,7 @@ struct RoomsAndZonesListView: View {
                     if !bridgeManager.zones.isEmpty {
                         Section("Zones") {
                             ForEach(bridgeManager.zones) { zone in
-                                NavigationLink(destination: ZoneDetailView(zone: zone, bridgeManager: bridgeManager)) {
+                                NavigationLink(destination: ZoneDetailView(zoneId: zone.id, bridgeManager: bridgeManager, activeDetailId: $activeDetailId, activeDetailType: $activeDetailType)) {
                                     ZoneRowView(zone: zone)
                                 }
                             }
@@ -90,6 +92,12 @@ struct RoomsAndZonesListView: View {
         }
         .task {
             await refreshData()
+        }
+        .onAppear {
+            // Clear active detail when on list view
+            activeDetailId = nil
+            activeDetailType = nil
+            print("📍 On rooms and zones list view")
         }
     }
 

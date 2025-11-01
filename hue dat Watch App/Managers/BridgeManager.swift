@@ -483,7 +483,57 @@ class BridgeManager: ObservableObject {
 
         isLoadingRooms = false
     }
-    
+
+    /// Refresh a single room by fetching its latest data from the bridge.
+    /// Updates only the specified room in the rooms array.
+    func refreshRoom(roomId: String) async {
+        guard let bridge = currentConnectedBridge?.bridge else {
+            print("❌ refreshRoom: No connected bridge available")
+            return
+        }
+
+        let delegate = InsecureURLSessionDelegate()
+        let session = URLSession(configuration: .default, delegate: delegate, delegateQueue: nil)
+
+        print("🔄 refreshRoom: Fetching details for room ID: \(roomId)")
+
+        // Get detailed room information
+        guard let detailedRoom = await fetchRoomDetails(roomId: roomId, session: session) else {
+            print("❌ refreshRoom: Failed to fetch room details")
+            return
+        }
+
+        // Fetch grouped light details
+        var groupedLights: [HueGroupedLight] = []
+        if let services = detailedRoom.services {
+            let groupedLightServices = services.filter { $0.rtype == "grouped_light" }
+            for service in groupedLightServices {
+                if let groupedLight = await fetchGroupedLightDetails(groupedLightId: service.rid, session: session) {
+                    groupedLights.append(groupedLight)
+                }
+            }
+        }
+
+        // Create the updated room
+        let updatedRoom = HueRoom(
+            id: detailedRoom.id,
+            type: detailedRoom.type,
+            metadata: detailedRoom.metadata,
+            children: detailedRoom.children,
+            services: detailedRoom.services,
+            groupedLights: groupedLights.isEmpty ? nil : groupedLights
+        )
+
+        // Update the specific room in the array
+        if let index = rooms.firstIndex(where: { $0.id == roomId }) {
+            rooms[index] = updatedRoom
+            print("✅ refreshRoom: Updated room: \(detailedRoom.metadata.name)")
+        } else {
+            print("⚠️ refreshRoom: Room not found in array, appending")
+            rooms.append(updatedRoom)
+        }
+    }
+
     /// Fetch detailed metadata for a specific room by its ID
     private func fetchRoomDetails(roomId: String, session: URLSession) async -> HueRoomDetail? {
         guard let bridge = currentConnectedBridge?.bridge else {
@@ -768,5 +818,55 @@ class BridgeManager: ObservableObject {
             self.showAlert = true
         }
     }
-        
+
+    /// Refresh a single zone by fetching its latest data from the bridge.
+    /// Updates only the specified zone in the zones array.
+    func refreshZone(zoneId: String) async {
+        guard let bridge = currentConnectedBridge?.bridge else {
+            print("❌ refreshZone: No connected bridge available")
+            return
+        }
+
+        let delegate = InsecureURLSessionDelegate()
+        let session = URLSession(configuration: .default, delegate: delegate, delegateQueue: nil)
+
+        print("🔄 refreshZone: Fetching details for zone ID: \(zoneId)")
+
+        // Get detailed zone information
+        guard let detailedZone = await fetchZoneDetails(zoneId: zoneId, session: session) else {
+            print("❌ refreshZone: Failed to fetch zone details")
+            return
+        }
+
+        // Fetch grouped light details
+        var groupedLights: [HueGroupedLight] = []
+        if let services = detailedZone.services {
+            let groupedLightServices = services.filter { $0.rtype == "grouped_light" }
+            for service in groupedLightServices {
+                if let groupedLight = await fetchGroupedLightDetails(groupedLightId: service.rid, session: session) {
+                    groupedLights.append(groupedLight)
+                }
+            }
+        }
+
+        // Create the updated zone
+        let updatedZone = HueZone(
+            id: detailedZone.id,
+            type: detailedZone.type,
+            metadata: detailedZone.metadata,
+            children: detailedZone.children,
+            services: detailedZone.services,
+            groupedLights: groupedLights.isEmpty ? nil : groupedLights
+        )
+
+        // Update the specific zone in the array
+        if let index = zones.firstIndex(where: { $0.id == zoneId }) {
+            zones[index] = updatedZone
+            print("✅ refreshZone: Updated zone: \(detailedZone.metadata.name)")
+        } else {
+            print("⚠️ refreshZone: Zone not found in array, appending")
+            zones.append(updatedZone)
+        }
+    }
+
 }

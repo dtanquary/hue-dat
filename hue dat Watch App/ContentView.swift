@@ -8,14 +8,21 @@
 import SwiftUI
 import Combine
 
+enum ActiveDetailType {
+    case room
+    case zone
+}
+
 struct ContentView: View {
     @StateObject private var bridgeManager = BridgeManager()
     @State private var refreshTimer: Timer?
     @State private var hasAutoNavigated = false
+    @State private var activeDetailId: String?
+    @State private var activeDetailType: ActiveDetailType?
     @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
-        MainMenuView(bridgeManager: bridgeManager)
+        MainMenuView(bridgeManager: bridgeManager, activeDetailId: $activeDetailId, activeDetailType: $activeDetailType)
             .onAppear {
                 // When the view appears (app launch or wake), validate any restored connection
                 if bridgeManager.connectedBridge != nil {
@@ -64,13 +71,28 @@ struct ContentView: View {
     // MARK: - Timer Functions
     private func startRefreshTimer() {
         stopRefreshTimer() // Stop any existing timer first
-        
+
         guard bridgeManager.connectedBridge != nil else { return }
-        
+
         refreshTimer = Timer.scheduledTimer(withTimeInterval: 5.0, repeats: true) { _ in
             Task {
-                await bridgeManager.getRooms()
-                await bridgeManager.getZones()
+                // Context-aware refresh based on active view
+                if let detailId = activeDetailId, let detailType = activeDetailType {
+                    // On a detail view - refresh only that specific item
+                    switch detailType {
+                    case .room:
+                        print("🔄 Timer: Refreshing room \(detailId)")
+                        await bridgeManager.refreshRoom(roomId: detailId)
+                    case .zone:
+                        print("🔄 Timer: Refreshing zone \(detailId)")
+                        await bridgeManager.refreshZone(zoneId: detailId)
+                    }
+                } else {
+                    // On list view - refresh all rooms and zones
+                    print("🔄 Timer: Refreshing all rooms and zones")
+                    await bridgeManager.getRooms()
+                    await bridgeManager.getZones()
+                }
             }
         }
         print("🔄 Started refresh timer (5 second interval)")

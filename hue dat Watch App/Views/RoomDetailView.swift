@@ -8,18 +8,29 @@
 import SwiftUI
 
 struct RoomDetailView: View {
-    let room: BridgeManager.HueRoom
+    let roomId: String
     @ObservedObject var bridgeManager: BridgeManager
+    @Binding var activeDetailId: String?
+    @Binding var activeDetailType: ActiveDetailType?
 
     @State private var isTogglingPower = false
     @State private var brightness: Double = 0
     @State private var lastBrightnessUpdate: Date = Date()
     @State private var throttleTimer: Timer?
     @State private var pendingBrightness: Double?
+    @State private var refreshTask: Task<Void, Never>?
+    @State private var isAdjustingBrightness = false
+    @State private var brightnessPopoverTimer: Timer?
     @FocusState private var isBrightnessFocused: Bool
 
+    // Computed property to get live room data
+    private var room: BridgeManager.HueRoom? {
+        bridgeManager.rooms.first(where: { $0.id == roomId })
+    }
+
     private var lightStatus: (isOn: Bool, brightness: Double?) {
-        guard let lights = room.groupedLights, !lights.isEmpty else {
+        guard let room = room,
+              let lights = room.groupedLights, !lights.isEmpty else {
             return (false, nil)
         }
 
@@ -30,87 +41,76 @@ struct RoomDetailView: View {
     }
 
     var body: some View {
-        ScrollView {
-            VStack(spacing: 20) {
-                // Header
-                VStack(spacing: 8) {
-                    Image(systemName: iconForArchetype(room.metadata.archetype))
-                        .font(.system(size: 50))
-                        .foregroundStyle(lightStatus.isOn ? .yellow : .secondary)
-
-                    Text(room.metadata.name)
-                        .font(.title3)
-
-                    Text(room.metadata.archetype.capitalized)
+        Group {
+            if let room = room {
+                roomContent(for: room)
+            } else {
+                VStack {
+                    ProgressView()
+                    Text("Loading room...")
                         .font(.caption)
                         .foregroundStyle(.secondary)
-
-                    if let groupedLights = room.groupedLights {
-                        Text("\(groupedLights.count) light\(groupedLights.count == 1 ? "" : "s")")
-                            .font(.caption2)
-                            .foregroundStyle(.tertiary)
-                    }
-                }
-                .padding(.top)
-
-                // Controls
-                VStack(spacing: 16) {
-                    // Power toggle
-                    Button {
-                        Task {
-                            await togglePower()
-                        }
-                    } label: {
-                        HStack {
-                            Image(systemName: "power")
-                            Text(lightStatus.isOn ? "Turn Off" : "Turn On")
-                        }
-                        .frame(maxWidth: .infinity)
-                        .padding()
-                    }
-                    .disabled(isTogglingPower)
-                    .glassEffect()
-
-                    // Brightness slider (only show when on)
-                    if lightStatus.isOn {
-                        VStack(spacing: 8) {
-                            HStack {
-                                Text("Brightness")
-                                    .font(.caption)
-                                Spacer()
-                                Text("\(Int(brightness))%")
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                            }
-
-                            Slider(value: $brightness, in: 0...100, step: 1)
-                                .onChange(of: brightness) { oldValue, newValue in
-                                    throttledSetBrightness(newValue)
-                                }
-                        }
-                        .padding()
-                        .background(
-                            RoundedRectangle(cornerRadius: 12)
-                                .fill(.regularMaterial)
-                        )
-                        .focusable()
-                        .focused($isBrightnessFocused)
-                        .digitalCrownRotation($brightness, from: 0, through: 100, by: 1, sensitivity: .low)
-                    }
-                }
-                .padding(.horizontal)
-
-                // Status info
-                if let groupedLights = room.groupedLights, !groupedLights.isEmpty {
-                    VStack(spacing: 12) {
-                        ForEach(groupedLights) { light in
-                            LightStatusCard(light: light)
-                        }
-                    }
-                    .padding(.horizontal)
                 }
             }
-            .padding(.bottom)
+        }
+        .onAppear {
+            // Notify ContentView that we're viewing this room
+            activeDetailId = roomId
+            activeDetailType = .room
+            print("📍 Entered room detail view: \(roomId)")
+        }
+        .onDisappear {
+            // Clear active detail when leaving
+            activeDetailId = nil
+            activeDetailType = nil
+            print("📍 Left room detail view")
+        }
+    }
+
+    @ViewBuilder
+    private func roomContent(for room: BridgeManager.HueRoom) -> some View {
+        ZStack {
+            // Background brightness bar on right side
+            brightnessBar
+
+            // Brightness percentage popover (left of bar top)
+            if isAdjustingBrightness && brightness > 0 {
+                brightnessPopover
+                    .zIndex(100)
+                    .transition(.opacity.combined(with: .scale(scale: 0.8)))
+            }
+
+            // Centered ON/OFF text
+            Text(lightStatus.isOn ? "ON" : "OFF")
+                .font(.system(size: 48, weight: .bold))
+                .foregroundStyle(lightStatus.isOn ? .yellow : .gray)
+        }
+        .contentShape(Rectangle())
+        .onTapGesture {
+            guard !isTogglingPower else { return }
+            Task {
+                await togglePower()
+            }
+        }
+        .focusable()
+        .focused($isBrightnessFocused)
+        .digitalCrownRotation($brightness, from: 0, through: 100, by: 1, sensitivity: .low)
+        .onChange(of: brightness) { oldValue, newValue in
+            // Show popover with animation
+            withAnimation(.easeInOut(duration: 0.2)) {
+                isAdjustingBrightness = true
+            }
+
+            // Reset timer for hiding popover
+            brightnessPopoverTimer?.invalidate()
+            brightnessPopoverTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: false) { _ in
+                withAnimation(.easeInOut(duration: 0.3)) {
+                    isAdjustingBrightness = false
+                }
+            }
+
+            // Throttle actual brightness update
+            throttledSetBrightness(newValue)
         }
         .navigationTitle(room.metadata.name)
         .navigationBarTitleDisplayMode(.inline)
@@ -122,7 +122,8 @@ struct RoomDetailView: View {
     }
 
     private func togglePower() async {
-        guard let groupedLight = room.groupedLights?.first,
+        guard let room = room,
+              let groupedLight = room.groupedLights?.first,
               let bridge = bridgeManager.connectedBridge else { return }
 
         isTogglingPower = true
@@ -130,7 +131,7 @@ struct RoomDetailView: View {
 
         let newState = !(groupedLight.on?.on ?? false)
         await setGroupedLightAction(groupedLightId: groupedLight.id, on: newState, bridge: bridge)
-        await bridgeManager.getRooms()
+        debouncedRefreshRoom()
     }
 
     private func throttledSetBrightness(_ value: Double) {
@@ -163,12 +164,76 @@ struct RoomDetailView: View {
     }
 
     private func setBrightness(_ value: Double) async {
-        guard let groupedLight = room.groupedLights?.first,
+        guard let room = room,
+              let groupedLight = room.groupedLights?.first,
               let bridge = bridgeManager.connectedBridge,
               lightStatus.isOn else { return }
 
         await setGroupedLightAction(groupedLightId: groupedLight.id, brightness: value, bridge: bridge)
+        debouncedRefreshRoom()
     }
+
+    private func debouncedRefreshRoom() {
+        // Cancel any existing refresh task
+        refreshTask?.cancel()
+
+        // Create new task that waits 400ms before refreshing
+        refreshTask = Task {
+            try? await Task.sleep(nanoseconds: 400_000_000) // 400ms
+
+            // Check if task was cancelled
+            guard !Task.isCancelled else { return }
+
+            // Refresh just this room
+            await bridgeManager.refreshRoom(roomId: roomId)
+        }
+    }
+
+    // MARK: - View Components
+
+    private var brightnessBar: some View {
+        GeometryReader { geometry in
+            HStack {
+                Spacer()
+
+                ZStack(alignment: .bottom) {
+                    // Empty bar background
+                    RoundedRectangle(cornerRadius: 4)
+                        .fill(Color.gray.opacity(0.3))
+                        .frame(width: 8)
+
+                    // Filled portion based on brightness
+                    RoundedRectangle(cornerRadius: 4)
+                        .fill(lightStatus.isOn ? Color.yellow : Color.gray.opacity(0.5))
+                        .frame(width: 8, height: geometry.size.height * CGFloat(brightness / 100))
+                }
+                .padding(.trailing, 8)
+            }
+        }
+    }
+
+    private var brightnessPopover: some View {
+        GeometryReader { geometry in
+            HStack {
+                Spacer()
+                Text("\(Int(brightness))%")
+                    .font(.caption)
+                    .fontWeight(.medium)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 6)
+                    .background(
+                        RoundedRectangle(cornerRadius: 12)
+                            .fill(.regularMaterial)
+                    )
+                    .offset(
+                        x: -20,
+                        y: geometry.size.height * CGFloat(1 - brightness / 100) - 12
+                    )
+            }
+        }
+    }
+
+    // MARK: - Actions
 
     private func setGroupedLightAction(groupedLightId: String, on: Bool? = nil, brightness: Double? = nil, bridge: BridgeConnectionInfo) async {
         let urlString = "https://\(bridge.bridge.internalipaddress)/clip/v2/resource/grouped_light/\(groupedLightId)"
@@ -203,78 +268,4 @@ struct RoomDetailView: View {
         }
     }
 
-    private func iconForArchetype(_ archetype: String) -> String {
-        switch archetype.lowercased() {
-        case "living_room": return "sofa"
-        case "bedroom": return "bed.double"
-        case "kitchen": return "fork.knife"
-        case "bathroom": return "drop"
-        case "office": return "desktopcomputer"
-        case "dining": return "fork.knife"
-        case "hallway": return "door.left.hand.open"
-        case "toilet": return "drop"
-        case "garage": return "car"
-        case "terrace", "balcony": return "sun.max"
-        case "garden": return "leaf"
-        case "gym": return "figure.run"
-        case "recreation": return "gamecontroller"
-        default: return "lightbulb.group"
-        }
-    }
-}
-
-// MARK: - Light Status Card
-struct LightStatusCard: View {
-    let light: BridgeManager.HueGroupedLight
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                Circle()
-                    .fill(light.on?.on == true ? Color.green : Color.gray)
-                    .frame(width: 8, height: 8)
-
-                Text(light.on?.on == true ? "ON" : "OFF")
-                    .font(.caption)
-                    .fontWeight(.semibold)
-                    .foregroundStyle(light.on?.on == true ? .green : .gray)
-
-                Spacer()
-
-                if let brightness = light.dimming?.brightness {
-                    Text("\(Int(brightness))%")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-            }
-
-            if let colorTemp = light.color_temperature?.mirek {
-                HStack {
-                    Text("Color Temp")
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                    Spacer()
-                    Text("\(colorTemp) mirek")
-                        .font(.caption2)
-                }
-            }
-
-            if let color = light.color?.xy {
-                HStack {
-                    Text("Color")
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                    Spacer()
-                    Text("x: \(String(format: "%.3f", color.x)), y: \(String(format: "%.3f", color.y))")
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                }
-            }
-        }
-        .padding()
-        .background(
-            RoundedRectangle(cornerRadius: 12)
-                .fill(.regularMaterial)
-        )
-    }
 }
