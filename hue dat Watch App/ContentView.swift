@@ -11,6 +11,7 @@ import Combine
 struct ContentView: View {
     @StateObject private var bridgeManager = BridgeManager()
     @State private var refreshTimer: Timer?
+    @State private var hasAutoNavigated = false
     @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
@@ -21,6 +22,9 @@ struct ContentView: View {
                     Task {
                         await bridgeManager.validateConnection()
                     }
+                } else {
+                    // Reset auto-navigation flag when no bridge is connected
+                    hasAutoNavigated = false
                 }
             }
             .onChange(of: scenePhase) { oldPhase, newPhase in
@@ -51,6 +55,8 @@ struct ContentView: View {
                 case .failure(let message):
                     print("❌ ContentView: Bridge connection validation failed: \(message)")
                     stopRefreshTimer()
+                    // Reset auto-navigation flag when validation fails
+                    hasAutoNavigated = false
                 }
             }
     }

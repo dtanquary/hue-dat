@@ -130,9 +130,15 @@ struct MainMenuView: View {
         .onReceive(bridgeManager.connectionValidationPublisher) { result in
             if case .success = result {
                 // Auto-navigate to Rooms & Zones when validation succeeds
-                // Only navigate if not already there
-                if navigationPath.isEmpty {
+                // Only navigate if not already there and we have a connected bridge
+                if navigationPath.isEmpty && bridgeManager.connectedBridge != nil {
+                    print("🚀 Auto-navigating to Rooms & Zones")
                     navigationPath.append("roomsAndZones")
+                }
+            } else {
+                // Clear navigation path on validation failure
+                if !navigationPath.isEmpty {
+                    navigationPath.removeLast(navigationPath.count)
                 }
             }
         }
