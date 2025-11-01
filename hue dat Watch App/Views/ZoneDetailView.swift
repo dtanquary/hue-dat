@@ -84,6 +84,8 @@ struct ZoneDetailView: View {
             Text(lightStatus.isOn ? "ON" : "OFF")
                 .font(.system(size: 48, weight: .bold))
                 .foregroundStyle(lightStatus.isOn ? .yellow : .gray)
+                .opacity(isTogglingPower ? 0.3 : 1.0)
+                .animation(isTogglingPower ? .easeInOut(duration: 0.8).repeatForever(autoreverses: true) : .default, value: isTogglingPower)
         }
         .contentShape(Rectangle())
         .onTapGesture {
@@ -208,6 +210,19 @@ struct ZoneDetailView: View {
                         .frame(width: 8, height: geometry.size.height * CGFloat(brightness / 100))
                 }
                 .padding(.trailing, 8)
+                .contentShape(Rectangle())
+                .gesture(
+                    DragGesture(minimumDistance: 0)
+                        .onChanged { value in
+                            // Calculate brightness based on Y position
+                            // Y=0 is top (100% brightness), Y=height is bottom (0% brightness)
+                            let yPosition = value.location.y
+                            let barHeight = geometry.size.height
+                            let newBrightness = max(0, min(100, 100 - (yPosition / barHeight * 100)))
+
+                            brightness = newBrightness
+                        }
+                )
             }
         }
     }
