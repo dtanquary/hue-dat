@@ -12,77 +12,85 @@ struct MainMenuView: View {
     @StateObject private var discoveryService = BridgeDiscoveryService()
     @State private var showBridgesList = false
     @State private var showDisconnectAlert = false
+    @State private var navigationPath = NavigationPath()
 
     var body: some View {
-        NavigationStack {
-            if bridgeManager.connectedBridge != nil {
-                // Connected - show main menu
-                List {
-                    Section {
-                        NavigationLink(destination: RoomsAndZonesListView(bridgeManager: bridgeManager)) {
-                            Label("Rooms & Zones", systemImage: "square.grid.2x2")
+        NavigationStack(path: $navigationPath) {
+            Group {
+                if bridgeManager.connectedBridge != nil {
+                    // Connected - show main menu
+                    List {
+                        Section {
+                            NavigationLink(destination: RoomsAndZonesListView(bridgeManager: bridgeManager)) {
+                                Label("Rooms & Zones", systemImage: "square.grid.2x2")
+                            }
                         }
-                    }
 
-                    Section {
-                        Button(role: .destructive) {
-                            showDisconnectAlert = true
-                        } label: {
-                            Label("Disconnect", systemImage: "xmark.circle")
-                        }
-                    }
-                }
-                .navigationTitle("Hue Control")
-                .navigationBarTitleDisplayMode(.inline)
-            } else {
-                // Not connected - show discovery
-                ScrollView {
-                    VStack(spacing: 24) {
-                        VStack(spacing: 12) {
-                            Button {
-                                Task {
-                                    await discoveryService.discoverBridges()
-                                    if !discoveryService.discoveredBridges.isEmpty {
-                                        showBridgesList = true
-                                    }
-                                }
+                        Section {
+                            Button(role: .destructive) {
+                                showDisconnectAlert = true
                             } label: {
-                                HStack {
-                                    if discoveryService.isLoading {
-                                        ProgressView()
-                                            .scaleEffect(0.8)
-                                            .tint(.white)
-                                    } else {
-                                        Image(systemName: "magnifyingglass")
-                                    }
-                                    Text(discoveryService.isLoading ? "Searching..." : "Find Bridges")
-                                }
-                                .frame(maxWidth: .infinity)
-                                .padding()
-                            }
-                            .disabled(discoveryService.isLoading)
-                            .accessibilityLabel("Discover Hue bridges on network")
-                            .glassEffect()
-
-                            // Tappable bridge count
-                            if !discoveryService.discoveredBridges.isEmpty && !discoveryService.isLoading {
-                                Button {
-                                    showBridgesList = true
-                                } label: {
-                                    Text("\(discoveryService.discoveredBridges.count) found")
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
-                                        .underline()
-                                }
-                                .buttonStyle(.plain)
-                                .accessibilityLabel("Show \(discoveryService.discoveredBridges.count) discovered bridge\(discoveryService.discoveredBridges.count == 1 ? "" : "s")")
+                                Label("Disconnect", systemImage: "xmark.circle")
                             }
                         }
                     }
-                    .padding()
+                    .navigationTitle("Hue Control")
+                    .navigationBarTitleDisplayMode(.inline)
+                } else {
+                    // Not connected - show discovery
+                    ScrollView {
+                        VStack(spacing: 24) {
+                            VStack(spacing: 12) {
+                                Button {
+                                    Task {
+                                        await discoveryService.discoverBridges()
+                                        if !discoveryService.discoveredBridges.isEmpty {
+                                            showBridgesList = true
+                                        }
+                                    }
+                                } label: {
+                                    HStack {
+                                        if discoveryService.isLoading {
+                                            ProgressView()
+                                                .scaleEffect(0.8)
+                                                .tint(.white)
+                                        } else {
+                                            Image(systemName: "magnifyingglass")
+                                        }
+                                        Text(discoveryService.isLoading ? "Searching..." : "Find Bridges")
+                                    }
+                                    .frame(maxWidth: .infinity)
+                                    .padding()
+                                }
+                                .disabled(discoveryService.isLoading)
+                                .accessibilityLabel("Discover Hue bridges on network")
+                                .glassEffect()
+
+                                // Tappable bridge count
+                                if !discoveryService.discoveredBridges.isEmpty && !discoveryService.isLoading {
+                                    Button {
+                                        showBridgesList = true
+                                    } label: {
+                                        Text("\(discoveryService.discoveredBridges.count) found")
+                                            .font(.caption)
+                                            .foregroundStyle(.secondary)
+                                            .underline()
+                                    }
+                                    .buttonStyle(.plain)
+                                    .accessibilityLabel("Show \(discoveryService.discoveredBridges.count) discovered bridge\(discoveryService.discoveredBridges.count == 1 ? "" : "s")")
+                                }
+                            }
+                        }
+                        .padding()
+                    }
+                    .navigationTitle("Hue Control")
+                    .navigationBarTitleDisplayMode(.inline)
                 }
-                .navigationTitle("Hue Control")
-                .navigationBarTitleDisplayMode(.inline)
+            }
+            .navigationDestination(for: String.self) { route in
+                if route == "roomsAndZones" {
+                    RoomsAndZonesListView(bridgeManager: bridgeManager)
+                }
             }
         }
         .sheet(isPresented: $showBridgesList, onDismiss: {
@@ -97,6 +105,7 @@ struct MainMenuView: View {
             Button("Cancel", role: .cancel) { }
             Button("Disconnect", role: .destructive) {
                 bridgeManager.disconnectBridge()
+                navigationPath.removeLast(navigationPath.count)
             }
         } message: {
             Text("Are you sure you want to disconnect? You'll need to set up the connection again.")
@@ -117,6 +126,15 @@ struct MainMenuView: View {
             Button("OK") { }
         } message: {
             Text("No Hue bridges could be found on your network. Make sure your bridge is connected and try again.")
+        }
+        .onReceive(bridgeManager.connectionValidationPublisher) { result in
+            if case .success = result {
+                // Auto-navigate to Rooms & Zones when validation succeeds
+                // Only navigate if not already there
+                if navigationPath.isEmpty {
+                    navigationPath.append("roomsAndZones")
+                }
+            }
         }
     }
 }

@@ -24,7 +24,9 @@ class BridgeManager: ObservableObject {
     @Published var isConnectionValidated: Bool = false
     @Published var rooms: [HueRoom] = []
     @Published var zones: [HueZone] = []
-    
+    @Published var isLoadingRooms: Bool = false
+    @Published var isLoadingZones: Bool = false
+
     // Event broadcasting for connection validation
     private let connectionValidationSubject = PassthroughSubject<ConnectionValidationResult, Never>()
     var connectionValidationPublisher: AnyPublisher<ConnectionValidationResult, Never> {
@@ -363,9 +365,11 @@ class BridgeManager: ObservableObject {
         guard let bridge = currentConnectedBridge?.bridge else {
             print("❌ getRooms: No connected bridge available")
             rooms = []
+            isLoadingRooms = false
             return
         }
-        
+
+        isLoadingRooms = true
         let urlString = "https://\(bridge.internalipaddress)/clip/v2/resource/room"
 
         let delegate = InsecureURLSessionDelegate()
@@ -374,6 +378,7 @@ class BridgeManager: ObservableObject {
         guard let url = URL(string: urlString) else {
             print("❌ getRooms: Invalid URL: \(urlString)")
             rooms = []
+            isLoadingRooms = false
             return
         }
 
@@ -475,6 +480,8 @@ class BridgeManager: ObservableObject {
             self.alertMessage = error.localizedDescription
             self.showAlert = true
         }
+
+        isLoadingRooms = false
     }
     
     /// Fetch detailed metadata for a specific room by its ID
