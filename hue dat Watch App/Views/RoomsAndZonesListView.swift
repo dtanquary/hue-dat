@@ -9,10 +9,9 @@ import SwiftUI
 
 struct RoomsAndZonesListView: View {
     @ObservedObject var bridgeManager: BridgeManager
-    @Binding var activeDetailId: String?
-    @Binding var activeDetailType: ActiveDetailType?
     @State private var isRefreshing = false
     @State private var hasLoadedData = false
+    @State private var rotationAngle: Double = 0
 
     var body: some View {
         Group {
@@ -39,7 +38,7 @@ struct RoomsAndZonesListView: View {
                     if !bridgeManager.rooms.isEmpty {
                         Section("Rooms") {
                             ForEach(bridgeManager.rooms) { room in
-                                NavigationLink(destination: RoomDetailView(roomId: room.id, bridgeManager: bridgeManager, activeDetailId: $activeDetailId, activeDetailType: $activeDetailType)) {
+                                NavigationLink(destination: RoomDetailView(roomId: room.id, bridgeManager: bridgeManager)) {
                                     RoomRowView(room: room)
                                 }
                             }
@@ -50,7 +49,7 @@ struct RoomsAndZonesListView: View {
                     if !bridgeManager.zones.isEmpty {
                         Section("Zones") {
                             ForEach(bridgeManager.zones) { zone in
-                                NavigationLink(destination: ZoneDetailView(zoneId: zone.id, bridgeManager: bridgeManager, activeDetailId: $activeDetailId, activeDetailType: $activeDetailType)) {
+                                NavigationLink(destination: ZoneDetailView(zoneId: zone.id, bridgeManager: bridgeManager)) {
                                     ZoneRowView(zone: zone)
                                 }
                             }
@@ -69,8 +68,20 @@ struct RoomsAndZonesListView: View {
                     }
                 } label: {
                     Image(systemName: isRefreshing ? "arrow.clockwise.circle.fill" : "arrow.clockwise")
+                        .rotationEffect(.degrees(rotationAngle))
                 }
                 .disabled(isRefreshing)
+            }
+        }
+        .onChange(of: isRefreshing) { _, newValue in
+            if newValue {
+                withAnimation(.linear(duration: 1.0).repeatForever(autoreverses: false)) {
+                    rotationAngle = 360
+                }
+            } else {
+                withAnimation {
+                    rotationAngle = 0
+                }
             }
         }
         .overlay {
@@ -92,12 +103,6 @@ struct RoomsAndZonesListView: View {
         }
         .task {
             await refreshData()
-        }
-        .onAppear {
-            // Clear active detail when on list view
-            activeDetailId = nil
-            activeDetailType = nil
-            print("📍 On rooms and zones list view")
         }
     }
 

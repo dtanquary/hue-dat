@@ -41,12 +41,17 @@ The app uses a clean service-oriented architecture with three main services:
 
 3. **BridgeManager** (`Managers/BridgeManager.swift`): Persists and manages the active bridge connection
    - Stores `BridgeConnectionInfo` in UserDefaults
+   - Caches `rooms` and `zones` separately in UserDefaults for offline access and faster app startup
    - Tracks the currently connected bridge across app sessions
    - Provides connection lifecycle methods (save, disconnect, load)
    - **Hue API v2 Integration**: Fetches rooms, zones, and grouped light status
    - Validates connection and fetches live data from `/clip/v2/resource/` endpoints
-   - Publishes connection validation results via Combine publisher
-   - Includes comprehensive data models for `HueRoom`, `HueZone`, and `HueGroupedLight`
+   - Publishes connection validation results via Combine publisher (`connectionValidationPublisher`)
+   - Includes comprehensive data models for `HueRoom`, `HueZone`, `HueGroupedLight`, and `HueLight`
+   - **Manual Refresh**: User-triggered refresh via toolbar button in `RoomsAndZonesListView`
+   - **Smart Updates**: Only updates changed items in arrays to prevent UI flicker
+   - **Targeted Refresh**: `refreshSingleRoom()` and `refreshSingleZone()` for fast UI updates after control actions
+   - **Equatable Models**: All data models conform to Equatable/Hashable for efficient SwiftUI diffing
 
 ### Data Models
 
@@ -58,52 +63,82 @@ The app uses a clean service-oriented architecture with three main services:
 - **HueBridgeError** & **HueBridgeErrorResponse**: Error response structures
 
 **Hue API v2 Models** (nested in `BridgeManager`):
-- **HueRoom**: Room data including metadata (name, archetype), children, services, and grouped lights
-- **HueZone**: Zone data with same structure as HueRoom
-- **HueGroupedLight**: Aggregated light status including on/off, brightness, color temperature, and XY color
+- **HueRoom**: Room data including metadata (name, archetype), children, services, grouped lights, and individual lights. Conforms to `Equatable` and `Hashable`.
+- **HueZone**: Zone data with same structure as HueRoom. Conforms to `Equatable` and `Hashable`.
+- **HueGroupedLight**: Aggregated light status including on/off, brightness, color temperature, and XY color. Conforms to `Equatable` and `Hashable`.
+- **HueLight**: Individual light data with on/off, brightness, color, and metadata. Conforms to `Equatable` and `Hashable`.
 - **ConnectionValidationResult**: Enum for connection validation state (success/failure)
+
+All Hue models implement custom equality operators that compare only relevant state (id, metadata, light status) to enable efficient SwiftUI view updates.
 
 ### View Layer
 The app uses a navigation-based architecture with the following views:
 
 - **ContentView**: Root view wrapper that manages lifecycle events
   - Handles connection validation on app launch and when scene becomes active
-  - Manages 5-second refresh timer for live room/zone status updates
+  - Listens to `connectionValidationPublisher` for validation results
+  - Triggers initial data fetch (rooms/zones) on successful connection validation
   - Wraps `MainMenuView` and coordinates with `BridgeManager`
+  - Includes utility extension: `Array<Double>.average()` for aggregating brightness values
 
 - **MainMenuView**: Primary navigation hub
   - Shows bridge discovery UI when not connected
   - Shows navigation menu with "Rooms & Zones" option when connected
-  - Includes disconnect functionality
+  - Auto-navigation to "Rooms & Zones" view on successful connection validation
+  - Glass effect button styling
+  - Bridge count display with tap-to-show functionality
+  - Disconnect alert confirmation
 
 - **RoomsAndZonesListView**: Lists all rooms and zones
   - Organized into sections (Rooms, Zones)
   - Shows live status (on/off, brightness) for each room/zone
-  - Refresh button in toolbar to manually update data
+  - Refresh button in toolbar to manually update data (with rotation animation)
+  - Loading overlay during initial data fetch
+  - Empty state with refresh button when no rooms/zones available
+  - Task-based data loading on appear
   - Uses room archetype-specific icons (sofa, bed, kitchen, etc.)
 
 - **RoomDetailView**: Individual room control interface
-  - Power toggle button for the grouped light
-  - Brightness slider (visible when lights are on)
-  - **Digital Crown support**: Rotate the crown to adjust brightness (0-100%)
-  - **Debounced API calls**: 400ms debounce prevents excessive bridge requests
+  - Centered ON/OFF text with tap gesture for power toggle
+  - Brightness bar on right side (8pt wide) with vertical drag gesture
+  - **Digital Crown support**: Rotate the crown to adjust brightness (0-100%) with `.low` sensitivity
+  - **Drag-based brightness control**: Vertical drag on brightness bar (inverted Y-axis: top = 100%, bottom = 0%)
+  - **Brightness percentage popover**: Animated display during adjustment (1-second auto-hide)
+  - **Throttled API calls**: 300ms throttling prevents excessive bridge requests during rapid adjustments
+  - **Optimistic UI updates**: Immediate UI response for power toggle and brightness changes with rollback on API failure
+  - **Targeted refresh**: Uses `refreshSingleRoom()` for instant UI updates after control actions
+  - **Control locking**: Mutual exclusion prevents simultaneous power and brightness operations
+  - **Haptic feedback**: Two-event system (`.start` on begin, `.success`/`.failure` on completion)
+  - **Error handling**: Bridge unreachable alert on API failures
+  - **Loading state management**: `hasCompletedInitialLoad` prevents haptic feedback during programmatic changes
   - Focus management with `@FocusState` for crown input
   - Displays grouped light status (on/off, brightness, color temp, XY color)
   - Uses Hue API v2 `/clip/v2/resource/grouped_light/{id}` endpoint
+  - **Note**: `ColorOrbsBackground` component exists but is not currently integrated into this view
 
 - **ZoneDetailView**: Individual zone control interface
   - Same functionality as RoomDetailView but for zones
-  - Dedicated zone icon (square.3.layers.3d)
-  - Includes Digital Crown support and debouncing
+  - Dedicated zone icon (square.3.layers.3d) in list view
+  - Uses `refreshSingleZone()` instead of `refreshSingleRoom()`
+  - Includes all RoomDetailView features: crown support, drag control, haptics, control locking, optimistic updates, throttling, targeted refresh
+  - **Note**: `ColorOrbsBackground` component exists but is not currently integrated into this view
+
+- **ColorOrbsBackground**: Background visual component (currently not integrated into detail views)
+  - Accepts array of Color objects to display as gradient orbs
+  - Uses GeometryReader for responsive sizing
+  - Dynamic positioning: circular/spiral arrangement based on light count
+  - Radial gradients from color to transparent with `.screen` blend mode for additive color mixing
+  - Responsive orb sizing based on available space and light count
+  - **Status**: Complete and functional component, but not currently used in RoomDetailView or ZoneDetailView
 
 - **BridgesListView**: Bridge selection and registration UI
-  - Presents discovered bridges
-  - Manages per-bridge registration flow
+  - List of discovered bridges with per-bridge registration state
+  - Success and error alerts for registration flow
+  - Link button alert with retry mechanism
+  - Automatic connection save on successful registration
+  - Done button disabled during active registration
 
 Views use `@StateObject` for service ownership and `@ObservedObject`/`@Published` for reactive updates.
-
-**Utility Extensions** (`ContentView.swift`):
-- **Array\<Double>.average()**: Extension method to calculate average of Double arrays, used for aggregating brightness values across multiple lights in a room/zone
 
 ### State Management
 All services use `@MainActor` to ensure UI updates happen on the main thread. Services are `ObservableObject` instances with `@Published` properties for reactive SwiftUI bindings.
@@ -136,33 +171,93 @@ The service includes comprehensive error handling that:
 - Provides detailed console output for troubleshooting registration issues
 
 ### Persistence
-Connected bridge information is stored in UserDefaults with the key "ConnectedBridge". The app automatically loads the saved connection on launch via `BridgeManager.init()`.
+The app uses UserDefaults for all persistence:
+- **Bridge Connection**: Stored with key "ConnectedBridge", loaded automatically on launch via `BridgeManager.init()`
+- **Rooms Cache**: Stored separately with key "cachedRooms" for offline access and faster app startup
+- **Zones Cache**: Stored separately with key "cachedZones" for offline access and faster app startup
+- Cached data is updated whenever fresh data is fetched from the bridge
 
-### Live Status Updates
-The app implements a 5-second refresh timer (managed in `ContentView`) that periodically fetches room and zone data when the app is active and connected to a bridge. This provides near-real-time status updates for all lights. The timer is automatically paused when the app goes into the background.
+### Data Refresh Architecture
+The app uses a **manual refresh** strategy with smart updates and targeted refresh capabilities:
 
-### Digital Crown Support & Debouncing
-Both `RoomDetailView` and `ZoneDetailView` implement Digital Crown support for brightness control with critical debouncing:
+**Manual Refresh:**
+- User-triggered via toolbar refresh button in `RoomsAndZonesListView`
+- No automatic background polling or refresh loops
+- Data persists in cache between app launches
+- **Note**: This means data can become stale if external changes occur (e.g., lights controlled via Hue app)
+
+**Smart Update Logic:**
+- `refreshAllData()`: Refreshes all rooms and zones in parallel using async let
+- `smartUpdateRooms()` and `smartUpdateZones()`: Only update array items that have actually changed
+- Custom equality methods (`areRoomsEqual()`, `areZonesEqual()`, `areGroupedLightsEqual()`) compare state
+- Preserves existing data during partial refreshes to prevent UI flicker
+- Minimizes SwiftUI re-renders by only updating changed items
+
+**Targeted Refresh:**
+- `refreshSingleRoom(roomId:)`: Fast refresh of just one room after control action
+- `refreshSingleZone(zoneId:)`: Fast refresh of just one zone after control action
+- Called immediately after power toggle or brightness adjustment for instant UI feedback
+- Much faster than full refresh (3-4 API calls vs dozens)
+- Uses same smart update logic to only modify the specific room/zone in the array
+- Enables responsive UI without overwhelming the bridge with requests
+
+### Digital Crown Support & Throttling
+Both `RoomDetailView` and `ZoneDetailView` implement Digital Crown support for brightness control with throttling and haptic feedback:
 
 **Digital Crown Implementation:**
 - Uses `.digitalCrownRotation($brightness, from: 0, through: 100, by: 1, sensitivity: .low)` modifier
 - Requires `.focusable()` and `.focused($isBrightnessFocused)` for focus management
-- Crown rotation and slider both update the same `brightness` state variable
-- Sensitivity set to `.low` for smoother, more controlled adjustments
+- Crown rotation and drag bar both update the same `brightness` state variable
+- Sensitivity set to `.low` for controlled, precise adjustments
 
-**Debouncing Strategy (CRITICAL):**
-- Both slider and crown input trigger `debouncedSetBrightness()` instead of direct API calls
-- Uses `@State private var brightnessTask: Task<Void, Never>?` to track pending updates
-- Previous pending tasks are cancelled when new input arrives
-- 400ms delay (via `Task.sleep(nanoseconds: 400_000_000)`) before API call executes
-- This prevents excessive API requests during rapid crown rotation or slider adjustments
-- Without debouncing, rapid input could generate 100+ API calls, overwhelming the bridge
+**Drag Gesture Brightness Control:**
+- Vertical drag gesture on brightness bar (8pt wide on right side)
+- Inverted Y-axis: dragging up increases brightness, dragging down decreases
+- Same throttling system as crown rotation
+- Visual feedback via animated brightness percentage popover
+- Popover auto-hides after 1 second of inactivity
 
-**Why Debouncing is Essential:**
+**Throttling Strategy (CRITICAL):**
+- Crown/drag input triggers `throttledSetBrightness()` instead of direct API calls
+- Uses Timer-based throttling with 300ms interval
+- Tracks `lastBrightnessUpdate` timestamp to determine if enough time has passed
+- If throttle interval hasn't elapsed, schedules update for later and stores `pendingBrightness`
+- Previous pending updates are cancelled when new input arrives
+- This prevents excessive API requests during rapid crown rotation or drag adjustments
+- Without throttling, rapid input could generate 100+ API calls, overwhelming the bridge
+
+**Optimistic UI Updates:**
+- Immediate UI response for both power toggle and brightness changes
+- `optimisticIsOn` and `optimisticBrightness` track intended state
+- `previousIsOn` and `previousBrightness` store last known good state
+- On API failure: UI rolls back to previous state automatically
+- On success: optimistic state becomes the new actual state
+- Provides instant visual feedback while network request is in flight
+- Error alert shown if bridge is unreachable
+
+**Haptic Feedback System:**
+- **Two-event pattern**: Initial haptic when adjustment starts, final haptic when network update completes
+- Initial: `.start` haptic fires once when user begins adjusting (tracked by `hasGivenInitialBrightnessHaptic`)
+- Final: `.success` haptic fires once when first network call completes (tracked by `hasGivenFinalBrightnessHaptic`)
+- Error: `.failure` haptic if API request fails
+- Both flags reset 1.5 seconds after user stops adjusting (via `brightnessHapticResetTimer`)
+- Same haptic pattern used for power toggle: `.start` on tap, `.success`/`.failure` after network completion
+- **Loading state management**: `hasCompletedInitialLoad` prevents haptic feedback during programmatic brightness changes (e.g., when view loads)
+
+**Control Locking (Mutual Exclusion):**
+- `isTogglingPower` flag prevents brightness adjustment during power toggle operation
+- `isSettingBrightness` flag prevents power toggle during brightness adjustment
+- Guards at the start of `togglePower()` and brightness `onChange` enforce mutual exclusion
+- Ensures only one network operation at a time, preventing race conditions and improving UX
+
+**Why This Approach:**
 - Hue bridges have rate limits and can become unresponsive with excessive requests
-- Digital Crown rotation is continuous and can be very rapid
-- A single brightness adjustment could trigger dozens of API calls without debouncing
-- The 400ms delay balances responsiveness (feels instant) with API efficiency
+- Digital Crown rotation and drag gestures are continuous and can be very rapid
+- The 300ms throttle interval balances responsiveness (feels instant) with API efficiency
+- Optimistic updates provide instant visual feedback, improving perceived performance
+- Haptic feedback provides tactile confirmation without overwhelming the user
+- Control locking prevents conflicting operations and ensures clean state transitions
+- Error rollback ensures UI accurately reflects actual bridge state even when network fails
 
 ## File Organization
 
@@ -181,8 +276,9 @@ hue dat Watch App/
 └── Views/
     ├── MainMenuView.swift              # Primary navigation hub
     ├── RoomsAndZonesListView.swift     # List of all rooms & zones
-    ├── RoomDetailView.swift            # Individual room control
-    ├── ZoneDetailView.swift            # Individual zone control
+    ├── RoomDetailView.swift            # Individual room control with haptics
+    ├── ZoneDetailView.swift            # Individual zone control with haptics
+    ├── ColorOrbsBackground.swift       # Visual light color representation
     └── BridgesListView.swift           # Bridge selection UI
 ```
 

@@ -9,8 +9,6 @@ import SwiftUI
 
 struct MainMenuView: View {
     @ObservedObject var bridgeManager: BridgeManager
-    @Binding var activeDetailId: String?
-    @Binding var activeDetailType: ActiveDetailType?
     @StateObject private var discoveryService = BridgeDiscoveryService()
     @State private var showBridgesList = false
     @State private var showDisconnectAlert = false
@@ -23,7 +21,7 @@ struct MainMenuView: View {
                     // Connected - show main menu
                     List {
                         Section {
-                            NavigationLink(destination: RoomsAndZonesListView(bridgeManager: bridgeManager, activeDetailId: $activeDetailId, activeDetailType: $activeDetailType)) {
+                            NavigationLink(destination: RoomsAndZonesListView(bridgeManager: bridgeManager)) {
                                 Label("Rooms & Zones", systemImage: "square.grid.2x2")
                             }
                         }
@@ -91,7 +89,7 @@ struct MainMenuView: View {
             }
             .navigationDestination(for: String.self) { route in
                 if route == "roomsAndZones" {
-                    RoomsAndZonesListView(bridgeManager: bridgeManager, activeDetailId: $activeDetailId, activeDetailType: $activeDetailType)
+                    RoomsAndZonesListView(bridgeManager: bridgeManager)
                 }
             }
         }

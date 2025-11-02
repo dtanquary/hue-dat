@@ -10,34 +10,51 @@ import SwiftUI
 struct RoomDetailView: View {
     let roomId: String
     @ObservedObject var bridgeManager: BridgeManager
-    @Binding var activeDetailId: String?
-    @Binding var activeDetailType: ActiveDetailType?
 
+    // Power toggle state
+    @State private var displayIsOn = false
     @State private var isTogglingPower = false
+    @State private var hasGivenInitialPowerHaptic = false
+    @State private var hasGivenFinalPowerHaptic = false
+
+    // Brightness control state
+    @State private var isSettingBrightness = false
     @State private var brightness: Double = 0
     @State private var lastBrightnessUpdate: Date = Date()
     @State private var throttleTimer: Timer?
     @State private var pendingBrightness: Double?
-    @State private var refreshTask: Task<Void, Never>?
     @State private var isAdjustingBrightness = false
     @State private var brightnessPopoverTimer: Timer?
+    @State private var hasGivenInitialBrightnessHaptic = false
+    @State private var hasGivenFinalBrightnessHaptic = false
+    @State private var brightnessHapticResetTimer: Timer?
+    @State private var hasCompletedInitialLoad = false
     @FocusState private var isBrightnessFocused: Bool
+
+    // Brightness optimistic state for instant UI updates
+    @State private var optimisticBrightness: Double?
+    @State private var previousBrightness: Double?
+
+    // Error handling
+    @State private var showBridgeUnreachableAlert = false
 
     // Computed property to get live room data
     private var room: BridgeManager.HueRoom? {
         bridgeManager.rooms.first(where: { $0.id == roomId })
     }
 
-    private var lightStatus: (isOn: Bool, brightness: Double?) {
+    private var lightStatus: Double? {
         guard let room = room,
               let lights = room.groupedLights, !lights.isEmpty else {
-            return (false, nil)
+            return optimisticBrightness
         }
 
-        let anyOn = lights.contains { $0.on?.on == true }
-        let averageBrightness = lights.compactMap { $0.dimming?.brightness }.average()
+        let actualBrightness = lights.compactMap { $0.dimming?.brightness }.average()
 
-        return (anyOn, averageBrightness)
+        // Prefer optimistic state for instant UI updates
+        let brightness = optimisticBrightness ?? actualBrightness
+
+        return brightness
     }
 
     var body: some View {
@@ -53,17 +70,10 @@ struct RoomDetailView: View {
                 }
             }
         }
-        .onAppear {
-            // Notify ContentView that we're viewing this room
-            activeDetailId = roomId
-            activeDetailType = .room
-            print("📍 Entered room detail view: \(roomId)")
-        }
-        .onDisappear {
-            // Clear active detail when leaving
-            activeDetailId = nil
-            activeDetailType = nil
-            print("📍 Left room detail view")
+        .alert("Bridge Unreachable", isPresented: $showBridgeUnreachableAlert) {
+            Button("OK", role: .cancel) { }
+        } message: {
+            Text("Unable to connect to the Hue bridge. Please check your network connection.")
         }
     }
 
@@ -72,6 +82,7 @@ struct RoomDetailView: View {
         ZStack {
             // Background brightness bar on right side
             brightnessBar
+                .zIndex(10)
 
             // Brightness percentage popover (left of bar top)
             if isAdjustingBrightness && brightness > 0 {
@@ -80,24 +91,39 @@ struct RoomDetailView: View {
                     .transition(.opacity.combined(with: .scale(scale: 0.8)))
             }
 
-            // Centered ON/OFF text
-            Text(lightStatus.isOn ? "ON" : "OFF")
-                .font(.system(size: 48, weight: .bold))
-                .foregroundStyle(lightStatus.isOn ? .yellow : .gray)
-                .opacity(isTogglingPower ? 0.3 : 1.0)
-                .animation(isTogglingPower ? .easeInOut(duration: 0.8).repeatForever(autoreverses: true) : .default, value: isTogglingPower)
-        }
-        .contentShape(Rectangle())
-        .onTapGesture {
-            guard !isTogglingPower else { return }
-            Task {
-                await togglePower()
+            // Centered ON/OFF text with tap area
+            VStack {
+                Text(displayIsOn ? "ON" : "OFF")
+                    .font(.system(size: 48, weight: .bold))
+                    .foregroundStyle(displayIsOn ? .yellow : .gray)
             }
+            .padding(30) // Add padding to create tappable area around text
+            .contentShape(Rectangle()) // Make the padded area tappable
+            .onTapGesture {
+                guard !isTogglingPower else { return } // Read-only during toggle
+                Task {
+                    await togglePower()
+                }
+            }
+            .allowsHitTesting(!isTogglingPower) // Prevent interaction during toggle
+            .zIndex(50)
         }
         .focusable()
         .focused($isBrightnessFocused)
         .digitalCrownRotation($brightness, from: 0, through: 100, by: 1, sensitivity: .low)
         .onChange(of: brightness) { oldValue, newValue in
+            // Don't react to programmatic changes during initial load
+            guard hasCompletedInitialLoad else { return }
+
+            // Don't allow brightness adjustment while power is being toggled
+            guard !isTogglingPower else { return }
+
+            // Give initial haptic feedback only once when user starts adjusting
+            if !hasGivenInitialBrightnessHaptic {
+                WKInterfaceDevice.current().play(.start)
+                hasGivenInitialBrightnessHaptic = true
+            }
+
             // Show popover with animation
             withAnimation(.easeInOut(duration: 0.2)) {
                 isAdjustingBrightness = true
@@ -111,36 +137,98 @@ struct RoomDetailView: View {
                 }
             }
 
+            // Reset timer for haptic flag - wait longer to ensure user is done adjusting
+            brightnessHapticResetTimer?.invalidate()
+            brightnessHapticResetTimer = Timer.scheduledTimer(withTimeInterval: 1.5, repeats: false) { _ in
+                // Reset flags so next adjustment session gets haptics again
+                self.hasGivenInitialBrightnessHaptic = false
+                self.hasGivenFinalBrightnessHaptic = false
+            }
+
             // Throttle actual brightness update
             throttledSetBrightness(newValue)
         }
         .navigationTitle(room.metadata.name)
         .navigationBarTitleDisplayMode(.inline)
-        .task {
-            if let lightBrightness = lightStatus.brightness {
-                brightness = lightBrightness
+        .onAppear {
+            // Initialize UI from cached data only (no API call)
+            if let lights = room.groupedLights, !lights.isEmpty {
+                let actualOn = lights.contains { $0.on?.on == true }
+                displayIsOn = actualOn
+
+                if let lightBrightness = lights.compactMap({ $0.dimming?.brightness }).average() {
+                    brightness = lightBrightness
+                }
             }
+
+            // Mark initial load as complete to enable user interaction feedback
+            hasCompletedInitialLoad = true
         }
     }
 
     private func togglePower() async {
+        // Don't allow toggling power while brightness is being set
+        guard !isSettingBrightness else { return }
+
         guard let room = room,
               let groupedLight = room.groupedLights?.first,
               let bridge = bridgeManager.connectedBridge else { return }
 
-        isTogglingPower = true
-        defer { isTogglingPower = false }
+        // Store current state for rollback
+        let previousState = displayIsOn
 
-        let newState = !(groupedLight.on?.on ?? false)
-        await setGroupedLightAction(groupedLightId: groupedLight.id, on: newState, bridge: bridge)
-        debouncedRefreshRoom()
+        // Give initial haptic feedback
+        if !hasGivenInitialPowerHaptic {
+            WKInterfaceDevice.current().play(.start)
+            hasGivenInitialPowerHaptic = true
+        }
+
+        // Flip UI immediately (optimistic update)
+        displayIsOn = !displayIsOn
+        isTogglingPower = true
+
+        // Send API request
+        let result = await setGroupedLightAction(groupedLightId: groupedLight.id, on: displayIsOn, bridge: bridge)
+
+        switch result {
+        case .success:
+            // Give success haptic
+            if !hasGivenFinalPowerHaptic {
+                WKInterfaceDevice.current().play(.success)
+                hasGivenFinalPowerHaptic = true
+            }
+
+            // Refresh to get latest state from bridge
+            await bridgeManager.refreshSingleRoom(roomId: roomId)
+
+        case .failure(let error):
+            print("❌ Toggle power failed: \(error.localizedDescription)")
+
+            // Give failure haptic
+            WKInterfaceDevice.current().play(.failure)
+
+            // Rollback to previous state
+            displayIsOn = previousState
+
+            // Show alert that bridge was not reachable
+            showBridgeUnreachableAlert = true
+        }
+
+        // Unlock UI
+        isTogglingPower = false
+
+        // Reset haptic flags after a delay
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+            self.hasGivenInitialPowerHaptic = false
+            self.hasGivenFinalPowerHaptic = false
+        }
     }
 
     private func throttledSetBrightness(_ value: Double) {
         let now = Date()
         let timeSinceLastUpdate = now.timeIntervalSince(lastBrightnessUpdate)
         let throttleInterval: TimeInterval = 0.3 // 300ms throttle
-        
+
         if timeSinceLastUpdate >= throttleInterval {
             // Enough time has passed, apply immediately
             lastBrightnessUpdate = now
@@ -151,7 +239,7 @@ struct RoomDetailView: View {
             // Too soon, schedule for later
             pendingBrightness = value
             throttleTimer?.invalidate()
-            
+
             let remainingTime = throttleInterval - timeSinceLastUpdate
             throttleTimer = Timer.scheduledTimer(withTimeInterval: remainingTime, repeats: false) { _ in
                 if let pending = self.pendingBrightness {
@@ -168,27 +256,86 @@ struct RoomDetailView: View {
     private func setBrightness(_ value: Double) async {
         guard let room = room,
               let groupedLight = room.groupedLights?.first,
-              let bridge = bridgeManager.connectedBridge,
-              lightStatus.isOn else { return }
+              let bridge = bridgeManager.connectedBridge else { return }
 
-        await setGroupedLightAction(groupedLightId: groupedLight.id, brightness: value, bridge: bridge)
-        debouncedRefreshRoom()
-    }
+        isSettingBrightness = true
+        defer { isSettingBrightness = false }
 
-    private func debouncedRefreshRoom() {
-        // Cancel any existing refresh task
-        refreshTask?.cancel()
+        // Store previous states for rollback
+        let previousDisplayIsOn = displayIsOn
+        previousBrightness = lightStatus
 
-        // Create new task that waits 400ms before refreshing
-        refreshTask = Task {
-            try? await Task.sleep(nanoseconds: 400_000_000) // 400ms
+        // If light is OFF, we need to turn it ON first, then set brightness
+        if !displayIsOn {
+            // Optimistic updates for turning on + setting brightness
+            displayIsOn = true
+            optimisticBrightness = value
 
-            // Check if task was cancelled
-            guard !Task.isCancelled else { return }
+            // Turn on the light first
+            let turnOnResult = await setGroupedLightAction(groupedLightId: groupedLight.id, on: true, bridge: bridge)
 
-            // Refresh just this room
-            await bridgeManager.refreshRoom(roomId: roomId)
+            switch turnOnResult {
+            case .success:
+                // Now set the brightness to target value
+                let setBrightnessResult = await setGroupedLightAction(groupedLightId: groupedLight.id, brightness: value, bridge: bridge)
+
+                switch setBrightnessResult {
+                case .success:
+                    // Refresh to get actual state from API
+                    await bridgeManager.refreshSingleRoom(roomId: roomId)
+                    // Clear optimistic state
+                    optimisticBrightness = nil
+                    // Success haptic
+                    if !hasGivenFinalBrightnessHaptic {
+                        WKInterfaceDevice.current().play(.success)
+                        hasGivenFinalBrightnessHaptic = true
+                    }
+
+                case .failure(let error):
+                    print("❌ Set brightness failed: \(error.localizedDescription)")
+                    // Revert to previous state
+                    displayIsOn = previousDisplayIsOn
+                    optimisticBrightness = previousBrightness
+                    // Error haptic
+                    WKInterfaceDevice.current().play(.failure)
+                }
+
+            case .failure(let error):
+                print("❌ Turn on failed: \(error.localizedDescription)")
+                // Revert to previous state
+                displayIsOn = previousDisplayIsOn
+                optimisticBrightness = previousBrightness
+                // Error haptic
+                WKInterfaceDevice.current().play(.failure)
+            }
+        } else {
+            // Light is already ON, just set brightness
+            // Optimistic update
+            optimisticBrightness = value
+
+            let result = await setGroupedLightAction(groupedLightId: groupedLight.id, brightness: value, bridge: bridge)
+
+            switch result {
+            case .success:
+                // Clear optimistic state
+                optimisticBrightness = nil
+                // Success haptic
+                if !hasGivenFinalBrightnessHaptic {
+                    WKInterfaceDevice.current().play(.success)
+                    hasGivenFinalBrightnessHaptic = true
+                }
+
+            case .failure(let error):
+                print("❌ Set brightness failed: \(error.localizedDescription)")
+                // Revert to previous brightness
+                optimisticBrightness = previousBrightness
+                // Error haptic
+                WKInterfaceDevice.current().play(.failure)
+            }
         }
+
+        // Clear previous state
+        previousBrightness = nil
     }
 
     // MARK: - View Components
@@ -206,7 +353,7 @@ struct RoomDetailView: View {
 
                     // Filled portion based on brightness
                     RoundedRectangle(cornerRadius: 4)
-                        .fill(lightStatus.isOn ? Color.yellow : Color.gray.opacity(0.5))
+                        .fill(displayIsOn ? Color.yellow : Color.gray.opacity(0.5))
                         .frame(width: 8, height: geometry.size.height * CGFloat(brightness / 100))
                 }
                 .padding(.trailing, 8)
@@ -250,13 +397,15 @@ struct RoomDetailView: View {
 
     // MARK: - Actions
 
-    private func setGroupedLightAction(groupedLightId: String, on: Bool? = nil, brightness: Double? = nil, bridge: BridgeConnectionInfo) async {
+    private func setGroupedLightAction(groupedLightId: String, on: Bool? = nil, brightness: Double? = nil, bridge: BridgeConnectionInfo) async -> Result<Void, Error> {
         let urlString = "https://\(bridge.bridge.internalipaddress)/clip/v2/resource/grouped_light/\(groupedLightId)"
 
         let delegate = InsecureURLSessionDelegate()
         let session = URLSession(configuration: .default, delegate: delegate, delegateQueue: nil)
 
-        guard let url = URL(string: urlString) else { return }
+        guard let url = URL(string: urlString) else {
+            return .failure(NSError(domain: "RoomDetailView", code: -1, userInfo: [NSLocalizedDescriptionKey: "Invalid URL"]))
+        }
 
         var request = URLRequest(url: url)
         request.httpMethod = "PUT"
@@ -278,8 +427,19 @@ struct RoomDetailView: View {
             if let responseString = String(data: data, encoding: .utf8) {
                 print("Action response: \(responseString)")
             }
+
+            // Parse response to check for errors
+            if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+               let errors = json["errors"] as? [[String: Any]],
+               !errors.isEmpty {
+                let errorDesc = errors.first?["description"] as? String ?? "Unknown error"
+                return .failure(NSError(domain: "HueBridge", code: -1, userInfo: [NSLocalizedDescriptionKey: errorDesc]))
+            }
+
+            return .success(())
         } catch {
             print("Failed to set light action: \(error)")
+            return .failure(error)
         }
     }
 
