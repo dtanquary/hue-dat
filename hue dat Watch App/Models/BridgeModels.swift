@@ -28,12 +28,12 @@ struct BridgeInfo: Codable, Identifiable, Equatable {
 }
 
 // MARK: - Bridge Connection Info
-struct BridgeConnectionInfo: Codable {
+struct BridgeConnectionInfo: Codable, Equatable {
     let bridge: BridgeInfo
     let username: String
     let clientkey: String?
     let connectedDate: Date
-    
+
     init(bridge: BridgeInfo, registrationResponse: BridgeRegistrationResponse) {
         self.bridge = bridge
         self.username = registrationResponse.username

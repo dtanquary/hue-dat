@@ -10,44 +10,63 @@ import Combine
 
 struct ContentView: View {
     @StateObject private var bridgeManager = BridgeManager()
-    @State private var hasAutoNavigated = false
     @Environment(\.scenePhase) private var scenePhase
+    @State private var navigationPath = NavigationPath()
 
     var body: some View {
-        MainMenuView(bridgeManager: bridgeManager)
-            .onAppear {
-                // When the view appears (app launch or wake), validate any restored connection
-                if bridgeManager.connectedBridge != nil {
-                    Task {
-                        await bridgeManager.validateConnection()
-                    }
-                } else {
-                    // Reset auto-navigation flag when no bridge is connected
-                    hasAutoNavigated = false
-                }
-            }
-            .onChange(of: scenePhase) { oldPhase, newPhase in
-                // When the scene becomes active again, re-validate the connection
-                if newPhase == .active, bridgeManager.connectedBridge != nil {
-                    Task {
-                        await bridgeManager.validateConnection()
+        NavigationStack(path: $navigationPath) {
+            MainMenuView(bridgeManager: bridgeManager)
+                .navigationDestination(for: String.self) { route in
+                    if route == "roomsAndZones" {
+                        RoomsAndZonesListView(bridgeManager: bridgeManager)
                     }
                 }
+        }
+        .onAppear {
+            // When the view appears (app launch or wake), validate any restored connection
+            if bridgeManager.connectedBridge != nil {
+                Task {
+                    await bridgeManager.validateConnection()
+                }
+            } else {
+                // No bridge configured - stay on setup view
+                navigationPath.removeLast(navigationPath.count)
             }
-            .onReceive(bridgeManager.connectionValidationPublisher) { result in
-                switch result {
-                case .success:
-                    print("✅ ContentView: Bridge connection validation succeeded")
-                    Task {
-                        await bridgeManager.getRooms()
-                        await bridgeManager.getZones()
-                    }
-                case .failure(let message):
-                    print("❌ ContentView: Bridge connection validation failed: \(message)")
-                    // Reset auto-navigation flag when validation fails
-                    hasAutoNavigated = false
+        }
+        .onChange(of: scenePhase) { oldPhase, newPhase in
+            // When the scene becomes active again, re-validate the connection
+            if newPhase == .active, bridgeManager.connectedBridge != nil {
+                Task {
+                    await bridgeManager.validateConnection()
                 }
             }
+        }
+        .onReceive(bridgeManager.connectionValidationPublisher) { result in
+            switch result {
+            case .success:
+                print("✅ ContentView: Bridge connection validation succeeded")
+                Task {
+                    await bridgeManager.getRooms()
+                    await bridgeManager.getZones()
+                }
+                // Navigate to rooms and zones view
+                if navigationPath.isEmpty {
+                    navigationPath.append("roomsAndZones")
+                }
+            case .failure(let message):
+                print("❌ ContentView: Bridge connection validation failed: \(message)")
+                // Navigate back to setup view
+                if !navigationPath.isEmpty {
+                    navigationPath.removeLast(navigationPath.count)
+                }
+            }
+        }
+        .onChange(of: bridgeManager.connectedBridge) { oldValue, newValue in
+            // When bridge is disconnected, navigate back to setup view
+            if newValue == nil {
+                navigationPath.removeLast(navigationPath.count)
+            }
+        }
     }
 }
 

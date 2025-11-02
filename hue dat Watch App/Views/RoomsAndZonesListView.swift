@@ -12,6 +12,7 @@ struct RoomsAndZonesListView: View {
     @State private var isRefreshing = false
     @State private var hasLoadedData = false
     @State private var rotationAngle: Double = 0
+    @State private var showSettings = false
 
     var body: some View {
         Group {
@@ -61,6 +62,14 @@ struct RoomsAndZonesListView: View {
         .navigationTitle("Rooms & Zones")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
+            ToolbarItem(placement: .topBarLeading) {
+                Button {
+                    showSettings = true
+                } label: {
+                    Image(systemName: "gear")
+                }
+            }
+
             ToolbarItem(placement: .topBarTrailing) {
                 Button {
                     Task {
@@ -72,6 +81,9 @@ struct RoomsAndZonesListView: View {
                 }
                 .disabled(isRefreshing)
             }
+        }
+        .sheet(isPresented: $showSettings) {
+            SettingsView(bridgeManager: bridgeManager)
         }
         .onChange(of: isRefreshing) { _, newValue in
             if newValue {
