@@ -59,13 +59,6 @@ struct SettingsView: View {
             }
             .navigationTitle("Settings")
             .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button("Done") {
-                        dismiss()
-                    }
-                }
-            }
             .alert("Disconnect Bridge", isPresented: $showDisconnectAlert) {
                 Button("Cancel", role: .cancel) { }
                 Button("Disconnect", role: .destructive) {

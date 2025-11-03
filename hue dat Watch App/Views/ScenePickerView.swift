@@ -36,8 +36,10 @@ struct ScenePickerView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") {
+                    Button(action: {
                         dismiss()
+                    }) {
+                        Image(systemName: "chevron.left")
                     }
                 }
             }
