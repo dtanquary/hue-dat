@@ -2477,4 +2477,98 @@ class BridgeManager: ObservableObject {
         return Color(red: avgRed, green: avgGreen, blue: avgBlue)
     }
 
+    // MARK: - Local State Updates
+
+    /// Update local room state optimistically after a successful control action
+    /// This ensures the list view reflects changes immediately without waiting for a full refresh
+    func updateLocalRoomState(roomId: String, on: Bool? = nil, brightness: Double? = nil) {
+        guard let index = rooms.firstIndex(where: { $0.id == roomId }) else {
+            print("⚠️ updateLocalRoomState: Room \(roomId) not found in local cache")
+            return
+        }
+
+        var updatedRoom = rooms[index]
+
+        // Update grouped lights by recreating the structs (they're immutable)
+        if let groupedLights = updatedRoom.groupedLights, !groupedLights.isEmpty {
+            let updatedGroupedLights = groupedLights.map { light in
+                let newOn = on != nil ? HueGroupedLight.GroupedLightOn(on: on!) : light.on
+                let newDimming = brightness != nil ? HueGroupedLight.GroupedLightDimming(brightness: brightness!) : light.dimming
+
+                return HueGroupedLight(
+                    id: light.id,
+                    type: light.type,
+                    on: newOn,
+                    dimming: newDimming,
+                    color_temperature: light.color_temperature,
+                    color: light.color
+                )
+            }
+            updatedRoom.groupedLights = updatedGroupedLights
+
+            if let on = on {
+                print("🔄 updateLocalRoomState: Updated room '\(updatedRoom.metadata.name)' on state to \(on)")
+            }
+            if let brightness = brightness {
+                print("🔄 updateLocalRoomState: Updated room '\(updatedRoom.metadata.name)' brightness to \(Int(brightness))%")
+            }
+        }
+
+        // Update the room in the array
+        rooms[index] = updatedRoom
+
+        // Save to cache
+        saveRoomsToStorage()
+    }
+
+    /// Update local zone state optimistically after a successful control action
+    /// This ensures the list view reflects changes immediately without waiting for a full refresh
+    func updateLocalZoneState(zoneId: String, on: Bool? = nil, brightness: Double? = nil) {
+        guard let index = zones.firstIndex(where: { $0.id == zoneId }) else {
+            print("⚠️ updateLocalZoneState: Zone \(zoneId) not found in local cache")
+            return
+        }
+
+        var updatedZone = zones[index]
+
+        // Update grouped lights by recreating the structs (they're immutable)
+        if let groupedLights = updatedZone.groupedLights, !groupedLights.isEmpty {
+            let updatedGroupedLights = groupedLights.map { light in
+                let newOn = on != nil ? HueGroupedLight.GroupedLightOn(on: on!) : light.on
+                let newDimming = brightness != nil ? HueGroupedLight.GroupedLightDimming(brightness: brightness!) : light.dimming
+
+                return HueGroupedLight(
+                    id: light.id,
+                    type: light.type,
+                    on: newOn,
+                    dimming: newDimming,
+                    color_temperature: light.color_temperature,
+                    color: light.color
+                )
+            }
+            updatedZone.groupedLights = updatedGroupedLights
+
+            if let on = on {
+                print("🔄 updateLocalZoneState: Updated zone '\(updatedZone.metadata.name)' on state to \(on)")
+            }
+            if let brightness = brightness {
+                print("🔄 updateLocalZoneState: Updated zone '\(updatedZone.metadata.name)' brightness to \(Int(brightness))%")
+            }
+        }
+
+        // Update the zone in the array
+        zones[index] = updatedZone
+
+        // Save to cache
+        saveZonesToStorage()
+    }
+
+    /// Fetch the current state of a grouped light from the bridge
+    /// Returns the updated grouped light data including current brightness
+    func fetchGroupedLight(groupedLightId: String) async -> HueGroupedLight? {
+        let delegate = InsecureURLSessionDelegate()
+        let session = URLSession(configuration: .default, delegate: delegate, delegateQueue: nil)
+        return await fetchGroupedLightDetails(groupedLightId: groupedLightId, session: session)
+    }
+
 }

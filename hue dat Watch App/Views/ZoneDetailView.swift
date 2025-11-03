@@ -63,6 +63,11 @@ struct ZoneDetailView: View {
         return brightness
     }
 
+    // Computed property for orb opacity (0.0 to 1.0)
+    private var orbOpacity: Double {
+        displayIsOn ? (brightness / 100.0) : 0.0
+    }
+
     var body: some View {
         Group {
             if let zone = zone {
@@ -98,10 +103,6 @@ struct ZoneDetailView: View {
                 let lights = zone.lights ?? []
                 let averageColor: Color = lights.isEmpty ? .gray : bridgeManager.averageColorFromLights(lights)
 
-                // Calculate opacity based on brightness (0-100% brightness -> 0-100% opacity)
-                // Orb opacity driven directly by brightness slider value
-                let orbOpacity: Double = displayIsOn ? (brightness / 100.0) : 0.0
-
                 ColorOrbsBackground(colors: [averageColor], size: .fullscreen)
                     .opacity(orbOpacity)
                     .animation(.easeInOut(duration: 0.3), value: orbOpacity)
@@ -114,6 +115,7 @@ struct ZoneDetailView: View {
                     Text(displayIsOn ? "ON" : "OFF")
                         .font(.system(size: 48, weight: .bold))
                         .foregroundStyle(displayIsOn ? .yellow : .gray)
+                        .shadow(color: .black.opacity(0.3), radius: 2, x: 0, y: 1)
                         .fixedSize() // Prevent text truncation
                         .padding(20)
                         .contentShape(Circle()) // Circular tap area
@@ -146,22 +148,19 @@ struct ZoneDetailView: View {
                                 showScenePicker = true
                             }) {
                                 Image(systemName: "wand.and.stars")
-                                    .font(.system(size: 20))
+                                    .font(.system(size: 16))
                                     .foregroundColor(.white)
-                                    .padding(8)
-                                    .background(
-                                        Circle()
-                                            .fill(.ultraThinMaterial)
-                                    )
+                                    .background(Color.clear)
                             }
                             .buttonStyle(.plain)
-                            .padding(.leading, 8)
-                            .padding(.bottom, 8)
+                            .padding(8)
+                            .glassEffect()
 
                             Spacer()
                         }
                     }
                     .zIndex(125)
+                    .offset(x: 16, y: 0)
                 }
 
                 // Layer 5: Brightness percentage popover (top layer)
@@ -303,6 +302,28 @@ struct ZoneDetailView: View {
 
         switch result {
         case .success:
+            // If we just turned ON the light, fetch the current brightness from the bridge
+            if displayIsOn {
+                if let updatedGroupedLight = await bridgeManager.fetchGroupedLight(groupedLightId: groupedLight.id) {
+                    if let currentBrightness = updatedGroupedLight.dimming?.brightness {
+                        print("🔄 Fetched brightness after power on: \(Int(currentBrightness))%")
+                        // Update brightness with animation to ensure orb opacity updates smoothly
+                        withAnimation(.easeInOut(duration: 0.3)) {
+                            brightness = currentBrightness
+                        }
+                        bridgeManager.updateLocalZoneState(zoneId: zoneId, on: displayIsOn, brightness: currentBrightness)
+                    } else {
+                        bridgeManager.updateLocalZoneState(zoneId: zoneId, on: displayIsOn)
+                    }
+                } else {
+                    // Fetch failed, just update on state
+                    bridgeManager.updateLocalZoneState(zoneId: zoneId, on: displayIsOn)
+                }
+            } else {
+                // Light was turned OFF, just update the on state
+                bridgeManager.updateLocalZoneState(zoneId: zoneId, on: displayIsOn)
+            }
+
             // Give success haptic
             if !hasGivenFinalPowerHaptic {
                 WKInterfaceDevice.current().play(.success)
@@ -389,6 +410,9 @@ struct ZoneDetailView: View {
 
                 switch setBrightnessResult {
                 case .success:
+                    // Update local state in BridgeManager so list view reflects the change
+                    bridgeManager.updateLocalZoneState(zoneId: zoneId, on: true, brightness: value)
+
                     // Clear optimistic state
                     optimisticBrightness = nil
                     // Success haptic
@@ -423,6 +447,9 @@ struct ZoneDetailView: View {
 
             switch result {
             case .success:
+                // Update local state in BridgeManager so list view reflects the change
+                bridgeManager.updateLocalZoneState(zoneId: zoneId, brightness: value)
+
                 // Clear optimistic state
                 optimisticBrightness = nil
                 // Success haptic

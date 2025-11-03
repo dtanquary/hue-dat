@@ -63,6 +63,11 @@ struct RoomDetailView: View {
         return brightness
     }
 
+    // Computed property for orb opacity (0.0 to 1.0)
+    private var orbOpacity: Double {
+        displayIsOn ? (brightness / 100.0) : 0.0
+    }
+
     var body: some View {
         Group {
             if let room = room {
@@ -91,10 +96,6 @@ struct RoomDetailView: View {
                 let lights = room.lights ?? []
                 let averageColor: Color = lights.isEmpty ? .gray : bridgeManager.averageColorFromLights(lights)
 
-                // Calculate opacity based on brightness (0-100% brightness -> 0-100% opacity)
-                // Orb opacity driven directly by brightness slider value
-                let orbOpacity: Double = displayIsOn ? (brightness / 100.0) : 0.0
-
                 ColorOrbsBackground(colors: [averageColor], size: .fullscreen)
                     .opacity(orbOpacity)
                     .animation(.easeInOut(duration: 0.3), value: orbOpacity)
@@ -107,6 +108,7 @@ struct RoomDetailView: View {
                     Text(displayIsOn ? "ON" : "OFF")
                         .font(.system(size: 48, weight: .bold))
                         .foregroundStyle(displayIsOn ? .yellow : .gray)
+                        .shadow(color: .black.opacity(0.3), radius: 2, x: 0, y: 1)
                         .fixedSize() // Prevent text truncation
                         .padding(20)
                         .contentShape(Circle()) // Circular tap area
@@ -293,6 +295,28 @@ struct RoomDetailView: View {
 
         switch result {
         case .success:
+            // If we just turned ON the light, fetch the current brightness from the bridge
+            if displayIsOn {
+                if let updatedGroupedLight = await bridgeManager.fetchGroupedLight(groupedLightId: groupedLight.id) {
+                    if let currentBrightness = updatedGroupedLight.dimming?.brightness {
+                        print("🔄 Fetched brightness after power on: \(Int(currentBrightness))%")
+                        // Update brightness with animation to ensure orb opacity updates smoothly
+                        withAnimation(.easeInOut(duration: 0.3)) {
+                            brightness = currentBrightness
+                        }
+                        bridgeManager.updateLocalRoomState(roomId: roomId, on: displayIsOn, brightness: currentBrightness)
+                    } else {
+                        bridgeManager.updateLocalRoomState(roomId: roomId, on: displayIsOn)
+                    }
+                } else {
+                    // Fetch failed, just update on state
+                    bridgeManager.updateLocalRoomState(roomId: roomId, on: displayIsOn)
+                }
+            } else {
+                // Light was turned OFF, just update the on state
+                bridgeManager.updateLocalRoomState(roomId: roomId, on: displayIsOn)
+            }
+
             // Give success haptic
             if !hasGivenFinalPowerHaptic {
                 WKInterfaceDevice.current().play(.success)
@@ -379,6 +403,9 @@ struct RoomDetailView: View {
 
                 switch setBrightnessResult {
                 case .success:
+                    // Update local state in BridgeManager so list view reflects the change
+                    bridgeManager.updateLocalRoomState(roomId: roomId, on: true, brightness: value)
+
                     // Clear optimistic state
                     optimisticBrightness = nil
                     // Success haptic
@@ -413,6 +440,9 @@ struct RoomDetailView: View {
 
             switch result {
             case .success:
+                // Update local state in BridgeManager so list view reflects the change
+                bridgeManager.updateLocalRoomState(roomId: roomId, brightness: value)
+
                 // Clear optimistic state
                 optimisticBrightness = nil
                 // Success haptic
