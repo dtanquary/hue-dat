@@ -95,7 +95,7 @@ struct ZoneDetailView: View {
         GeometryReader { outerGeometry in
             ZStack {
                 // Layer 1: Single orb background with average light color
-                let lights = bridgeManager.getLightsForZone(zone)
+                let lights = zone.lights ?? []
                 let averageColor: Color = lights.isEmpty ? .gray : bridgeManager.averageColorFromLights(lights)
 
                 // Calculate opacity based on brightness (0-100% brightness -> 0-100% opacity)

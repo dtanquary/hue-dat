@@ -71,6 +71,23 @@ The app uses a clean service-oriented architecture with three main services:
 
 All Hue models implement custom equality operators that compare only relevant state (id, metadata, light status) to enable efficient SwiftUI view updates.
 
+**Device Abstraction Layer:**
+The Hue API v2 uses a three-layer hierarchy for connecting rooms/zones to lights:
+1. **Room/Zone** → Contains `children` array with `rtype="device"` (device IDs)
+2. **Device** → Query `/clip/v2/resource/device/{deviceId}` to get device details
+3. **Light** → Device has `services` array; find service with `rtype="light"` to get actual light ID
+4. **Light Data** → Query `/clip/v2/resource/light/{lightId}` with the light ID from device services
+
+**Critical Implementation Details:**
+- Room/Zone `children` contain **device IDs**, NOT light IDs
+- You CANNOT directly query `/clip/v2/resource/light/{deviceId}` - it will fail
+- The correct flow is: `deviceId` (from child) → `fetchDeviceDetails()` → find light service → `lightId` → `fetchLightDetails()`
+- `fetchDeviceDetails()` queries the device endpoint and returns a `HueDevice` with services
+- `fetchLightDetails()` expects the actual light ID (obtained from device.services)
+- During enrichment, fetched lights are stored in the `room.lights` or `zone.lights` array
+- Views access individual light data via `room.lights` or `zone.lights` directly (no separate cache lookup needed)
+- `lightCache` is keyed by actual light IDs and used for bulk operations
+
 ### View Layer
 The app uses a navigation-based architecture with the following views:
 

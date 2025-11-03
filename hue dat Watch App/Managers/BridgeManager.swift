@@ -25,7 +25,7 @@ class BridgeManager: ObservableObject {
     @Published var rooms: [HueRoom] = []
     @Published var zones: [HueZone] = []
     @Published var scenes: [HueScene] = []
-    @Published var lightCache: [String: HueLight] = [:]  // Shared cache of all lights by ID
+    @Published var lightCache: [String: HueLight] = [:]  // Shared cache of all lights by light ID
     @Published var isLoadingRooms: Bool = false
     @Published var isLoadingZones: Bool = false
 
@@ -279,9 +279,14 @@ class BridgeManager: ObservableObject {
             let archetype: String
         }
 
+        /// Child references in Hue API v2 rooms
+        /// NOTE: Children with rtype="device" contain device IDs, NOT light IDs.
+        /// To get light data: 1) Query /clip/v2/resource/device/{rid} to get device
+        /// 2) Find service with rtype="light" in device.services to get actual light ID
+        /// 3) Query /clip/v2/resource/light/{lightId} with the light ID from step 2
         struct HueRoomChild: Codable, Equatable, Hashable {
-            let rid: String
-            let rtype: String
+            let rid: String   // Resource ID (device ID when rtype="device")
+            let rtype: String // Resource type (e.g., "device", "motion", etc.)
         }
 
         struct HueRoomService: Codable, Equatable, Hashable {
@@ -468,9 +473,14 @@ class BridgeManager: ObservableObject {
             let archetype: String
         }
 
+        /// Child references in Hue API v2 zones
+        /// NOTE: Children with rtype="device" contain device IDs, NOT light IDs.
+        /// To get light data: 1) Query /clip/v2/resource/device/{rid} to get device
+        /// 2) Find service with rtype="light" in device.services to get actual light ID
+        /// 3) Query /clip/v2/resource/light/{lightId} with the light ID from step 2
         struct HueZoneChild: Codable, Equatable, Hashable {
-            let rid: String
-            let rtype: String
+            let rid: String   // Resource ID (device ID when rtype="device")
+            let rtype: String // Resource type (e.g., "device", "motion", etc.)
         }
 
         struct HueZoneService: Codable, Equatable, Hashable {
@@ -516,7 +526,30 @@ class BridgeManager: ObservableObject {
         let errors: [HueAPIV2Error]
         let data: [HueLight]
     }
-    
+
+    // MARK: - Device API Response Models
+    private struct HueDeviceResponse: Decodable {
+        let errors: [HueAPIV2Error]
+        let data: [HueDevice]
+    }
+
+    private struct HueDevice: Decodable {
+        let id: String
+        let type: String
+        let services: [HueDeviceService]?
+        let metadata: HueDeviceMetadata?
+
+        struct HueDeviceService: Decodable {
+            let rid: String   // Resource ID (the light ID if rtype is "light")
+            let rtype: String // Resource type (e.g., "light", "zigbee_connectivity", etc.)
+        }
+
+        struct HueDeviceMetadata: Decodable {
+            let name: String?
+            let archetype: String?
+        }
+    }
+
     var isConnected: Bool {
         connectedBridge != nil
     }
@@ -1187,7 +1220,68 @@ class BridgeManager: ObservableObject {
         }
     }
 
-    /// Fetch detailed metadata for a specific individual light by its ID
+    /// Fetch device details to get the light ID from a device ID
+    /// Device abstraction layer: Room/Zone children reference devices, devices contain services with light IDs
+    private func fetchDeviceDetails(deviceId: String, session: URLSession) async -> HueDevice? {
+        guard let bridge = currentConnectedBridge?.bridge else {
+            print("❌ fetchDeviceDetails: No connected bridge available")
+            return nil
+        }
+
+        let urlString = "https://\(bridge.internalipaddress)/clip/v2/resource/device/\(deviceId)"
+
+        guard let url = URL(string: urlString) else {
+            print("❌ fetchDeviceDetails: Invalid URL: \(urlString)")
+            return nil
+        }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.setValue(currentConnectedBridge?.username, forHTTPHeaderField: "hue-application-key")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+
+        do {
+            let (data, response) = try await session.data(for: request)
+
+            if let http = response as? HTTPURLResponse {
+                print("      🌐 fetchDeviceDetails: HTTP \(http.statusCode) for device \(deviceId)")
+            }
+
+            do {
+                let deviceResponse = try JSONDecoder().decode(HueDeviceResponse.self, from: data)
+
+                if !deviceResponse.errors.isEmpty {
+                    let errorMessages = deviceResponse.errors.map { $0.description }.joined(separator: ", ")
+                    print("      ❌ fetchDeviceDetails: API errors for device \(deviceId): \(errorMessages)")
+                    return nil
+                }
+
+                if let device = deviceResponse.data.first {
+                    let serviceTypes = device.services?.map { $0.rtype }.joined(separator: ", ") ?? "none"
+                    print("      ✅ fetchDeviceDetails: Device \(deviceId) has services: [\(serviceTypes)]")
+                    return device
+                } else {
+                    print("      ⚠️ fetchDeviceDetails: No device data returned for \(deviceId)")
+                    return nil
+                }
+
+            } catch {
+                if let responseString = String(data: data, encoding: .utf8) {
+                    print("      ℹ️ fetchDeviceDetails: Failed to decode response for device \(deviceId): \(responseString)")
+                } else {
+                    print("      ℹ️ fetchDeviceDetails: Received non-UTF8 data for device \(deviceId) (\(data.count) bytes)")
+                }
+                return nil
+            }
+
+        } catch {
+            print("      ❌ fetchDeviceDetails: Network error for device \(deviceId): \(error.localizedDescription)")
+            return nil
+        }
+    }
+
+    /// Fetch detailed metadata for a specific individual light by its ID (actual light ID, not device ID)
+    /// This function expects the actual light resource ID obtained from a device's services
     private func fetchLightDetails(lightId: String, session: URLSession) async -> HueLight? {
         guard let bridge = currentConnectedBridge?.bridge else {
             print("❌ fetchLightDetails: No connected bridge available")
@@ -1253,22 +1347,35 @@ class BridgeManager: ObservableObject {
         let childTypes = children.map { $0.rtype }.joined(separator: ", ")
         print("    📋 enrichRoomWithLights: Room '\(room.metadata.name)' has children types: [\(childTypes)]")
 
-        // Filter for light children only
-        let lightChildren = children.filter { $0.rtype == "light" }
-        guard !lightChildren.isEmpty else {
-            print("    ℹ️ enrichRoomWithLights: Room '\(room.metadata.name)' has no light children (has \(children.count) children of other types)")
+        // Filter for device children (Hue API v2 uses device abstraction layer)
+        let deviceChildren = children.filter { $0.rtype == "device" }
+        guard !deviceChildren.isEmpty else {
+            print("    ℹ️ enrichRoomWithLights: Room '\(room.metadata.name)' has no device children (has \(children.count) children of other types)")
             return room
         }
 
-        print("    💡 enrichRoomWithLights: Fetching \(lightChildren.count) individual lights for room '\(room.metadata.name)'")
+        print("    💡 enrichRoomWithLights: Fetching \(deviceChildren.count) individual lights for room '\(room.metadata.name)'")
         var lights: [HueLight] = []
 
-        for child in lightChildren {
-            if let light = await fetchLightDetails(lightId: child.rid, session: session) {
+        for child in deviceChildren {
+            // Step 1: Fetch device details to get the light service ID
+            guard let device = await fetchDeviceDetails(deviceId: child.rid, session: session) else {
+                print("      ❌ Failed to fetch device with ID: \(child.rid)")
+                continue
+            }
+
+            // Step 2: Find the light service in the device's services
+            guard let lightService = device.services?.first(where: { $0.rtype == "light" }) else {
+                print("      ⚠️ Device \(child.rid) has no light service")
+                continue
+            }
+
+            // Step 3: Fetch the actual light data using the light ID from the service
+            if let light = await fetchLightDetails(lightId: lightService.rid, session: session) {
                 lights.append(light)
                 print("      ✅ Added light: \(light.metadata?.name ?? "Unknown") (ID: \(light.id))")
             } else {
-                print("      ❌ Failed to fetch light with ID: \(child.rid)")
+                print("      ❌ Failed to fetch light with ID: \(lightService.rid)")
             }
         }
 
@@ -1295,22 +1402,35 @@ class BridgeManager: ObservableObject {
         let childTypes = children.map { $0.rtype }.joined(separator: ", ")
         print("    📋 enrichZoneWithLights: Zone '\(zone.metadata.name)' has children types: [\(childTypes)]")
 
-        // Filter for light children only
-        let lightChildren = children.filter { $0.rtype == "light" }
-        guard !lightChildren.isEmpty else {
-            print("    ℹ️ enrichZoneWithLights: Zone '\(zone.metadata.name)' has no light children (has \(children.count) children of other types)")
+        // Filter for device children (Hue API v2 uses device abstraction layer)
+        let deviceChildren = children.filter { $0.rtype == "device" }
+        guard !deviceChildren.isEmpty else {
+            print("    ℹ️ enrichZoneWithLights: Zone '\(zone.metadata.name)' has no device children (has \(children.count) children of other types)")
             return zone
         }
 
-        print("    💡 enrichZoneWithLights: Fetching \(lightChildren.count) individual lights for zone '\(zone.metadata.name)'")
+        print("    💡 enrichZoneWithLights: Fetching \(deviceChildren.count) individual lights for zone '\(zone.metadata.name)'")
         var lights: [HueLight] = []
 
-        for child in lightChildren {
-            if let light = await fetchLightDetails(lightId: child.rid, session: session) {
+        for child in deviceChildren {
+            // Step 1: Fetch device details to get the light service ID
+            guard let device = await fetchDeviceDetails(deviceId: child.rid, session: session) else {
+                print("      ❌ Failed to fetch device with ID: \(child.rid)")
+                continue
+            }
+
+            // Step 2: Find the light service in the device's services
+            guard let lightService = device.services?.first(where: { $0.rtype == "light" }) else {
+                print("      ⚠️ Device \(child.rid) has no light service")
+                continue
+            }
+
+            // Step 3: Fetch the actual light data using the light ID from the service
+            if let light = await fetchLightDetails(lightId: lightService.rid, session: session) {
                 lights.append(light)
                 print("      ✅ Added light: \(light.metadata?.name ?? "Unknown") (ID: \(light.id))")
             } else {
-                print("      ❌ Failed to fetch light with ID: \(child.rid)")
+                print("      ❌ Failed to fetch light with ID: \(lightService.rid)")
             }
         }
 
@@ -1943,14 +2063,20 @@ class BridgeManager: ObservableObject {
             }
         }
 
-        // Fetch individual lights
+        // Fetch individual lights (via device abstraction layer)
         var lights: [HueLight] = []
         if let children = detailedRoom.children {
-            let lightChildren = children.filter { $0.rtype == "light" }
-            for child in lightChildren {
-                if let light = await fetchLightDetails(lightId: child.rid, session: session) {
-                    lights.append(light)
+            let deviceChildren = children.filter { $0.rtype == "device" }
+            for child in deviceChildren {
+                // Step 1: Fetch device to get light service ID
+                guard let device = await fetchDeviceDetails(deviceId: child.rid, session: session),
+                      // Step 2: Find the light service
+                      let lightService = device.services?.first(where: { $0.rtype == "light" }),
+                      // Step 3: Fetch the actual light data
+                      let light = await fetchLightDetails(lightId: lightService.rid, session: session) else {
+                    continue
                 }
+                lights.append(light)
             }
         }
 
@@ -1994,14 +2120,20 @@ class BridgeManager: ObservableObject {
             }
         }
 
-        // Fetch individual lights
+        // Fetch individual lights (via device abstraction layer)
         var lights: [HueLight] = []
         if let children = detailedZone.children {
-            let lightChildren = children.filter { $0.rtype == "light" }
-            for child in lightChildren {
-                if let light = await fetchLightDetails(lightId: child.rid, session: session) {
-                    lights.append(light)
+            let deviceChildren = children.filter { $0.rtype == "device" }
+            for child in deviceChildren {
+                // Step 1: Fetch device to get light service ID
+                guard let device = await fetchDeviceDetails(deviceId: child.rid, session: session),
+                      // Step 2: Find the light service
+                      let lightService = device.services?.first(where: { $0.rtype == "light" }),
+                      // Step 3: Fetch the actual light data
+                      let light = await fetchLightDetails(lightId: lightService.rid, session: session) else {
+                    continue
                 }
+                lights.append(light)
             }
         }
 
@@ -2287,34 +2419,6 @@ class BridgeManager: ObservableObject {
         } catch {
             print("❌ fetchAllLights: Network error: \(error.localizedDescription)")
         }
-    }
-
-    /// Get lights for a room from the cache
-    func getLightsForRoom(_ room: HueRoom) -> [HueLight] {
-        guard let lightChildren = room.children?.filter({ $0.rtype == "light" }) else {
-            return []
-        }
-
-        let lights = lightChildren.compactMap { child -> HueLight? in
-            lightCache[child.rid]
-        }
-
-        print("💡 getLightsForRoom: Retrieved \(lights.count) lights for room '\(room.metadata.name)' from cache")
-        return lights
-    }
-
-    /// Get lights for a zone from the cache
-    func getLightsForZone(_ zone: HueZone) -> [HueLight] {
-        guard let lightChildren = zone.children?.filter({ $0.rtype == "light" }) else {
-            return []
-        }
-
-        let lights = lightChildren.compactMap { child -> HueLight? in
-            lightCache[child.rid]
-        }
-
-        print("💡 getLightsForZone: Retrieved \(lights.count) lights for zone '\(zone.metadata.name)' from cache")
-        return lights
     }
 
     /// Extract colors from an array of lights (fallback when no scene is active)

@@ -88,7 +88,7 @@ struct RoomDetailView: View {
         GeometryReader { outerGeometry in
             ZStack {
                 // Layer 1: Single orb background with average light color
-                let lights = bridgeManager.getLightsForRoom(room)
+                let lights = room.lights ?? []
                 let averageColor: Color = lights.isEmpty ? .gray : bridgeManager.averageColorFromLights(lights)
 
                 // Calculate opacity based on brightness (0-100% brightness -> 0-100% opacity)
@@ -141,6 +141,7 @@ struct RoomDetailView: View {
                                 Image(systemName: "wand.and.stars")
                                     .font(.system(size: 16))
                                     .foregroundColor(.white)
+                                    .background(Color.clear)
                             }
                             .buttonStyle(.plain)
                             .padding(8)
