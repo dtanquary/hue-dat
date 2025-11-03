@@ -92,15 +92,8 @@ struct RoomDetailView: View {
                 let averageColor: Color = lights.isEmpty ? .gray : bridgeManager.averageColorFromLights(lights)
 
                 // Calculate opacity based on brightness (0-100% brightness -> 0-100% opacity)
-                let orbOpacity: Double = {
-                    if !displayIsOn {
-                        return 0.0 // Near 0% when off
-                    }
-                    // Use optimistic brightness for instant UI updates, fall back to cached data
-                    let cachedBrightness = room.groupedLights?.compactMap { $0.dimming?.brightness }.average() ?? 0
-                    let currentBrightness = optimisticBrightness ?? cachedBrightness
-                    return currentBrightness / 100.0 // Convert brightness (0-100) to opacity (0-1)
-                }()
+                // Orb opacity driven directly by brightness slider value
+                let orbOpacity: Double = displayIsOn ? (brightness / 100.0) : 0.0
 
                 ColorOrbsBackground(colors: [averageColor], size: .fullscreen)
                     .opacity(orbOpacity)
@@ -191,6 +184,12 @@ struct RoomDetailView: View {
             // Don't allow brightness adjustment while power is being toggled
             guard !isTogglingPower else { return }
 
+            // If starting a new adjustment session (after previous session completed),
+            // reset the final haptic flag so the user gets feedback for this new session
+            if !hasGivenInitialBrightnessHaptic {
+                hasGivenFinalBrightnessHaptic = false
+            }
+
             // Give initial haptic feedback only once when user starts adjusting
             if !hasGivenInitialBrightnessHaptic {
                 WKInterfaceDevice.current().play(.start)
@@ -234,6 +233,18 @@ struct RoomDetailView: View {
 
                 if let lightBrightness = lights.compactMap({ $0.dimming?.brightness }).average() {
                     brightness = lightBrightness
+
+                    // Show brightness popup on initial load (without haptic feedback)
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        isAdjustingBrightness = true
+                    }
+
+                    // Auto-hide after 1 second
+                    brightnessPopoverTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: false) { _ in
+                        withAnimation(.easeInOut(duration: 0.3)) {
+                            isAdjustingBrightness = false
+                        }
+                    }
                 }
             }
 
@@ -248,8 +259,10 @@ struct RoomDetailView: View {
                 }
             }
 
-            // Mark initial load as complete to enable user interaction feedback
-            hasCompletedInitialLoad = true
+            // Mark initial load as complete AFTER a brief delay to ensure programmatic brightness changes don't trigger haptics
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                hasCompletedInitialLoad = true
+            }
         }
     }
 
@@ -283,19 +296,6 @@ struct RoomDetailView: View {
             if !hasGivenFinalPowerHaptic {
                 WKInterfaceDevice.current().play(.success)
                 hasGivenFinalPowerHaptic = true
-            }
-
-            // Refresh to get latest state from bridge
-            await bridgeManager.refreshSingleRoom(roomId: roomId)
-
-            // Synchronize UI with actual state from bridge
-            if let lights = room.groupedLights, !lights.isEmpty {
-                let actualOn = lights.contains { $0.on?.on == true }
-                displayIsOn = actualOn
-
-                if let lightBrightness = lights.compactMap({ $0.dimming?.brightness }).average() {
-                    brightness = lightBrightness
-                }
             }
 
         case .failure(let error):
@@ -378,8 +378,6 @@ struct RoomDetailView: View {
 
                 switch setBrightnessResult {
                 case .success:
-                    // Refresh to get actual state from API
-                    await bridgeManager.refreshSingleRoom(roomId: roomId)
                     // Clear optimistic state
                     optimisticBrightness = nil
                     // Success haptic
@@ -503,22 +501,6 @@ struct RoomDetailView: View {
         case .success:
             print("✅ Scene activated: \(scene.metadata.name)")
             activeSceneId = scene.id
-
-            // Refresh room to get updated state
-            await bridgeManager.refreshSingleRoom(roomId: roomId)
-
-            // Update UI with new state
-            if let room = room, let lights = room.groupedLights, !lights.isEmpty {
-                let actualOn = lights.contains { $0.on?.on == true }
-                displayIsOn = actualOn
-
-                if let lightBrightness = lights.compactMap({ $0.dimming?.brightness }).average() {
-                    brightness = lightBrightness
-                }
-            }
-
-            // Force background to update with new colors
-            backgroundUpdateTrigger = UUID()
 
         case .failure(let error):
             print("❌ Failed to activate scene: \(error.localizedDescription)")

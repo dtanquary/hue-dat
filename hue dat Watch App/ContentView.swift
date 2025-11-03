@@ -45,11 +45,7 @@ struct ContentView: View {
             switch result {
             case .success:
                 print("✅ ContentView: Bridge connection validation succeeded")
-                Task {
-                    await bridgeManager.getRooms()
-                    await bridgeManager.getZones()
-                }
-                // Navigate to rooms and zones view
+                // Navigate to rooms and zones view (data will load there)
                 if navigationPath.isEmpty {
                     navigationPath.append("roomsAndZones")
                 }

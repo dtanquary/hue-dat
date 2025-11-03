@@ -157,9 +157,14 @@ struct RoomRowView: View {
             Spacer()
 
             VStack(alignment: .trailing, spacing: 2) {
-                Text(lightStatus.isOn ? "On" : "Off")
-                    .font(.caption)
-                    .foregroundStyle(lightStatus.isOn ? .primary : .secondary)
+                HStack(spacing: 4) {
+                    Circle()
+                        .fill(lightStatus.isOn ? Color.green : Color.secondary)
+                        .frame(width: 6, height: 6)
+                    Text(lightStatus.isOn ? "On" : "Off")
+                        .font(.caption)
+                        .foregroundStyle(lightStatus.isOn ? .primary : .secondary)
+                }
 
                 if let brightness = lightStatus.brightness {
                     Text("\(Int(brightness))%")
@@ -221,9 +226,14 @@ struct ZoneRowView: View {
             Spacer()
 
             VStack(alignment: .trailing, spacing: 2) {
-                Text(lightStatus.isOn ? "On" : "Off")
-                    .font(.caption)
-                    .foregroundStyle(lightStatus.isOn ? .primary : .secondary)
+                HStack(spacing: 4) {
+                    Circle()
+                        .fill(lightStatus.isOn ? Color.green : Color.secondary)
+                        .frame(width: 6, height: 6)
+                    Text(lightStatus.isOn ? "On" : "Off")
+                        .font(.caption)
+                        .foregroundStyle(lightStatus.isOn ? .primary : .secondary)
+                }
 
                 if let brightness = lightStatus.brightness {
                     Text("\(Int(brightness))%")
