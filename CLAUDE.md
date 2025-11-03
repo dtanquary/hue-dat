@@ -135,15 +135,16 @@ The app uses a navigation-based architecture with the following views:
   - Disconnect bridge option with confirmation alert
   - Accessible from RoomsAndZonesListView toolbar
 
-- **ColorOrbsBackground**: Background visual component (in SceneCarouselBackground.swift)
+- **ColorOrbsBackground**: Background visual component (ColorOrbsBackground.swift)
   - Integrated into RoomDetailView and ZoneDetailView with direct brightness slider connection
-  - Used in ScenePickerView to display scene colors
+  - Used in ScenePickerView to display scene colors in compact mode
   - Accepts array of Color objects to display as gradient orbs
+  - Two size modes: `.fullscreen` (for room/zone backgrounds) and `.compact` (for scene preview rows)
   - Uses GeometryReader for responsive sizing
   - Dynamic positioning: circular/spiral arrangement based on light count
   - Radial gradients from color to transparent with `.screen` blend mode for additive color mixing
   - Responsive orb sizing based on available space and light count
-  - Opacity directly controlled by brightness slider value (brightness / 100.0)
+  - Opacity directly controlled by brightness slider value (brightness / 100.0) in detail views
 
 - **BridgesListView**: Bridge selection and registration UI
   - List of discovered bridges with per-bridge registration state
@@ -296,8 +297,8 @@ hue dat Watch App/
     ├── RoomsAndZonesListView.swift        # List of all rooms & zones with status dots
     ├── RoomDetailView.swift               # Individual room control with haptics & orb
     ├── ZoneDetailView.swift               # Individual zone control with haptics & orb
-    ├── SceneCarouselBackground.swift      # ColorOrbsBackground component (orb visuals)
-    ├── ScenePickerView.swift              # Scene selection with carousel backgrounds
+    ├── ColorOrbsBackground.swift          # Animated gradient orb background component
+    ├── ScenePickerView.swift              # Scene selection with orb preview backgrounds
     ├── SettingsView.swift                 # Settings and bridge management
     └── BridgesListView.swift              # Bridge selection UI
 ```

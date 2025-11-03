@@ -1,40 +1,11 @@
 //
-//  SceneCarouselBackground.swift
+//  ColorOrbsBackground.swift
 //  hue dat Watch App
 //
-//  Scene carousel background with swipeable color orb visualizations
+//  Animated gradient orb background for visualizing light colors
 //
 
 import SwiftUI
-
-struct SceneCarouselBackground: View {
-    let scenes: [HueScene]
-    let fallbackColors: [Color]
-    @Binding var currentIndex: Int
-    let onSceneChange: (HueScene) -> Void
-    @ObservedObject var bridgeManager: BridgeManager
-
-    var body: some View {
-        TabView(selection: $currentIndex) {
-            ForEach(Array(scenes.enumerated()), id: \.element.id) { index, scene in
-                let colors = bridgeManager.extractColorsFromScene(scene)
-                ColorOrbsBackground(colors: colors.isEmpty ? fallbackColors : colors)
-                    .tag(index)
-            }
-        }
-        .tabViewStyle(.page(indexDisplayMode: .never))
-        .ignoresSafeArea()
-        // Enable hit testing so swipes work
-        .allowsHitTesting(true)
-        .onChange(of: currentIndex) { oldValue, newValue in
-            // Activate scene when user swipes to it
-            if newValue < scenes.count {
-                let scene = scenes[newValue]
-                onSceneChange(scene)
-            }
-        }
-    }
-}
 
 struct ColorOrbsBackground: View {
     enum SizeMode {
