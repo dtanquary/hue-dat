@@ -2571,4 +2571,72 @@ class BridgeManager: ObservableObject {
         return await fetchGroupedLightDetails(groupedLightId: groupedLightId, session: session)
     }
 
+    /// Fetch and cache individual lights for a specific room
+    /// Updates the room in the local cache with enriched light data
+    func fetchLightsForRoom(roomId: String) async {
+        guard let index = rooms.firstIndex(where: { $0.id == roomId }) else {
+            print("⚠️ fetchLightsForRoom: Room \(roomId) not found")
+            return
+        }
+
+        let room = rooms[index]
+
+        // Skip if lights are already loaded
+        if let lights = room.lights, !lights.isEmpty {
+            print("ℹ️ fetchLightsForRoom: Room '\(room.metadata.name)' already has \(lights.count) lights loaded")
+            return
+        }
+
+        print("💡 fetchLightsForRoom: Fetching lights for room '\(room.metadata.name)'")
+
+        let delegate = InsecureURLSessionDelegate()
+        let session = URLSession(configuration: .default, delegate: delegate, delegateQueue: nil)
+
+        let enrichedRoom = await enrichRoomWithLights(room: room, session: session)
+
+        // Update the room in the array
+        rooms[index] = enrichedRoom
+
+        // Save to cache
+        saveRoomsToStorage()
+
+        if let lightCount = enrichedRoom.lights?.count {
+            print("✅ fetchLightsForRoom: Loaded \(lightCount) lights for room '\(room.metadata.name)'")
+        }
+    }
+
+    /// Fetch and cache individual lights for a specific zone
+    /// Updates the zone in the local cache with enriched light data
+    func fetchLightsForZone(zoneId: String) async {
+        guard let index = zones.firstIndex(where: { $0.id == zoneId }) else {
+            print("⚠️ fetchLightsForZone: Zone \(zoneId) not found")
+            return
+        }
+
+        let zone = zones[index]
+
+        // Skip if lights are already loaded
+        if let lights = zone.lights, !lights.isEmpty {
+            print("ℹ️ fetchLightsForZone: Zone '\(zone.metadata.name)' already has \(lights.count) lights loaded")
+            return
+        }
+
+        print("💡 fetchLightsForZone: Fetching lights for zone '\(zone.metadata.name)'")
+
+        let delegate = InsecureURLSessionDelegate()
+        let session = URLSession(configuration: .default, delegate: delegate, delegateQueue: nil)
+
+        let enrichedZone = await enrichZoneWithLights(zone: zone, session: session)
+
+        // Update the zone in the array
+        zones[index] = enrichedZone
+
+        // Save to cache
+        saveZonesToStorage()
+
+        if let lightCount = enrichedZone.lights?.count {
+            print("✅ fetchLightsForZone: Loaded \(lightCount) lights for zone '\(zone.metadata.name)'")
+        }
+    }
+
 }

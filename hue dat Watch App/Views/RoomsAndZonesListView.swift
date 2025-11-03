@@ -191,7 +191,7 @@ struct RoomRowView: View {
         case "garden": return "leaf"
         case "gym": return "figure.run"
         case "recreation": return "gamecontroller"
-        default: return "lightbulb.group"
+        default: return "square.split.bottomrightquarter"
         }
     }
 }

@@ -258,8 +258,13 @@ struct ZoneDetailView: View {
                 }
             }
 
-            // Load scenes for this zone
+            // Load individual lights for color orb (if not already loaded)
+            // and load scenes for this zone
             Task {
+                // Fetch individual lights for accurate color display
+                await bridgeManager.fetchLightsForZone(zoneId: zoneId)
+
+                // Fetch scenes
                 availableScenes = await bridgeManager.fetchScenes(forZoneId: zoneId)
 
                 // Detect active scene

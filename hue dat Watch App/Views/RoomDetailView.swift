@@ -251,8 +251,13 @@ struct RoomDetailView: View {
                 }
             }
 
-            // Load scenes for this room
+            // Load individual lights for color orb (if not already loaded)
+            // and load scenes for this room
             Task {
+                // Fetch individual lights for accurate color display
+                await bridgeManager.fetchLightsForRoom(roomId: roomId)
+
+                // Fetch scenes
                 availableScenes = await bridgeManager.fetchScenes(forRoomId: roomId)
 
                 // Detect active scene
