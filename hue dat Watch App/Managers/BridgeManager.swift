@@ -28,6 +28,7 @@ class BridgeManager: ObservableObject {
     @Published var lightCache: [String: HueLight] = [:]  // Shared cache of all lights by light ID
     @Published var isLoadingRooms: Bool = false
     @Published var isLoadingZones: Bool = false
+    @Published var refreshError: String? = nil  // Error message for background refresh failures
 
     // Event broadcasting for connection validation
     private let connectionValidationSubject = PassthroughSubject<ConnectionValidationResult, Never>()
@@ -42,8 +43,14 @@ class BridgeManager: ObservableObject {
     private let cachedScenesKey = "CachedScenes"
     private let cachedLightsKey = "CachedLights"
 
-    // Refresh state management
-    private var isRefreshing: Bool = false
+    // Refresh state management (concurrent call protection)
+    private var isRefreshingRooms: Bool = false
+    private var isRefreshingZones: Bool = false
+
+    // Debouncing (prevent refresh spam during rapid navigation)
+    private var lastRoomsRefreshTime: Date? = nil
+    private var lastZonesRefreshTime: Date? = nil
+    private let refreshDebounceInterval: TimeInterval = 30.0  // 30 seconds
     
     /// Returns the current connected bridge information, or nil if none is connected.
     var currentConnectedBridge: BridgeConnectionInfo? {
@@ -874,14 +881,38 @@ class BridgeManager: ObservableObject {
     /// Retrieve the list of rooms from the connected bridge.
     /// Updates the rooms published property with the results.
     func getRooms() async {
+        // PROTECTION 1: Concurrent call protection
+        guard !isRefreshingRooms else {
+            print("⏭️ getRooms: Already refreshing rooms, skipping duplicate call")
+            return
+        }
+
+        // PROTECTION 2: Debouncing - skip if refreshed recently
+        if let lastRefresh = lastRoomsRefreshTime,
+           Date().timeIntervalSince(lastRefresh) < refreshDebounceInterval {
+            let timeRemaining = refreshDebounceInterval - Date().timeIntervalSince(lastRefresh)
+            print("⏭️ getRooms: Debounced - last refresh was \(Int(Date().timeIntervalSince(lastRefresh)))s ago, waiting \(Int(timeRemaining))s")
+            return
+        }
+
         guard let bridge = currentConnectedBridge?.bridge else {
             print("❌ getRooms: No connected bridge available")
-            rooms = []
+            // PROTECTION 3: Only clear if no existing data
+            if rooms.isEmpty {
+                rooms = []
+            }
             isLoadingRooms = false
             return
         }
 
+        isRefreshingRooms = true
         isLoadingRooms = true
+        lastRoomsRefreshTime = Date()
+
+        // STEP 1: Fetch all lights FIRST to populate the lightCache
+        print("🏠 getRooms: Step 1 - Fetching all lights into cache")
+        await fetchAllLights()
+
         let urlString = "https://\(bridge.internalipaddress)/clip/v2/resource/room"
 
         let delegate = InsecureURLSessionDelegate()
@@ -889,8 +920,10 @@ class BridgeManager: ObservableObject {
 
         guard let url = URL(string: urlString) else {
             print("❌ getRooms: Invalid URL: \(urlString)")
-            rooms = []
+            // PROTECTION 3: Keep existing data on error
+            refreshError = "Invalid bridge URL"
             isLoadingRooms = false
+            isRefreshingRooms = false
             return
         }
 
@@ -898,9 +931,9 @@ class BridgeManager: ObservableObject {
         request.httpMethod = "GET"
         request.setValue(currentConnectedBridge?.username, forHTTPHeaderField: "hue-application-key")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        
-        print("🏠 getRooms: Requesting rooms from \(urlString)")
-        
+
+        print("🏠 getRooms: Step 2 - Requesting rooms from \(urlString)")
+
         do {
             let (data, response) = try await session.data(for: request)
 
@@ -911,28 +944,26 @@ class BridgeManager: ObservableObject {
             // Attempt to decode Hue API v2 response for rooms
             do {
                 let response = try JSONDecoder().decode(HueRoomsResponse.self, from: data)
-                
+
                 // Check for errors first
                 if !response.errors.isEmpty {
                     let errorMessages = response.errors.map { $0.description }.joined(separator: ", ")
                     print("❌ getRooms: Hue API v2 errors: \(errorMessages)")
-                    self.rooms = []
-                    // Publish alert to the UI
-                    self.alertMessage = errorMessages
-                    self.showAlert = true
+                    // PROTECTION 3: Keep existing data, set error instead
+                    refreshError = "API Error: \(errorMessages)"
                     return
                 }
-                
+
                 // If no errors, get basic rooms first
                 if response.errors.isEmpty {
                     print("✅ getRooms: Success - retrieved \(response.data.count) rooms")
-                    
+
                     // Now fetch detailed metadata for each room
                     var enhancedRooms: [HueRoom] = []
-                    
+
                     for room in response.data {
                         print("  - Fetching details for room: \(room.metadata.name) (ID: \(room.id))")
-                        
+
                         // Get detailed room information
                         if let detailedRoom = await fetchRoomDetails(roomId: room.id, session: session) {
                             // Check if room has grouped light services
@@ -949,7 +980,7 @@ class BridgeManager: ObservableObject {
                                     }
                                 }
                             }
-                            
+
                             // Merge the detailed information with the basic room
                             let mergedRoom = HueRoom(
                                 id: room.id,
@@ -975,12 +1006,15 @@ class BridgeManager: ObservableObject {
                             enhancedRooms.append(room)
                         }
                     }
-                    
+
                     self.rooms = enhancedRooms
+                    saveRoomsToStorage()  // Cache successful refresh
+                    refreshError = nil  // Clear any previous errors
                     print("🏠 getRooms: Completed with \(enhancedRooms.count) enhanced rooms")
                 } else {
                     print("ℹ️ getRooms: No errors but unexpected response structure")
-                    self.rooms = []
+                    // PROTECTION 3: Keep existing data on unexpected response
+                    refreshError = "Unexpected API response structure"
                 }
             } catch {
                 // If decoding into the Hue rooms format fails, log raw string for diagnostics
@@ -989,16 +1023,17 @@ class BridgeManager: ObservableObject {
                 } else {
                     print("ℹ️ getRooms: Received non-UTF8 data (\(data.count) bytes)")
                 }
-                self.rooms = []
+                // PROTECTION 3: Keep existing data on decode error
+                refreshError = "Failed to decode rooms data"
             }
         } catch {
             print("❌ getRooms: Network error: \(error.localizedDescription)")
-            self.rooms = []
-            self.alertMessage = error.localizedDescription
-            self.showAlert = true
+            // PROTECTION 3: Keep existing data on network error
+            refreshError = "Network error: \(error.localizedDescription)"
         }
 
         isLoadingRooms = false
+        isRefreshingRooms = false
     }
 
     /// Refresh a single room by fetching its latest data from the bridge.
@@ -1370,12 +1405,12 @@ class BridgeManager: ObservableObject {
                 continue
             }
 
-            // Step 3: Fetch the actual light data using the light ID from the service
-            if let light = await fetchLightDetails(lightId: lightService.rid, session: session) {
+            // Step 3: Lookup the light data from the lightCache (already populated)
+            if let light = lightCache[lightService.rid] {
                 lights.append(light)
-                print("      ✅ Added light: \(light.metadata?.name ?? "Unknown") (ID: \(light.id))")
+                print("      ✅ Added light from cache: \(light.metadata?.name ?? "Unknown") (ID: \(light.id))")
             } else {
-                print("      ❌ Failed to fetch light with ID: \(lightService.rid)")
+                print("      ⚠️ Light \(lightService.rid) not found in cache")
             }
         }
 
@@ -1402,37 +1437,89 @@ class BridgeManager: ObservableObject {
         let childTypes = children.map { $0.rtype }.joined(separator: ", ")
         print("    📋 enrichZoneWithLights: Zone '\(zone.metadata.name)' has children types: [\(childTypes)]")
 
-        // Filter for device children (Hue API v2 uses device abstraction layer)
-        let deviceChildren = children.filter { $0.rtype == "device" }
-        guard !deviceChildren.isEmpty else {
-            print("    ℹ️ enrichZoneWithLights: Zone '\(zone.metadata.name)' has no device children (has \(children.count) children of other types)")
-            return zone
-        }
-
-        print("    💡 enrichZoneWithLights: Fetching \(deviceChildren.count) individual lights for zone '\(zone.metadata.name)'")
         var lights: [HueLight] = []
 
-        for child in deviceChildren {
-            // Step 1: Fetch device details to get the light service ID
-            guard let device = await fetchDeviceDetails(deviceId: child.rid, session: session) else {
-                print("      ❌ Failed to fetch device with ID: \(child.rid)")
-                continue
-            }
+        // Zones can contain both room children and direct device children
+        let roomChildren = children.filter { $0.rtype == "room" }
+        let deviceChildren = children.filter { $0.rtype == "device" }
 
-            // Step 2: Find the light service in the device's services
-            guard let lightService = device.services?.first(where: { $0.rtype == "light" }) else {
-                print("      ⚠️ Device \(child.rid) has no light service")
-                continue
-            }
+        // Process room children first (zones often contain rooms)
+        if !roomChildren.isEmpty {
+            print("    🏠 enrichZoneWithLights: Processing \(roomChildren.count) room children for zone '\(zone.metadata.name)'")
 
-            // Step 3: Fetch the actual light data using the light ID from the service
-            if let light = await fetchLightDetails(lightId: lightService.rid, session: session) {
-                lights.append(light)
-                print("      ✅ Added light: \(light.metadata?.name ?? "Unknown") (ID: \(light.id))")
-            } else {
-                print("      ❌ Failed to fetch light with ID: \(lightService.rid)")
+            for roomChild in roomChildren {
+                // Fetch the room details to get its device children
+                guard let roomDetail = await fetchRoomDetails(roomId: roomChild.rid, session: session) else {
+                    print("      ❌ Failed to fetch room details for room ID: \(roomChild.rid)")
+                    continue
+                }
+
+                // Get device children from this room
+                guard let roomDeviceChildren = roomDetail.children?.filter({ $0.rtype == "device" }) else {
+                    print("      ℹ️ Room '\(roomDetail.metadata.name)' has no device children")
+                    continue
+                }
+
+                print("      🏠 Room '\(roomDetail.metadata.name)' has \(roomDeviceChildren.count) device(s)")
+
+                // Process each device in the room
+                for deviceChild in roomDeviceChildren {
+                    // Step 1: Fetch device details to get the light service ID
+                    guard let device = await fetchDeviceDetails(deviceId: deviceChild.rid, session: session) else {
+                        print("        ❌ Failed to fetch device with ID: \(deviceChild.rid)")
+                        continue
+                    }
+
+                    // Step 2: Find the light service in the device's services
+                    guard let lightService = device.services?.first(where: { $0.rtype == "light" }) else {
+                        print("        ⚠️ Device \(deviceChild.rid) has no light service")
+                        continue
+                    }
+
+                    // Step 3: Lookup the light data from the lightCache (already populated)
+                    if let light = lightCache[lightService.rid] {
+                        lights.append(light)
+                        print("        ✅ Added light from room (cache): \(light.metadata?.name ?? "Unknown") (ID: \(light.id))")
+                    } else {
+                        print("        ⚠️ Light \(lightService.rid) not found in cache")
+                    }
+                }
             }
         }
+
+        // Process direct device children (if any)
+        if !deviceChildren.isEmpty {
+            print("    💡 enrichZoneWithLights: Processing \(deviceChildren.count) direct device children for zone '\(zone.metadata.name)'")
+
+            for child in deviceChildren {
+                // Step 1: Fetch device details to get the light service ID
+                guard let device = await fetchDeviceDetails(deviceId: child.rid, session: session) else {
+                    print("      ❌ Failed to fetch device with ID: \(child.rid)")
+                    continue
+                }
+
+                // Step 2: Find the light service in the device's services
+                guard let lightService = device.services?.first(where: { $0.rtype == "light" }) else {
+                    print("      ⚠️ Device \(child.rid) has no light service")
+                    continue
+                }
+
+                // Step 3: Lookup the light data from the lightCache (already populated)
+                if let light = lightCache[lightService.rid] {
+                    lights.append(light)
+                    print("      ✅ Added direct light from cache: \(light.metadata?.name ?? "Unknown") (ID: \(light.id))")
+                } else {
+                    print("      ⚠️ Light \(lightService.rid) not found in cache")
+                }
+            }
+        }
+
+        // If no room or device children were found, log a warning
+        if roomChildren.isEmpty && deviceChildren.isEmpty {
+            print("    ℹ️ enrichZoneWithLights: Zone '\(zone.metadata.name)' has no room or device children (has \(children.count) children of other types)")
+        }
+
+        print("    ✅ enrichZoneWithLights: Zone '\(zone.metadata.name)' enriched with \(lights.count) total lights")
 
         // Return zone with enriched light data
         return HueZone(
@@ -1449,12 +1536,38 @@ class BridgeManager: ObservableObject {
     /// Retrieve the list of zones from the connected bridge.
     /// Updates the zones published property with the results.
     func getZones() async {
-        guard let bridge = currentConnectedBridge?.bridge else {
-            print("❌ getZones: No connected bridge available")
-            zones = []
+        // PROTECTION 1: Concurrent call protection
+        guard !isRefreshingZones else {
+            print("⏭️ getZones: Already refreshing zones, skipping duplicate call")
             return
         }
-        
+
+        // PROTECTION 2: Debouncing - skip if refreshed recently
+        if let lastRefresh = lastZonesRefreshTime,
+           Date().timeIntervalSince(lastRefresh) < refreshDebounceInterval {
+            let timeRemaining = refreshDebounceInterval - Date().timeIntervalSince(lastRefresh)
+            print("⏭️ getZones: Debounced - last refresh was \(Int(Date().timeIntervalSince(lastRefresh)))s ago, waiting \(Int(timeRemaining))s")
+            return
+        }
+
+        guard let bridge = currentConnectedBridge?.bridge else {
+            print("❌ getZones: No connected bridge available")
+            // PROTECTION 3: Only clear if no existing data
+            if zones.isEmpty {
+                zones = []
+            }
+            isLoadingZones = false
+            return
+        }
+
+        isRefreshingZones = true
+        isLoadingZones = true
+        lastZonesRefreshTime = Date()
+
+        // STEP 1: Fetch all lights FIRST to populate the lightCache
+        print("🏢 getZones: Step 1 - Fetching all lights into cache")
+        await fetchAllLights()
+
         let urlString = "https://\(bridge.internalipaddress)/clip/v2/resource/zone"
 
         let delegate = InsecureURLSessionDelegate()
@@ -1462,7 +1575,10 @@ class BridgeManager: ObservableObject {
 
         guard let url = URL(string: urlString) else {
             print("❌ getZones: Invalid URL: \(urlString)")
-            zones = []
+            // PROTECTION 3: Keep existing data on error
+            refreshError = "Invalid bridge URL"
+            isLoadingZones = false
+            isRefreshingZones = false
             return
         }
 
@@ -1470,9 +1586,9 @@ class BridgeManager: ObservableObject {
         request.httpMethod = "GET"
         request.setValue(currentConnectedBridge?.username, forHTTPHeaderField: "hue-application-key")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        
-        print("🏢 getZones: Requesting zones from \(urlString)")
-        
+
+        print("🏢 getZones: Step 2 - Requesting zones from \(urlString)")
+
         do {
             let (data, response) = try await session.data(for: request)
 
@@ -1483,28 +1599,26 @@ class BridgeManager: ObservableObject {
             // Attempt to decode Hue API v2 response for zones
             do {
                 let response = try JSONDecoder().decode(HueZonesResponse.self, from: data)
-                
+
                 // Check for errors first
                 if !response.errors.isEmpty {
                     let errorMessages = response.errors.map { $0.description }.joined(separator: ", ")
                     print("❌ getZones: Hue API v2 errors: \(errorMessages)")
-                    self.zones = []
-                    // Publish alert to the UI
-                    self.alertMessage = errorMessages
-                    self.showAlert = true
+                    // PROTECTION 3: Keep existing data, set error instead
+                    refreshError = "API Error: \(errorMessages)"
                     return
                 }
-                
+
                 // If no errors, get basic zones first
                 if response.errors.isEmpty {
                     print("✅ getZones: Success - retrieved \(response.data.count) zones")
-                    
+
                     // Now fetch detailed metadata for each zone
                     var enhancedZones: [HueZone] = []
-                    
+
                     for zone in response.data {
                         print("  - Fetching details for zone: \(zone.metadata.name) (ID: \(zone.id))")
-                        
+
                         // Get detailed zone information
                         if let detailedZone = await fetchZoneDetails(zoneId: zone.id, session: session) {
                             // Check if zone has grouped light services
@@ -1521,7 +1635,7 @@ class BridgeManager: ObservableObject {
                                     }
                                 }
                             }
-                            
+
                             // Merge the detailed information with the basic zone
                             let mergedZone = HueZone(
                                 id: zone.id,
@@ -1547,12 +1661,15 @@ class BridgeManager: ObservableObject {
                             enhancedZones.append(zone)
                         }
                     }
-                    
+
                     self.zones = enhancedZones
+                    saveZonesToStorage()  // Cache successful refresh
+                    refreshError = nil  // Clear any previous errors
                     print("🏢 getZones: Completed with \(enhancedZones.count) enhanced zones")
                 } else {
                     print("ℹ️ getZones: No errors but unexpected response structure")
-                    self.zones = []
+                    // PROTECTION 3: Keep existing data on unexpected response
+                    refreshError = "Unexpected API response structure"
                 }
             } catch {
                 // If decoding into the Hue zones format fails, log raw string for diagnostics
@@ -1561,14 +1678,17 @@ class BridgeManager: ObservableObject {
                 } else {
                     print("ℹ️ getZones: Received non-UTF8 data (\(data.count) bytes)")
                 }
-                self.zones = []
+                // PROTECTION 3: Keep existing data on decode error
+                refreshError = "Failed to decode zones data"
             }
         } catch {
             print("❌ getZones: Network error: \(error.localizedDescription)")
-            self.zones = []
-            self.alertMessage = error.localizedDescription
-            self.showAlert = true
+            // PROTECTION 3: Keep existing data on network error
+            refreshError = "Network error: \(error.localizedDescription)"
         }
+
+        isLoadingZones = false
+        isRefreshingZones = false
     }
 
     /// Refresh a single zone by fetching its latest data from the bridge.
@@ -1748,24 +1868,17 @@ class BridgeManager: ObservableObject {
 
     // MARK: - Background Refresh Management
 
-    /// Set the active detail for targeted refresh
     /// Refresh all rooms and zones data
+    /// Now uses getRooms() and getZones() which have built-in protections
     private func refreshAllData() async {
-        guard !isRefreshing else {
-            print("⏭️ Skipping refresh - already in progress")
-            return
-        }
-
-        isRefreshing = true
-        defer { isRefreshing = false }
-
         print("🔄 Refreshing all data")
 
-        // Fetch all lights first (single API call)
-        await fetchAllLights()
-
-        async let roomsRefresh: Void = refreshRoomsData()
-        async let zonesRefresh: Void = refreshZonesData()
+        // Use the protected getRooms() and getZones() functions which have:
+        // - Concurrent call protection
+        // - Debouncing
+        // - Data preservation on error
+        async let roomsRefresh: Void = getRooms()
+        async let zonesRefresh: Void = getZones()
 
         // Wait for both to complete
         _ = await (roomsRefresh, zonesRefresh)

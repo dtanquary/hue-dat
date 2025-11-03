@@ -14,10 +14,14 @@ struct RoomsAndZonesListView: View {
     @State private var rotationAngle: Double = 0
     @State private var showSettings = false
 
+    // Dynamic Type scaled metrics
+    @ScaledMetric(relativeTo: .body) private var emptyStateSpacing: CGFloat = 12
+    @ScaledMetric(relativeTo: .caption) private var loadingSpacing: CGFloat = 12
+
     var body: some View {
         Group {
             if bridgeManager.rooms.isEmpty && bridgeManager.zones.isEmpty && !isRefreshing && hasLoadedData {
-                VStack(spacing: 12) {
+                VStack(spacing: emptyStateSpacing) {
                     Image(systemName: "square.3.layers.3d.slash")
                         .font(.largeTitle)
                         .foregroundStyle(.secondary)
@@ -102,7 +106,7 @@ struct RoomsAndZonesListView: View {
                     Color.black.opacity(0.3)
                         .ignoresSafeArea()
 
-                    VStack(spacing: 12) {
+                    VStack(spacing: loadingSpacing) {
                         ProgressView()
                             .progressViewStyle(.circular)
                             .scaleEffect(1.2)
@@ -113,8 +117,12 @@ struct RoomsAndZonesListView: View {
                 }
             }
         }
-        .task {
-            await refreshData()
+        .task(id: hasLoadedData) {
+            // Only load data once when view first appears (hasLoadedData starts as false)
+            // After that, user must manually refresh via toolbar button
+            if !hasLoadedData {
+                await refreshData()
+            }
         }
     }
 
@@ -131,6 +139,14 @@ struct RoomsAndZonesListView: View {
 struct RoomRowView: View {
     let room: BridgeManager.HueRoom
 
+    // Dynamic Type scaled metrics
+    @ScaledMetric(relativeTo: .headline) private var rowSpacing: CGFloat = 12
+    @ScaledMetric(relativeTo: .headline) private var nameSpacing: CGFloat = 2
+    @ScaledMetric(relativeTo: .caption) private var statusSpacing: CGFloat = 2
+    @ScaledMetric(relativeTo: .caption) private var statusDotSpacing: CGFloat = 4
+    @ScaledMetric(relativeTo: .caption) private var statusDotSize: CGFloat = 6
+    @ScaledMetric(relativeTo: .headline) private var verticalPadding: CGFloat = 2
+
     private var lightStatus: (isOn: Bool, brightness: Double?) {
         guard let lights = room.groupedLights, !lights.isEmpty else {
             return (false, nil)
@@ -143,37 +159,37 @@ struct RoomRowView: View {
     }
 
     var body: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: rowSpacing) {
             Image(systemName: iconForArchetype(room.metadata.archetype))
-                .font(.title3)
+                .font(.headline)
                 .foregroundStyle(lightStatus.isOn ? .yellow : .secondary)
-                .frame(width: 30)
 
-            VStack(alignment: .leading, spacing: 2) {
+            VStack(alignment: .leading, spacing: nameSpacing) {
                 Text(room.metadata.name)
-                    .font(.headline)
+                    .font(.subheadline)
             }
 
             Spacer()
 
-            VStack(alignment: .trailing, spacing: 2) {
-                HStack(spacing: 4) {
+            VStack(alignment: .trailing, spacing: statusSpacing) {
+                HStack(spacing: statusDotSpacing) {
                     Circle()
                         .fill(lightStatus.isOn ? Color.green : Color.secondary)
-                        .frame(width: 6, height: 6)
+                        .frame(width: statusDotSize, height: statusDotSize)
                     Text(lightStatus.isOn ? "On" : "Off")
                         .font(.caption)
                         .foregroundStyle(lightStatus.isOn ? .primary : .secondary)
                 }
 
                 if let brightness = lightStatus.brightness {
+                    
                     Text("\(Int(brightness))%")
                         .font(.caption2)
                         .foregroundStyle(.secondary)
                 }
             }
         }
-        .padding(.vertical, 2)
+        .padding(.vertical, verticalPadding)
     }
 
     private func iconForArchetype(_ archetype: String) -> String {
@@ -200,6 +216,14 @@ struct RoomRowView: View {
 struct ZoneRowView: View {
     let zone: BridgeManager.HueZone
 
+    // Dynamic Type scaled metrics
+    @ScaledMetric(relativeTo: .headline) private var rowSpacing: CGFloat = 12
+    @ScaledMetric(relativeTo: .headline) private var nameSpacing: CGFloat = 2
+    @ScaledMetric(relativeTo: .caption) private var statusSpacing: CGFloat = 2
+    @ScaledMetric(relativeTo: .caption) private var statusDotSpacing: CGFloat = 4
+    @ScaledMetric(relativeTo: .caption) private var statusDotSize: CGFloat = 6
+    @ScaledMetric(relativeTo: .headline) private var verticalPadding: CGFloat = 2
+
     private var lightStatus: (isOn: Bool, brightness: Double?) {
         guard let lights = zone.groupedLights, !lights.isEmpty else {
             return (false, nil)
@@ -212,24 +236,23 @@ struct ZoneRowView: View {
     }
 
     var body: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: rowSpacing) {
             Image(systemName: "square.3.layers.3d")
-                .font(.title3)
+                .font(.headline)
                 .foregroundStyle(lightStatus.isOn ? .yellow : .secondary)
-                .frame(width: 30)
 
-            VStack(alignment: .leading, spacing: 2) {
+            VStack(alignment: .leading, spacing: nameSpacing) {
                 Text(zone.metadata.name)
-                    .font(.headline)
+                    .font(.subheadline)
             }
 
             Spacer()
 
-            VStack(alignment: .trailing, spacing: 2) {
-                HStack(spacing: 4) {
+            VStack(alignment: .trailing, spacing: statusSpacing) {
+                HStack(spacing: statusDotSpacing) {
                     Circle()
                         .fill(lightStatus.isOn ? Color.green : Color.secondary)
-                        .frame(width: 6, height: 6)
+                        .frame(width: statusDotSize, height: statusDotSize)
                     Text(lightStatus.isOn ? "On" : "Off")
                         .font(.caption)
                         .foregroundStyle(lightStatus.isOn ? .primary : .secondary)
@@ -242,6 +265,6 @@ struct ZoneRowView: View {
                 }
             }
         }
-        .padding(.vertical, 2)
+        .padding(.vertical, verticalPadding)
     }
 }
