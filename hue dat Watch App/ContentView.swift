@@ -78,6 +78,13 @@ extension Array where Element == Double {
     }
 }
 
+extension Array where Element == Int {
+    func average() -> Double? {
+        guard !isEmpty else { return nil }
+        return Double(reduce(0, +)) / Double(count)
+    }
+}
+
 #Preview {
     ContentView()
 }

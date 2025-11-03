@@ -24,6 +24,8 @@ class BridgeManager: ObservableObject {
     @Published var isConnectionValidated: Bool = false
     @Published var rooms: [HueRoom] = []
     @Published var zones: [HueZone] = []
+    @Published var scenes: [HueScene] = []
+    @Published var lightCache: [String: HueLight] = [:]  // Shared cache of all lights by ID
     @Published var isLoadingRooms: Bool = false
     @Published var isLoadingZones: Bool = false
 
@@ -37,6 +39,8 @@ class BridgeManager: ObservableObject {
     private let connectedBridgeKey = "ConnectedBridge"
     private let cachedRoomsKey = "CachedRooms"
     private let cachedZonesKey = "CachedZones"
+    private let cachedScenesKey = "CachedScenes"
+    private let cachedLightsKey = "CachedLights"
 
     // Refresh state management
     private var isRefreshing: Bool = false
@@ -48,8 +52,10 @@ class BridgeManager: ObservableObject {
     
     init() {
         loadConnectedBridge()
+        loadLightsFromStorage()
         loadRoomsFromStorage()
         loadZonesFromStorage()
+        loadScenesFromStorage()
     }
     
     func saveConnection(bridge: BridgeInfo, registrationResponse: BridgeRegistrationResponse) {
@@ -85,11 +91,15 @@ class BridgeManager: ObservableObject {
         userDefaults.removeObject(forKey: connectedBridgeKey)
         userDefaults.removeObject(forKey: cachedRoomsKey)
         userDefaults.removeObject(forKey: cachedZonesKey)
+        userDefaults.removeObject(forKey: cachedScenesKey)
+        userDefaults.removeObject(forKey: cachedLightsKey)
         userDefaults.synchronize()
         connectedBridge = nil
         isConnectionValidated = false
         rooms = []
         zones = []
+        scenes = []
+        lightCache = [:]
         print("🔌 Bridge disconnected and cleared from storage")
     }
     
@@ -175,6 +185,62 @@ class BridgeManager: ObservableObject {
             print("💾 Saved \(zones.count) zones to storage (\(data.count) bytes)")
         } catch {
             print("❌ Failed to save zones to storage: \(error)")
+        }
+    }
+
+    private func loadScenesFromStorage() {
+        guard let data = userDefaults.data(forKey: cachedScenesKey) else {
+            print("📂 No cached scenes found")
+            return
+        }
+
+        do {
+            scenes = try JSONDecoder().decode([HueScene].self, from: data)
+            print("✅ Loaded \(scenes.count) cached scenes from storage")
+        } catch {
+            print("❌ Failed to load cached scenes: \(error)")
+            // Clean up corrupted data
+            userDefaults.removeObject(forKey: cachedScenesKey)
+        }
+    }
+
+    private func saveScenesToStorage() {
+        do {
+            let data = try JSONEncoder().encode(scenes)
+            userDefaults.set(data, forKey: cachedScenesKey)
+            print("💾 Saved \(scenes.count) scenes to storage (\(data.count) bytes)")
+        } catch {
+            print("❌ Failed to save scenes to storage: \(error)")
+        }
+    }
+
+    private func loadLightsFromStorage() {
+        guard let data = userDefaults.data(forKey: cachedLightsKey) else {
+            print("📂 No cached lights found")
+            return
+        }
+
+        do {
+            let lightsArray = try JSONDecoder().decode([HueLight].self, from: data)
+            // Convert array to dictionary by ID
+            lightCache = Dictionary(uniqueKeysWithValues: lightsArray.map { ($0.id, $0) })
+            print("✅ Loaded \(lightCache.count) cached lights from storage")
+        } catch {
+            print("❌ Failed to load cached lights: \(error)")
+            // Clean up corrupted data
+            userDefaults.removeObject(forKey: cachedLightsKey)
+        }
+    }
+
+    private func saveLightsToStorage() {
+        do {
+            // Convert dictionary to array for encoding
+            let lightsArray = Array(lightCache.values)
+            let data = try JSONEncoder().encode(lightsArray)
+            userDefaults.set(data, forKey: cachedLightsKey)
+            print("💾 Saved \(lightCache.count) lights to storage (\(data.count) bytes)")
+        } catch {
+            print("❌ Failed to save lights to storage: \(error)")
         }
     }
 
@@ -430,7 +496,7 @@ class BridgeManager: ObservableObject {
         let errors: [HueAPIV2Error]
         let data: [HueZoneDetail]
     }
-    
+
     private struct HueZoneDetail: Decodable {
         let id: String
         let type: String
@@ -438,9 +504,250 @@ class BridgeManager: ObservableObject {
         let children: [HueZone.HueZoneChild]?
         let services: [HueZone.HueZoneService]?
     }
+
+    // MARK: - Scene API Response Models
+    private struct HueScenesResponse: Decodable {
+        let errors: [HueAPIV2Error]
+        let data: [HueScene]
+    }
+
+    // MARK: - Light API Response Models
+    private struct HueLightsResponse: Decodable {
+        let errors: [HueAPIV2Error]
+        let data: [HueLight]
+    }
     
     var isConnected: Bool {
         connectedBridge != nil
+    }
+    
+    /// Print detailed light information for debugging purposes
+    func printDetailedLightInfo(for roomOrZone: String, groupedLights: [HueGroupedLight]?, individualLights: [HueLight]? = nil) {
+        print("🔍 DEBUG: \(roomOrZone) - Light Details:")
+        print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+
+        // Print grouped lights section
+        if let lights = groupedLights, !lights.isEmpty {
+            print("\n📦 GROUPED LIGHTS (Aggregated State):")
+            print("   Total grouped lights: \(lights.count)")
+
+            for (index, light) in lights.enumerated() {
+                print("\n   Grouped Light \(index + 1):")
+                print("     • ID: \(light.id)")
+                print("     • Type: \(light.type)")
+
+                // Power state
+                if let powerState = light.on?.on {
+                    print("     • Power: \(powerState ? "ON" : "OFF")")
+                } else {
+                    print("     • Power: Unknown")
+                }
+
+                // Brightness
+                if let brightness = light.dimming?.brightness {
+                    print("     • Brightness: \(Int(brightness))% (\(brightness))")
+                } else {
+                    print("     • Brightness: Not available")
+                }
+
+                // Color temperature
+                if let colorTemp = light.color_temperature {
+                    if let mirek = colorTemp.mirek {
+                        let kelvin = 1000000 / mirek
+                        print("     • Color Temperature: \(mirek) mirek (~\(kelvin)K)")
+                        print("     • CT Valid: \(colorTemp.mirek_valid ?? false)")
+                    } else {
+                        print("     • Color Temperature: Not set")
+                    }
+
+                    // Color temperature schema (min/max range)
+                    if let schema = colorTemp.mirek_schema {
+                        let minKelvin = 1000000 / schema.mirek_maximum
+                        let maxKelvin = 1000000 / schema.mirek_minimum
+                        print("     • CT Range: \(schema.mirek_minimum)-\(schema.mirek_maximum) mirek (~\(maxKelvin)K-\(minKelvin)K)")
+                    }
+                } else {
+                    print("     • Color Temperature: Not available")
+                }
+
+                // Color (XY coordinates)
+                if let color = light.color {
+                    if let xy = color.xy {
+                        print("     • Color XY: (\(String(format: "%.4f", xy.x)), \(String(format: "%.4f", xy.y)))")
+                    } else {
+                        print("     • Color XY: Not set")
+                    }
+
+                    if let gamutType = color.gamut_type {
+                        print("     • Color Gamut: \(gamutType)")
+                    }
+
+                    if let gamut = color.gamut {
+                        print("     • Gamut Red: (\(String(format: "%.4f", gamut.red.x)), \(String(format: "%.4f", gamut.red.y)))")
+                        print("     • Gamut Green: (\(String(format: "%.4f", gamut.green.x)), \(String(format: "%.4f", gamut.green.y)))")
+                        print("     • Gamut Blue: (\(String(format: "%.4f", gamut.blue.x)), \(String(format: "%.4f", gamut.blue.y)))")
+                    }
+                } else {
+                    print("     • Color: Not available")
+                }
+            }
+
+            // Summary statistics for grouped lights
+            let lightsOn = lights.filter { $0.on?.on == true }
+            let averageBrightness = lights.compactMap { $0.dimming?.brightness }.average()
+            let averageColorTemp = lights.compactMap { $0.color_temperature?.mirek }.compactMap { $0 }.average().map { Int($0) }
+
+            print("\n   📊 Grouped Lights Summary:")
+            print("     • Lights on: \(lightsOn.count)/\(lights.count)")
+            if let avgBrightness = averageBrightness {
+                print("     • Average brightness: \(Int(avgBrightness))%")
+            }
+            if let avgColorTemp = averageColorTemp {
+                let kelvin = 1000000 / avgColorTemp
+                print("     • Average color temp: \(avgColorTemp) mirek (~\(kelvin)K)")
+            }
+        } else {
+            print("\n📦 GROUPED LIGHTS: None found")
+        }
+
+        // Print individual lights section
+        if let individualLights = individualLights, !individualLights.isEmpty {
+            print("\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+            print("💡 INDIVIDUAL LIGHTS (Actual Light Colors):")
+            print("   Total individual lights: \(individualLights.count)")
+
+            for (index, light) in individualLights.enumerated() {
+                print("\n   Individual Light \(index + 1):")
+                print("     • ID: \(light.id)")
+                print("     • Type: \(light.type)")
+
+                // Name
+                if let name = light.metadata?.name {
+                    print("     • Name: \"\(name)\"")
+                }
+
+                // Power state
+                if let powerState = light.on?.on {
+                    print("     • Power: \(powerState ? "ON" : "OFF")")
+                } else {
+                    print("     • Power: Unknown")
+                }
+
+                // Brightness
+                if let brightness = light.dimming?.brightness {
+                    print("     • Brightness: \(Int(brightness))% (\(brightness))")
+                } else {
+                    print("     • Brightness: Not available")
+                }
+
+                // Color temperature
+                if let colorTemp = light.color_temperature {
+                    if let mirek = colorTemp.mirek {
+                        let kelvin = 1000000 / mirek
+                        print("     • Color Temperature: \(mirek) mirek (~\(kelvin)K)")
+                        print("     • CT Valid: \(colorTemp.mirek_valid ?? false)")
+                    } else {
+                        print("     • Color Temperature: Not set")
+                    }
+                } else {
+                    print("     • Color Temperature: Not available")
+                }
+
+                // Color (XY coordinates)
+                if let color = light.color {
+                    if let xy = color.xy {
+                        print("     • Color XY: (\(String(format: "%.4f", xy.x)), \(String(format: "%.4f", xy.y)))")
+
+                        // Convert to RGB and display
+                        let brightness = light.dimming?.brightness ?? 100.0
+                        let rgbColor = xyToRGB(x: xy.x, y: xy.y, brightness: brightness)
+
+                        // Get RGB components (approximation for display)
+                        var red: CGFloat = 0
+                        var green: CGFloat = 0
+                        var blue: CGFloat = 0
+                        var alpha: CGFloat = 0
+
+                        #if canImport(UIKit)
+                        UIColor(rgbColor).getRed(&red, green: &green, blue: &blue, alpha: &alpha)
+                        #endif
+
+                        let r = Int(red * 255)
+                        let g = Int(green * 255)
+                        let b = Int(blue * 255)
+                        let hexString = String(format: "#%02X%02X%02X", r, g, b)
+
+                        print("     • RGB Color: \(hexString) (R:\(r), G:\(g), B:\(b))")
+                    } else {
+                        print("     • Color XY: Not set")
+                    }
+
+                    if let gamutType = color.gamut_type {
+                        print("     • Color Gamut: \(gamutType)")
+                    }
+                } else if let colorTemp = light.color_temperature, let mirek = colorTemp.mirek {
+                    // If no XY color but has color temp, convert mirek to RGB
+                    let brightness = light.dimming?.brightness ?? 100.0
+                    let rgbColor = mirekToRGB(mirek: mirek, brightness: brightness)
+
+                    var red: CGFloat = 0
+                    var green: CGFloat = 0
+                    var blue: CGFloat = 0
+                    var alpha: CGFloat = 0
+
+                    #if canImport(UIKit)
+                    UIColor(rgbColor).getRed(&red, green: &green, blue: &blue, alpha: &alpha)
+                    #endif
+
+                    let r = Int(red * 255)
+                    let g = Int(green * 255)
+                    let b = Int(blue * 255)
+                    let hexString = String(format: "#%02X%02X%02X", r, g, b)
+
+                    print("     • RGB Color (from temp): \(hexString) (R:\(r), G:\(g), B:\(b))")
+                } else {
+                    print("     • Color: Not available")
+                }
+            }
+
+            // Summary statistics for individual lights
+            let lightsOn = individualLights.filter { $0.on?.on == true }
+            let averageBrightness = individualLights.compactMap { $0.dimming?.brightness }.average()
+            let averageColorTemp = individualLights.compactMap { $0.color_temperature?.mirek }.average().map { Int($0) }
+
+            // Calculate average color using existing utility
+            let averageColor = averageColorFromLights(individualLights)
+            var red: CGFloat = 0
+            var green: CGFloat = 0
+            var blue: CGFloat = 0
+            var alpha: CGFloat = 0
+
+            #if canImport(UIKit)
+            UIColor(averageColor).getRed(&red, green: &green, blue: &blue, alpha: &alpha)
+            #endif
+
+            let r = Int(red * 255)
+            let g = Int(green * 255)
+            let b = Int(blue * 255)
+            let hexString = String(format: "#%02X%02X%02X", r, g, b)
+
+            print("\n   📊 Individual Lights Summary:")
+            print("     • Lights on: \(lightsOn.count)/\(individualLights.count)")
+            if let avgBrightness = averageBrightness {
+                print("     • Average brightness: \(Int(avgBrightness))%")
+            }
+            if let avgColorTemp = averageColorTemp {
+                let kelvin = 1000000 / avgColorTemp
+                print("     • Average color temp: \(avgColorTemp) mirek (~\(kelvin)K)")
+            }
+            print("     • Average RGB Color: \(hexString) (R:\(r), G:\(g), B:\(b))")
+        } else if individualLights != nil {
+            print("\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+            print("💡 INDIVIDUAL LIGHTS: None found")
+        }
+
+        print("\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+        print("🔍 DEBUG: End of light details for \(roomOrZone)\n")
     }
     
     /// Validate that the current connection is alive/reachable.
@@ -1334,6 +1641,9 @@ class BridgeManager: ObservableObject {
 
         print("🔄 Refreshing all data")
 
+        // Fetch all lights first (single API call)
+        await fetchAllLights()
+
         async let roomsRefresh: Void = refreshRoomsData()
         async let zonesRefresh: Void = refreshZonesData()
 
@@ -1709,6 +2019,358 @@ class BridgeManager: ObservableObject {
         // Update just this zone in the array without affecting other zones
         updateSingleZone(updatedZone)
         print("✅ Zone \(zoneId) refreshed")
+    }
+
+    // MARK: - Scene Management
+
+    /// Fetch all scenes from the connected bridge
+    func fetchScenes() async {
+        guard let bridge = currentConnectedBridge?.bridge else {
+            print("❌ fetchScenes: No connected bridge available")
+            scenes = []
+            return
+        }
+
+        let urlString = "https://\(bridge.internalipaddress)/clip/v2/resource/scene"
+
+        let delegate = InsecureURLSessionDelegate()
+        let session = URLSession(configuration: .default, delegate: delegate, delegateQueue: nil)
+
+        guard let url = URL(string: urlString) else {
+            print("❌ fetchScenes: Invalid URL: \(urlString)")
+            scenes = []
+            return
+        }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.setValue(currentConnectedBridge?.username, forHTTPHeaderField: "hue-application-key")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+
+        print("🎬 fetchScenes: Requesting scenes from \(urlString)")
+
+        do {
+            let (data, response) = try await session.data(for: request)
+
+            if let http = response as? HTTPURLResponse {
+                print("🌐 fetchScenes: HTTP \(http.statusCode)")
+            }
+
+            // Decode Hue API v2 response for scenes
+            do {
+                let response = try JSONDecoder().decode(HueScenesResponse.self, from: data)
+
+                // Check for errors first
+                if !response.errors.isEmpty {
+                    let errorMessages = response.errors.map { $0.description }.joined(separator: ", ")
+                    print("❌ fetchScenes: Hue API v2 errors: \(errorMessages)")
+                    self.scenes = []
+                    return
+                }
+
+                // If no errors, update scenes
+                if response.errors.isEmpty {
+                    self.scenes = response.data
+                    saveScenesToStorage()
+                    print("✅ fetchScenes: Success - retrieved \(response.data.count) scenes")
+                } else {
+                    print("ℹ️ fetchScenes: No errors but unexpected response structure")
+                    self.scenes = []
+                }
+            } catch {
+                if let responseString = String(data: data, encoding: .utf8) {
+                    print("ℹ️ fetchScenes: Failed to decode scenes response: \(responseString)")
+                } else {
+                    print("ℹ️ fetchScenes: Received non-UTF8 data (\(data.count) bytes)")
+                }
+                self.scenes = []
+            }
+        } catch {
+            print("❌ fetchScenes: Network error: \(error.localizedDescription)")
+            self.scenes = []
+        }
+    }
+
+    /// Fetch scenes for a specific room
+    func fetchScenes(forRoomId roomId: String) async -> [HueScene] {
+        // Ensure we have scenes loaded
+        if scenes.isEmpty {
+            await fetchScenes()
+        }
+
+        // Filter scenes by room ID
+        let roomScenes = scenes.filter { $0.group.rid == roomId && $0.group.rtype == "room" }
+        print("🎬 fetchScenes(forRoomId): Found \(roomScenes.count) scenes for room \(roomId)")
+        return roomScenes
+    }
+
+    /// Fetch scenes for a specific zone
+    func fetchScenes(forZoneId zoneId: String) async -> [HueScene] {
+        // Ensure we have scenes loaded
+        if scenes.isEmpty {
+            await fetchScenes()
+        }
+
+        // Filter scenes by zone ID
+        let zoneScenes = scenes.filter { $0.group.rid == zoneId && $0.group.rtype == "zone" }
+        print("🎬 fetchScenes(forZoneId): Found \(zoneScenes.count) scenes for zone \(zoneId)")
+        return zoneScenes
+    }
+
+    /// Activate a specific scene
+    func activateScene(_ sceneId: String) async -> Result<Void, Error> {
+        guard let bridge = currentConnectedBridge?.bridge else {
+            print("❌ activateScene: No connected bridge available")
+            return .failure(NSError(domain: "BridgeManager", code: -1, userInfo: [NSLocalizedDescriptionKey: "No bridge connection available"]))
+        }
+
+        let urlString = "https://\(bridge.internalipaddress)/clip/v2/resource/scene/\(sceneId)"
+
+        let delegate = InsecureURLSessionDelegate()
+        let session = URLSession(configuration: .default, delegate: delegate, delegateQueue: nil)
+
+        guard let url = URL(string: urlString) else {
+            print("❌ activateScene: Invalid URL: \(urlString)")
+            return .failure(NSError(domain: "BridgeManager", code: -1, userInfo: [NSLocalizedDescriptionKey: "Invalid URL"]))
+        }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "PUT"
+        request.setValue(currentConnectedBridge?.username, forHTTPHeaderField: "hue-application-key")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+
+        // Scene activation payload
+        let payload: [String: Any] = [
+            "recall": [
+                "action": "active"
+            ]
+        ]
+
+        do {
+            request.httpBody = try JSONSerialization.data(withJSONObject: payload)
+            let (data, response) = try await session.data(for: request)
+
+            if let http = response as? HTTPURLResponse {
+                print("🌐 activateScene: HTTP \(http.statusCode)")
+            }
+
+            if let responseString = String(data: data, encoding: .utf8) {
+                print("🎬 activateScene response: \(responseString)")
+            }
+
+            // Parse response to check for errors
+            if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+               let errors = json["errors"] as? [[String: Any]],
+               !errors.isEmpty {
+                let errorDesc = errors.first?["description"] as? String ?? "Unknown error"
+                return .failure(NSError(domain: "HueBridge", code: -1, userInfo: [NSLocalizedDescriptionKey: errorDesc]))
+            }
+
+            print("✅ activateScene: Successfully activated scene \(sceneId)")
+            return .success(())
+        } catch {
+            print("❌ activateScene: Network error: \(error.localizedDescription)")
+            return .failure(error)
+        }
+    }
+
+    /// Get the currently active scene for a specific room (if any)
+    func getActiveScene(forRoomId roomId: String) async -> HueScene? {
+        let roomScenes = await fetchScenes(forRoomId: roomId)
+        let activeScene = roomScenes.first { $0.status?.active == "active" }
+
+        if let scene = activeScene {
+            print("🎬 getActiveScene(forRoomId): Found active scene '\(scene.metadata.name)' for room \(roomId)")
+        } else {
+            print("🎬 getActiveScene(forRoomId): No active scene for room \(roomId)")
+        }
+
+        return activeScene
+    }
+
+    /// Get the currently active scene for a specific zone (if any)
+    func getActiveScene(forZoneId zoneId: String) async -> HueScene? {
+        let zoneScenes = await fetchScenes(forZoneId: zoneId)
+        let activeScene = zoneScenes.first { $0.status?.active == "active" }
+
+        if let scene = activeScene {
+            print("🎬 getActiveScene(forZoneId): Found active scene '\(scene.metadata.name)' for zone \(zoneId)")
+        } else {
+            print("🎬 getActiveScene(forZoneId): No active scene for zone \(zoneId)")
+        }
+
+        return activeScene
+    }
+
+    /// Extract colors from a scene's actions
+    func extractColorsFromScene(_ scene: HueScene) -> [Color] {
+        guard let actions = scene.actions else {
+            print("⚠️ extractColorsFromScene: Scene '\(scene.metadata.name)' has no actions")
+            return []
+        }
+
+        let colors = actions.compactMap { action -> Color? in
+            let brightness = action.action.dimming?.brightness ?? 100.0
+
+            // Try XY color first
+            if let xy = action.action.color?.xy {
+                return xyToRGB(x: xy.x, y: xy.y, brightness: brightness)
+            }
+
+            // Try color temperature
+            if let mirek = action.action.colorTemperature?.mirek {
+                return mirekToRGB(mirek: mirek, brightness: brightness)
+            }
+
+            // No color data, return nil
+            return nil
+        }
+
+        print("🎨 extractColorsFromScene: Extracted \(colors.count) colors from scene '\(scene.metadata.name)'")
+        return colors
+    }
+
+    // MARK: - Light Cache Management
+
+    /// Fetch all lights in a single API call and cache them
+    func fetchAllLights() async {
+        guard let bridge = currentConnectedBridge?.bridge else {
+            print("❌ fetchAllLights: No connected bridge available")
+            return
+        }
+
+        let urlString = "https://\(bridge.internalipaddress)/clip/v2/resource/light"
+
+        let delegate = InsecureURLSessionDelegate()
+        let session = URLSession(configuration: .default, delegate: delegate, delegateQueue: nil)
+
+        guard let url = URL(string: urlString) else {
+            print("❌ fetchAllLights: Invalid URL: \(urlString)")
+            return
+        }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.setValue(currentConnectedBridge?.username, forHTTPHeaderField: "hue-application-key")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+
+        print("💡 fetchAllLights: Requesting all lights from \(urlString)")
+
+        do {
+            let (data, response) = try await session.data(for: request)
+
+            if let http = response as? HTTPURLResponse {
+                print("🌐 fetchAllLights: HTTP \(http.statusCode)")
+            }
+
+            do {
+                let response = try JSONDecoder().decode(HueLightsResponse.self, from: data)
+
+                if !response.errors.isEmpty {
+                    let errorMessages = response.errors.map { $0.description }.joined(separator: ", ")
+                    print("❌ fetchAllLights: Hue API v2 errors: \(errorMessages)")
+                    return
+                }
+
+                // Convert array to dictionary by ID
+                lightCache = Dictionary(uniqueKeysWithValues: response.data.map { ($0.id, $0) })
+                saveLightsToStorage()
+                print("✅ fetchAllLights: Success - cached \(lightCache.count) lights")
+
+            } catch {
+                if let responseString = String(data: data, encoding: .utf8) {
+                    print("ℹ️ fetchAllLights: Failed to decode response: \(responseString)")
+                } else {
+                    print("ℹ️ fetchAllLights: Received non-UTF8 data (\(data.count) bytes)")
+                }
+            }
+        } catch {
+            print("❌ fetchAllLights: Network error: \(error.localizedDescription)")
+        }
+    }
+
+    /// Get lights for a room from the cache
+    func getLightsForRoom(_ room: HueRoom) -> [HueLight] {
+        guard let lightChildren = room.children?.filter({ $0.rtype == "light" }) else {
+            return []
+        }
+
+        let lights = lightChildren.compactMap { child -> HueLight? in
+            lightCache[child.rid]
+        }
+
+        print("💡 getLightsForRoom: Retrieved \(lights.count) lights for room '\(room.metadata.name)' from cache")
+        return lights
+    }
+
+    /// Get lights for a zone from the cache
+    func getLightsForZone(_ zone: HueZone) -> [HueLight] {
+        guard let lightChildren = zone.children?.filter({ $0.rtype == "light" }) else {
+            return []
+        }
+
+        let lights = lightChildren.compactMap { child -> HueLight? in
+            lightCache[child.rid]
+        }
+
+        print("💡 getLightsForZone: Retrieved \(lights.count) lights for zone '\(zone.metadata.name)' from cache")
+        return lights
+    }
+
+    /// Extract colors from an array of lights (fallback when no scene is active)
+    func extractColorsFromLights(_ lights: [HueLight]) -> [Color] {
+        let colors = lights.compactMap { light -> Color? in
+            colorForLight(light)
+        }
+
+        print("🎨 extractColorsFromLights: Extracted \(colors.count) colors from \(lights.count) lights")
+        return colors
+    }
+
+    /// Calculate average color from an array of lights
+    func averageColorFromLights(_ lights: [HueLight]) -> Color {
+        let colors = extractColorsFromLights(lights)
+
+        guard !colors.isEmpty else {
+            print("🎨 averageColorFromLights: No colors found, returning gray")
+            return .gray
+        }
+
+        // Convert SwiftUI Colors to RGB components and average them
+        var totalRed: CGFloat = 0
+        var totalGreen: CGFloat = 0
+        var totalBlue: CGFloat = 0
+        var validColors = 0
+
+        for color in colors {
+            // Use UIColor to extract RGB components
+            #if os(watchOS)
+            let uiColor = UIColor(color)
+            var red: CGFloat = 0
+            var green: CGFloat = 0
+            var blue: CGFloat = 0
+            var alpha: CGFloat = 0
+
+            if uiColor.getRed(&red, green: &green, blue: &blue, alpha: &alpha) {
+                totalRed += red
+                totalGreen += green
+                totalBlue += blue
+                validColors += 1
+            }
+            #endif
+        }
+
+        guard validColors > 0 else {
+            print("🎨 averageColorFromLights: Could not extract RGB, returning gray")
+            return .gray
+        }
+
+        let avgRed = totalRed / CGFloat(validColors)
+        let avgGreen = totalGreen / CGFloat(validColors)
+        let avgBlue = totalBlue / CGFloat(validColors)
+
+        print("🎨 averageColorFromLights: Averaged \(validColors) colors -> RGB(\(avgRed), \(avgGreen), \(avgBlue))")
+        return Color(red: avgRed, green: avgGreen, blue: avgBlue)
     }
 
 }

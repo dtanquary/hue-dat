@@ -38,6 +38,12 @@ struct RoomDetailView: View {
     // Error handling
     @State private var showBridgeUnreachableAlert = false
 
+    // Scene picker state
+    @State private var availableScenes: [HueScene] = []
+    @State private var activeSceneId: String?
+    @State private var showScenePicker: Bool = false
+    @State private var backgroundUpdateTrigger: UUID = UUID()
+
     // Computed property to get live room data
     private var room: BridgeManager.HueRoom? {
         bridgeManager.rooms.first(where: { $0.id == roomId })
@@ -79,34 +85,101 @@ struct RoomDetailView: View {
 
     @ViewBuilder
     private func roomContent(for room: BridgeManager.HueRoom) -> some View {
-        ZStack {
-            // Background brightness bar on right side
-            brightnessBar
-                .zIndex(10)
+        GeometryReader { outerGeometry in
+            ZStack {
+                // Layer 1: Single orb background with average light color
+                let lights = bridgeManager.getLightsForRoom(room)
+                let averageColor: Color = lights.isEmpty ? .gray : bridgeManager.averageColorFromLights(lights)
 
-            // Brightness percentage popover (left of bar top)
-            if isAdjustingBrightness && brightness > 0 {
-                brightnessPopover
-                    .zIndex(100)
-                    .transition(.opacity.combined(with: .scale(scale: 0.8)))
-            }
+                // Calculate opacity based on brightness (0-100% brightness -> 0-100% opacity)
+                let orbOpacity: Double = {
+                    if !displayIsOn {
+                        return 0.0 // Near 0% when off
+                    }
+                    // Use optimistic brightness for instant UI updates, fall back to cached data
+                    let cachedBrightness = room.groupedLights?.compactMap { $0.dimming?.brightness }.average() ?? 0
+                    let currentBrightness = optimisticBrightness ?? cachedBrightness
+                    return currentBrightness / 100.0 // Convert brightness (0-100) to opacity (0-1)
+                }()
 
-            // Centered ON/OFF text with tap area
-            VStack {
-                Text(displayIsOn ? "ON" : "OFF")
-                    .font(.system(size: 48, weight: .bold))
-                    .foregroundStyle(displayIsOn ? .yellow : .gray)
-            }
-            .padding(30) // Add padding to create tappable area around text
-            .contentShape(Rectangle()) // Make the padded area tappable
-            .onTapGesture {
-                guard !isTogglingPower else { return } // Read-only during toggle
-                Task {
-                    await togglePower()
+                ColorOrbsBackground(colors: [averageColor], size: .fullscreen)
+                    .opacity(orbOpacity)
+                    .animation(.easeInOut(duration: 0.3), value: orbOpacity)
+                    .zIndex(0)
+                    .id(backgroundUpdateTrigger) // Force re-render when trigger changes
+
+                // Layer 2: Centered ON/OFF text with limited tap area
+                VStack {
+                    Spacer()
+                    Text(displayIsOn ? "ON" : "OFF")
+                        .font(.system(size: 48, weight: .bold))
+                        .foregroundStyle(displayIsOn ? .yellow : .gray)
+                        .fixedSize() // Prevent text truncation
+                        .padding(20)
+                        .contentShape(Circle()) // Circular tap area
+                        .onTapGesture {
+                            guard !isTogglingPower else { return }
+                            Task {
+                                await togglePower()
+                            }
+                        }
+                        .allowsHitTesting(!isTogglingPower)
+                    Spacer()
+                }
+                .zIndex(50)
+
+                // Layer 3: Brightness bar on right side
+                HStack {
+                    Spacer()
+                    brightnessBar
+                        .frame(width: 30) // Fixed width for brightness bar
+                }
+                .zIndex(100)
+
+                // Layer 4: Scenes button in bottom-left corner
+                if !availableScenes.isEmpty {
+                    VStack {
+                        Spacer()
+                        HStack {
+                            Button(action: {
+                                WKInterfaceDevice.current().play(.click)
+                                showScenePicker = true
+                            }) {
+                                Image(systemName: "wand.and.stars")
+                                    .font(.system(size: 16))
+                                    .foregroundColor(.white)
+                            }
+                            .buttonStyle(.plain)
+                            .padding(8)
+                            .glassEffect()
+
+                            Spacer()
+                        }
+                    }
+                    .zIndex(125)
+                    .offset(x: 16, y: 0)
+                }
+
+                // Layer 5: Brightness percentage popover (top layer)
+                if isAdjustingBrightness && brightness > 0 {
+                    brightnessPopover
+                        .zIndex(150)
+                        .transition(.opacity.combined(with: .scale(scale: 0.8)))
+                        .allowsHitTesting(false) // Popover doesn't need interaction
                 }
             }
-            .allowsHitTesting(!isTogglingPower) // Prevent interaction during toggle
-            .zIndex(50)
+        }
+        .sheet(isPresented: $showScenePicker) {
+            ScenePickerView(
+                scenes: availableScenes,
+                activeSceneId: activeSceneId,
+                onSceneSelected: { scene in
+                    Task {
+                        await activateScene(scene)
+                    }
+                },
+                bridgeManager: bridgeManager
+            )
         }
         .focusable()
         .focused($isBrightnessFocused)
@@ -151,6 +224,9 @@ struct RoomDetailView: View {
         .navigationTitle(room.metadata.name)
         .navigationBarTitleDisplayMode(.inline)
         .onAppear {
+            // Print detailed light information for debugging (both grouped and individual lights)
+            bridgeManager.printDetailedLightInfo(for: "Room '\(room.metadata.name)'", groupedLights: room.groupedLights, individualLights: room.lights)
+
             // Initialize UI from cached data only (no API call)
             if let lights = room.groupedLights, !lights.isEmpty {
                 let actualOn = lights.contains { $0.on?.on == true }
@@ -158,6 +234,17 @@ struct RoomDetailView: View {
 
                 if let lightBrightness = lights.compactMap({ $0.dimming?.brightness }).average() {
                     brightness = lightBrightness
+                }
+            }
+
+            // Load scenes for this room
+            Task {
+                availableScenes = await bridgeManager.fetchScenes(forRoomId: roomId)
+
+                // Detect active scene
+                if let activeScene = await bridgeManager.getActiveScene(forRoomId: roomId) {
+                    activeSceneId = activeScene.id
+                    print("🎬 RoomDetailView: Active scene is '\(activeScene.metadata.name)'")
                 }
             }
 
@@ -200,6 +287,16 @@ struct RoomDetailView: View {
 
             // Refresh to get latest state from bridge
             await bridgeManager.refreshSingleRoom(roomId: roomId)
+
+            // Synchronize UI with actual state from bridge
+            if let lights = room.groupedLights, !lights.isEmpty {
+                let actualOn = lights.contains { $0.on?.on == true }
+                displayIsOn = actualOn
+
+                if let lightBrightness = lights.compactMap({ $0.dimming?.brightness }).average() {
+                    brightness = lightBrightness
+                }
+            }
 
         case .failure(let error):
             print("❌ Toggle power failed: \(error.localizedDescription)")
@@ -392,6 +489,40 @@ struct RoomDetailView: View {
                         y: geometry.size.height * CGFloat(1 - brightness / 100) - 12
                     )
             }
+        }
+    }
+
+    // MARK: - Scene Actions
+
+    private func activateScene(_ scene: HueScene) async {
+        print("🎬 Activating scene: \(scene.metadata.name)")
+
+        let result = await bridgeManager.activateScene(scene.id)
+
+        switch result {
+        case .success:
+            print("✅ Scene activated: \(scene.metadata.name)")
+            activeSceneId = scene.id
+
+            // Refresh room to get updated state
+            await bridgeManager.refreshSingleRoom(roomId: roomId)
+
+            // Update UI with new state
+            if let room = room, let lights = room.groupedLights, !lights.isEmpty {
+                let actualOn = lights.contains { $0.on?.on == true }
+                displayIsOn = actualOn
+
+                if let lightBrightness = lights.compactMap({ $0.dimming?.brightness }).average() {
+                    brightness = lightBrightness
+                }
+            }
+
+            // Force background to update with new colors
+            backgroundUpdateTrigger = UUID()
+
+        case .failure(let error):
+            print("❌ Failed to activate scene: \(error.localizedDescription)")
+            showBridgeUnreachableAlert = true
         }
     }
 
