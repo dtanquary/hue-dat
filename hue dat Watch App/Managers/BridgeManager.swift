@@ -2639,4 +2639,112 @@ class BridgeManager: ObservableObject {
         }
     }
 
+    /// Turn off all lights in all rooms and zones
+    func turnOffAllLights() async -> Result<Void, Error> {
+        guard let bridge = currentConnectedBridge else {
+            return .failure(NSError(domain: "BridgeManager", code: -1, userInfo: [NSLocalizedDescriptionKey: "No bridge connected"]))
+        }
+
+        print("🔴 Turning off all lights...")
+
+        let delegate = InsecureURLSessionDelegate()
+        let session = URLSession(configuration: .default, delegate: delegate, delegateQueue: nil)
+
+        // Collect all grouped light IDs from rooms and zones
+        var groupedLightIds: Set<String> = []
+
+        for room in rooms {
+            if let groupedLights = room.groupedLights {
+                for light in groupedLights {
+                    groupedLightIds.insert(light.id)
+                }
+            }
+        }
+
+        for zone in zones {
+            if let groupedLights = zone.groupedLights {
+                for light in groupedLights {
+                    groupedLightIds.insert(light.id)
+                }
+            }
+        }
+
+        guard !groupedLightIds.isEmpty else {
+            print("⚠️ No lights found to turn off")
+            return .success(())
+        }
+
+        print("💡 Found \(groupedLightIds.count) light groups to turn off")
+
+        // Turn off each grouped light in parallel
+        await withTaskGroup(of: Void.self) { group in
+            for lightId in groupedLightIds {
+                group.addTask {
+                    let urlString = "https://\(bridge.bridge.internalipaddress)/clip/v2/resource/grouped_light/\(lightId)"
+                    guard let url = URL(string: urlString) else { return }
+
+                    var request = URLRequest(url: url)
+                    request.httpMethod = "PUT"
+                    request.setValue(bridge.username, forHTTPHeaderField: "hue-application-key")
+                    request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+
+                    let payload: [String: Any] = [
+                        "on": ["on": false]
+                    ]
+
+                    guard let jsonData = try? JSONSerialization.data(withJSONObject: payload) else { return }
+                    request.httpBody = jsonData
+
+                    do {
+                        let (_, response) = try await session.data(for: request)
+                        if let http = response as? HTTPURLResponse {
+                            print("  ✓ Turned off light group \(lightId.prefix(8))... (HTTP \(http.statusCode))")
+                        }
+                    } catch {
+                        print("  ✗ Failed to turn off light group \(lightId.prefix(8))...: \(error.localizedDescription)")
+                    }
+                }
+            }
+        }
+
+        // Update local cache - mark all rooms and zones as off
+        for index in rooms.indices {
+            if var groupedLights = rooms[index].groupedLights {
+                for i in groupedLights.indices {
+                    groupedLights[i] = HueGroupedLight(
+                        id: groupedLights[i].id,
+                        type: groupedLights[i].type,
+                        on: HueGroupedLight.GroupedLightOn(on: false),
+                        dimming: groupedLights[i].dimming,
+                        color_temperature: groupedLights[i].color_temperature,
+                        color: groupedLights[i].color
+                    )
+                }
+                rooms[index].groupedLights = groupedLights
+            }
+        }
+
+        for index in zones.indices {
+            if var groupedLights = zones[index].groupedLights {
+                for i in groupedLights.indices {
+                    groupedLights[i] = HueGroupedLight(
+                        id: groupedLights[i].id,
+                        type: groupedLights[i].type,
+                        on: HueGroupedLight.GroupedLightOn(on: false),
+                        dimming: groupedLights[i].dimming,
+                        color_temperature: groupedLights[i].color_temperature,
+                        color: groupedLights[i].color
+                    )
+                }
+                zones[index].groupedLights = groupedLights
+            }
+        }
+
+        saveRoomsToStorage()
+        saveZonesToStorage()
+
+        print("✅ All lights turned off")
+        return .success(())
+    }
+
 }

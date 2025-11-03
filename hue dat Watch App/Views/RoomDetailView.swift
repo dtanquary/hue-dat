@@ -43,6 +43,7 @@ struct RoomDetailView: View {
     @State private var activeSceneId: String?
     @State private var showScenePicker: Bool = false
     @State private var backgroundUpdateTrigger: UUID = UUID()
+    @State private var optimisticSceneColors: [Color]? = nil  // For instant orb updates when scene selected
 
     // Computed property to get live room data
     private var room: BridgeManager.HueRoom? {
@@ -93,10 +94,13 @@ struct RoomDetailView: View {
         GeometryReader { outerGeometry in
             ZStack {
                 // Layer 1: Single orb background with average light color
+                // Use optimistic scene colors if available (instant feedback when scene selected)
+                // Otherwise fall back to actual light colors
                 let lights = room.lights ?? []
-                let averageColor: Color = lights.isEmpty ? .gray : bridgeManager.averageColorFromLights(lights)
+                let actualColor: Color = lights.isEmpty ? .gray : bridgeManager.averageColorFromLights(lights)
+                let colors = optimisticSceneColors ?? [actualColor]
 
-                ColorOrbsBackground(colors: [averageColor], size: .fullscreen)
+                ColorOrbsBackground(colors: colors, size: .fullscreen)
                     .opacity(orbOpacity)
                     .animation(.easeInOut(duration: 0.3), value: orbOpacity)
                     .zIndex(0)
@@ -264,6 +268,13 @@ struct RoomDetailView: View {
                 if let activeScene = await bridgeManager.getActiveScene(forRoomId: roomId) {
                     activeSceneId = activeScene.id
                     print("🎬 RoomDetailView: Active scene is '\(activeScene.metadata.name)'")
+
+                    // Restore scene colors if a scene is active (persist across navigation)
+                    let sceneColors = bridgeManager.extractColorsFromScene(activeScene)
+                    if !sceneColors.isEmpty {
+                        optimisticSceneColors = sceneColors
+                        print("🎨 RoomDetailView: Restored scene colors for '\(activeScene.metadata.name)'")
+                    }
                 }
             }
 
@@ -294,6 +305,9 @@ struct RoomDetailView: View {
         // Flip UI immediately (optimistic update)
         displayIsOn = !displayIsOn
         isTogglingPower = true
+
+        // Clear scene colors since user is manually controlling the lights
+        optimisticSceneColors = nil
 
         // Send API request
         let result = await setGroupedLightAction(groupedLightId: groupedLight.id, on: displayIsOn, bridge: bridge)
@@ -387,6 +401,9 @@ struct RoomDetailView: View {
 
         isSettingBrightness = true
         defer { isSettingBrightness = false }
+
+        // Clear scene colors since user is manually controlling the lights
+        optimisticSceneColors = nil
 
         // Store previous states for rollback
         let previousDisplayIsOn = displayIsOn
@@ -531,15 +548,29 @@ struct RoomDetailView: View {
     private func activateScene(_ scene: HueScene) async {
         print("🎬 Activating scene: \(scene.metadata.name)")
 
+        // Update orb colors immediately using scene data (no need to wait for network)
+        let sceneColors = bridgeManager.extractColorsFromScene(scene)
+        if !sceneColors.isEmpty {
+            withAnimation(.easeInOut(duration: 0.3)) {
+                optimisticSceneColors = sceneColors
+            }
+        }
+
         let result = await bridgeManager.activateScene(scene.id)
 
         switch result {
         case .success:
             print("✅ Scene activated: \(scene.metadata.name)")
             activeSceneId = scene.id
+            // Keep using scene colors - no need to revert to light data
+            // The scene colors ARE the correct colors for this scene
 
         case .failure(let error):
             print("❌ Failed to activate scene: \(error.localizedDescription)")
+            // Revert optimistic colors on failure
+            withAnimation(.easeInOut(duration: 0.3)) {
+                optimisticSceneColors = nil
+            }
             showBridgeUnreachableAlert = true
         }
     }

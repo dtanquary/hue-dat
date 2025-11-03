@@ -10,11 +10,32 @@ import SwiftUI
 struct SettingsView: View {
     @ObservedObject var bridgeManager: BridgeManager
     @State private var showDisconnectAlert = false
+    @State private var isTurningOffLights = false
+    @State private var hasGivenInitialHaptic = false
+    @State private var hasGivenFinalHaptic = false
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
         NavigationStack {
             List {
+                // All Lights Off Section
+                Section {
+                    Button {
+                        Task {
+                            await turnOffAllLights()
+                        }
+                    } label: {
+                        HStack {
+                            Label("Turn Off All Lights", systemImage: "lightbulb.slash")
+                            Spacer()
+                            if isTurningOffLights {
+                                ProgressView()
+                            }
+                        }
+                    }
+                    .disabled(isTurningOffLights || bridgeManager.connectedBridge == nil)
+                }
+
                 // Bridge Connection Section
                 Section("Bridge Connection") {
                     if let bridge = bridgeManager.connectedBridge {
@@ -68,6 +89,42 @@ struct SettingsView: View {
             } message: {
                 Text("Are you sure you want to disconnect? You'll need to set up the connection again.")
             }
+        }
+    }
+
+    // MARK: - Actions
+
+    private func turnOffAllLights() async {
+        // Give initial haptic feedback
+        if !hasGivenInitialHaptic {
+            WKInterfaceDevice.current().play(.start)
+            hasGivenInitialHaptic = true
+        }
+
+        isTurningOffLights = true
+
+        let result = await bridgeManager.turnOffAllLights()
+
+        switch result {
+        case .success:
+            // Give success haptic
+            if !hasGivenFinalHaptic {
+                WKInterfaceDevice.current().play(.success)
+                hasGivenFinalHaptic = true
+            }
+
+        case .failure(let error):
+            print("❌ Failed to turn off all lights: \(error.localizedDescription)")
+            // Give failure haptic
+            WKInterfaceDevice.current().play(.failure)
+        }
+
+        isTurningOffLights = false
+
+        // Reset haptic flags after a delay
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+            hasGivenInitialHaptic = false
+            hasGivenFinalHaptic = false
         }
     }
 }
