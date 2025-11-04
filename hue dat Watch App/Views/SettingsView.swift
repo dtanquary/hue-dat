@@ -28,8 +28,6 @@ struct SettingsView: View {
                 Text("Turn Off All Lights")
                     .font(.headline)
             }
-
-            Spacer()
         }
         .padding(.vertical, 10)
         

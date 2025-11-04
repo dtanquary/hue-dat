@@ -804,7 +804,10 @@ class BridgeManager: ObservableObject {
         let urlString = "https://\(bridge.internalipaddress)/clip/v2/resource"
 
         let delegate = InsecureURLSessionDelegate()
-        let session = URLSession(configuration: .default, delegate: delegate, delegateQueue: nil)
+        var config = URLSessionConfiguration.default
+        config.timeoutIntervalForRequest = 10.0  // 10 second timeout for local network
+        config.timeoutIntervalForResource = 30.0
+        let session = URLSession(configuration: config, delegate: delegate, delegateQueue: nil)
 
         guard let url = URL(string: urlString) else {
             print("❌ validateConnection: Invalid URL: \(urlString)")
@@ -916,7 +919,10 @@ class BridgeManager: ObservableObject {
         let urlString = "https://\(bridge.internalipaddress)/clip/v2/resource/room"
 
         let delegate = InsecureURLSessionDelegate()
-        let session = URLSession(configuration: .default, delegate: delegate, delegateQueue: nil)
+        var config = URLSessionConfiguration.default
+        config.timeoutIntervalForRequest = 10.0  // 10 second timeout for local network
+        config.timeoutIntervalForResource = 30.0
+        let session = URLSession(configuration: config, delegate: delegate, delegateQueue: nil)
 
         guard let url = URL(string: urlString) else {
             print("❌ getRooms: Invalid URL: \(urlString)")
@@ -1571,7 +1577,10 @@ class BridgeManager: ObservableObject {
         let urlString = "https://\(bridge.internalipaddress)/clip/v2/resource/zone"
 
         let delegate = InsecureURLSessionDelegate()
-        let session = URLSession(configuration: .default, delegate: delegate, delegateQueue: nil)
+        var config = URLSessionConfiguration.default
+        config.timeoutIntervalForRequest = 10.0  // 10 second timeout for local network
+        config.timeoutIntervalForResource = 30.0
+        let session = URLSession(configuration: config, delegate: delegate, delegateQueue: nil)
 
         guard let url = URL(string: urlString) else {
             print("❌ getZones: Invalid URL: \(urlString)")

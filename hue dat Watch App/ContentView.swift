@@ -12,6 +12,8 @@ struct ContentView: View {
     @StateObject private var bridgeManager = BridgeManager()
     @Environment(\.scenePhase) private var scenePhase
     @State private var navigationPath = NavigationPath()
+    @State private var showConnectionFailedAlert = false
+    @State private var connectionFailureMessage = ""
 
     var body: some View {
         NavigationStack(path: $navigationPath) {
@@ -51,11 +53,26 @@ struct ContentView: View {
                 }
             case .failure(let message):
                 print("❌ ContentView: Bridge connection validation failed: \(message)")
+                // Store failure message and show alert
+                connectionFailureMessage = message
+                showConnectionFailedAlert = true
                 // Navigate back to setup view
                 if !navigationPath.isEmpty {
                     navigationPath.removeLast(navigationPath.count)
                 }
             }
+        }
+        .alert("Bridge Connection Failed", isPresented: $showConnectionFailedAlert) {
+            Button("Retry") {
+                Task {
+                    await bridgeManager.validateConnection()
+                }
+            }
+            Button("Disconnect Bridge", role: .destructive) {
+                bridgeManager.disconnectBridge()
+            }
+        } message: {
+            Text(connectionFailureMessage.isEmpty ? "Unable to connect to your Hue bridge. The bridge may have a new IP address or be unreachable." : connectionFailureMessage)
         }
         .onChange(of: bridgeManager.connectedBridge) { oldValue, newValue in
             // When bridge is disconnected, navigate back to setup view

@@ -13,6 +13,7 @@ struct RoomsAndZonesListView: View {
     @State private var hasLoadedData = false
     @State private var rotationAngle: Double = 0
     @State private var showSettings = false
+    @State private var showNetworkErrorAlert = false
 
     // Dynamic Type scaled metrics
     @ScaledMetric(relativeTo: .body) private var emptyStateSpacing: CGFloat = 12
@@ -122,6 +123,34 @@ struct RoomsAndZonesListView: View {
             // After that, user must manually refresh via toolbar button
             if !hasLoadedData {
                 await refreshData()
+            }
+        }
+        .alert("Unable to Load Rooms & Zones", isPresented: $showNetworkErrorAlert) {
+            Button("Retry") {
+                Task {
+                    await refreshData()
+                }
+            }
+            Button("Disconnect Bridge", role: .destructive) {
+                bridgeManager.disconnectBridge()
+                // Navigation to MainMenuView happens automatically via ContentView
+            }
+            Button("Cancel", role: .cancel) { }
+        } message: {
+            Text(bridgeManager.refreshError ?? "Please check your network connection or try disconnecting and reconnecting to the bridge.")
+        }
+        .onChange(of: bridgeManager.refreshError) { _, newError in
+            // Only show alert if error occurs and we've attempted to load data
+            if newError != nil && hasLoadedData {
+                showNetworkErrorAlert = true
+            }
+        }
+        .onChange(of: bridgeManager.connectedBridge) { oldBridge, newBridge in
+            // When bridge connection changes (disconnect or new bridge), reset state and reload
+            if let newBridge = newBridge, oldBridge?.bridge.id != newBridge.bridge.id {
+                print("🔄 New bridge detected, resetting view state and loading fresh data")
+                hasLoadedData = false
+                // The .task modifier will trigger automatically when hasLoadedData changes
             }
         }
     }
