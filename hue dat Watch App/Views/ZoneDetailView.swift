@@ -297,8 +297,7 @@ struct ZoneDetailView: View {
         guard !isSettingBrightness else { return }
 
         guard let zone = zone,
-              let groupedLight = zone.groupedLights?.first,
-              let bridge = bridgeManager.connectedBridge else { return }
+              let groupedLight = zone.groupedLights?.first else { return }
 
         // Store current state for rollback
         let previousState = displayIsOn
@@ -316,8 +315,8 @@ struct ZoneDetailView: View {
         // Clear scene colors since user is manually controlling the lights
         optimisticSceneColors = nil
 
-        // Send API request
-        let result = await setGroupedLightAction(groupedLightId: groupedLight.id, on: displayIsOn, bridge: bridge)
+        // Send API request using BridgeManager (automatically throttled)
+        let result = await bridgeManager.setGroupedLightPower(id: groupedLight.id, on: displayIsOn)
 
         switch result {
         case .success:
@@ -373,38 +372,16 @@ struct ZoneDetailView: View {
     }
 
     private func throttledSetBrightness(_ value: Double) {
-        let now = Date()
-        let timeSinceLastUpdate = now.timeIntervalSince(lastBrightnessUpdate)
-        let throttleInterval: TimeInterval = 0.3 // 300ms throttle
-
-        if timeSinceLastUpdate >= throttleInterval {
-            // Enough time has passed, apply immediately
-            lastBrightnessUpdate = now
-            Task {
-                await setBrightness(value)
-            }
-        } else {
-            // Too soon, schedule for later
-            pendingBrightness = value
-            throttleTimer?.invalidate()
-
-            let remainingTime = throttleInterval - timeSinceLastUpdate
-            throttleTimer = Timer.scheduledTimer(withTimeInterval: remainingTime, repeats: false) { _ in
-                if let pending = self.pendingBrightness {
-                    self.lastBrightnessUpdate = Date()
-                    self.pendingBrightness = nil
-                    Task {
-                        await self.setBrightness(pending)
-                    }
-                }
-            }
+        // Throttling is now handled by BridgeManager.sendGroupedLightCommand()
+        // Simply call setBrightness - no need for view-level throttling
+        Task {
+            await setBrightness(value)
         }
     }
 
     private func setBrightness(_ value: Double) async {
         guard let zone = zone,
-              let groupedLight = zone.groupedLights?.first,
-              let bridge = bridgeManager.connectedBridge else { return }
+              let groupedLight = zone.groupedLights?.first else { return }
 
         isSettingBrightness = true
         defer { isSettingBrightness = false }
@@ -416,44 +393,30 @@ struct ZoneDetailView: View {
         let previousDisplayIsOn = displayIsOn
         previousBrightness = lightStatus
 
-        // If light is OFF, we need to turn it ON first, then set brightness
+        // If light is OFF, we need to turn it ON first with the target brightness
         if !displayIsOn {
             // Optimistic updates for turning on + setting brightness
             displayIsOn = true
             optimisticBrightness = value
 
-            // Turn on the light first
-            let turnOnResult = await setGroupedLightAction(groupedLightId: groupedLight.id, on: true, bridge: bridge)
+            // Use combined method (single API call with throttling)
+            let result = await bridgeManager.setGroupedLightPowerAndBrightness(id: groupedLight.id, on: true, brightness: value)
 
-            switch turnOnResult {
+            switch result {
             case .success:
-                // Now set the brightness to target value
-                let setBrightnessResult = await setGroupedLightAction(groupedLightId: groupedLight.id, brightness: value, bridge: bridge)
+                // Update local state in BridgeManager so list view reflects the change
+                bridgeManager.updateLocalZoneState(zoneId: zoneId, on: true, brightness: value)
 
-                switch setBrightnessResult {
-                case .success:
-                    // Update local state in BridgeManager so list view reflects the change
-                    bridgeManager.updateLocalZoneState(zoneId: zoneId, on: true, brightness: value)
-
-                    // Clear optimistic state
-                    optimisticBrightness = nil
-                    // Success haptic
-                    if !hasGivenFinalBrightnessHaptic {
-                        WKInterfaceDevice.current().play(.success)
-                        hasGivenFinalBrightnessHaptic = true
-                    }
-
-                case .failure(let error):
-                    print("❌ Set brightness failed: \(error.localizedDescription)")
-                    // Revert to previous state
-                    displayIsOn = previousDisplayIsOn
-                    optimisticBrightness = previousBrightness
-                    // Error haptic
-                    WKInterfaceDevice.current().play(.failure)
+                // Clear optimistic state
+                optimisticBrightness = nil
+                // Success haptic
+                if !hasGivenFinalBrightnessHaptic {
+                    WKInterfaceDevice.current().play(.success)
+                    hasGivenFinalBrightnessHaptic = true
                 }
 
             case .failure(let error):
-                print("❌ Turn on failed: \(error.localizedDescription)")
+                print("❌ Set power and brightness failed: \(error.localizedDescription)")
                 // Revert to previous state
                 displayIsOn = previousDisplayIsOn
                 optimisticBrightness = previousBrightness
@@ -465,7 +428,7 @@ struct ZoneDetailView: View {
             // Optimistic update
             optimisticBrightness = value
 
-            let result = await setGroupedLightAction(groupedLightId: groupedLight.id, brightness: value, bridge: bridge)
+            let result = await bridgeManager.setGroupedLightBrightness(id: groupedLight.id, brightness: value)
 
             switch result {
             case .success:
@@ -583,50 +546,8 @@ struct ZoneDetailView: View {
     }
 
     // MARK: - Actions
+    // Note: Light control actions now use centralized BridgeManager methods
+    // (setGroupedLightPower, setGroupedLightBrightness, setGroupedLightPowerAndBrightness)
+    // which provide automatic rate limiting (1 command/sec for grouped lights)
 
-    private func setGroupedLightAction(groupedLightId: String, on: Bool? = nil, brightness: Double? = nil, bridge: BridgeConnectionInfo) async -> Result<Void, Error> {
-        let urlString = "https://\(bridge.bridge.internalipaddress)/clip/v2/resource/grouped_light/\(groupedLightId)"
-
-        let delegate = InsecureURLSessionDelegate()
-        let session = URLSession(configuration: .default, delegate: delegate, delegateQueue: nil)
-
-        guard let url = URL(string: urlString) else {
-            return .failure(NSError(domain: "ZoneDetailView", code: -1, userInfo: [NSLocalizedDescriptionKey: "Invalid URL"]))
-        }
-
-        var request = URLRequest(url: url)
-        request.httpMethod = "PUT"
-        request.setValue(bridge.username, forHTTPHeaderField: "hue-application-key")
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-
-        var payload: [String: Any] = [:]
-        if let on = on {
-            payload["on"] = ["on": on]
-        }
-        if let brightness = brightness {
-            payload["dimming"] = ["brightness": brightness]
-        }
-
-        do {
-            request.httpBody = try JSONSerialization.data(withJSONObject: payload)
-            let (data, response) = try await session.data(for: request)
-
-            if let responseString = String(data: data, encoding: .utf8) {
-                print("Action response: \(responseString)")
-            }
-
-            // Parse response to check for errors
-            if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-               let errors = json["errors"] as? [[String: Any]],
-               !errors.isEmpty {
-                let errorDesc = errors.first?["description"] as? String ?? "Unknown error"
-                return .failure(NSError(domain: "HueBridge", code: -1, userInfo: [NSLocalizedDescriptionKey: errorDesc]))
-            }
-
-            return .success(())
-        } catch {
-            print("Failed to set light action: \(error)")
-            return .failure(error)
-        }
-    }
 }

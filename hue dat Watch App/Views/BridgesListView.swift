@@ -54,13 +54,26 @@ struct BridgesListView: View {
                 .accessibilityLabel("Register with bridge \(bridge.displayName)")
             }
             .navigationTitle("Bridges")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button("Done") {
-                        dismiss()
+            .navigationBarTitleDisplayMode(.automatic)
+        }
+        .toolbar {
+            ToolbarItem(placement: .topBarLeading) {
+                Button {
+                    /*showSettings = true*/
+                } label: {
+                    Image(systemName: "gear")
+                }
+            }
+
+            ToolbarItem(placement: .topBarTrailing) {
+                Button {
+                    /*
+                    Task {
+                        await refreshData()
                     }
-                    .disabled(registrationService.hasActiveRegistration)
+                     */
+                } label: {
+                    Image(systemName: "arrow.clockwise.circle.fill")
                 }
             }
         }

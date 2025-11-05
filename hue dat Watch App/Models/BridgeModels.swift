@@ -15,7 +15,8 @@ struct BridgeInfo: Codable, Identifiable, Equatable {
     let serviceName: String?
     
     var displayAddress: String {
-        return "\(internalipaddress):\(port)"
+        /*return "\(internalipaddress):\(port)"*/
+        return "\(internalipaddress)"
     }
     
     var shortId: String {

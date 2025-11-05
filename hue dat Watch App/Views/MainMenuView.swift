@@ -11,6 +11,9 @@ struct MainMenuView: View {
     @ObservedObject var bridgeManager: BridgeManager
     @StateObject private var discoveryService = BridgeDiscoveryService()
     @State private var showBridgesList = false
+    @State private var showManualEntry = false
+    @State private var showRegistrationForManualBridge = false
+    @State private var manualBridgeInfo: BridgeInfo?
 
     var body: some View {
         Group {
@@ -19,10 +22,10 @@ struct MainMenuView: View {
                 VStack {
                     ProgressView()
                         .progressViewStyle(.circular)
-                        .scaleEffect(1.2)
+                        .scaleEffect(3.0)
                 }
                 .navigationTitle("Hue Control")
-                .navigationBarTitleDisplayMode(.inline)
+                .navigationBarTitleDisplayMode(.automatic)
             } else {
                 // Not connected - show discovery
                 ScrollView {
@@ -52,7 +55,22 @@ struct MainMenuView: View {
                             .disabled(discoveryService.isLoading)
                             .accessibilityLabel("Discover Hue bridges on network")
                             .glassEffect()
+                            
+                            Button {
+                                showManualEntry = true
+                            } label: {
+                                HStack {
+                                    Image(systemName: "plus")
+                                    Text("Manually Add Bridge")
+                                }
+                                .frame(maxWidth: .infinity)
+                                .padding()
+                            }
+                            .disabled(discoveryService.isLoading)
+                            .accessibilityLabel("Manually add a Hue bridge on your network")
+                            .glassEffect()
 
+                            /*
                             // Tappable bridge count
                             if !discoveryService.discoveredBridges.isEmpty && !discoveryService.isLoading {
                                 Button {
@@ -63,15 +81,15 @@ struct MainMenuView: View {
                                         .foregroundStyle(.secondary)
                                         .underline()
                                 }
-                                .buttonStyle(.plain)
                                 .accessibilityLabel("Show \(discoveryService.discoveredBridges.count) discovered bridge\(discoveryService.discoveredBridges.count == 1 ? "" : "s")")
                             }
+                             */
                         }
                     }
                     .padding()
                 }
                 .navigationTitle("Hue Control")
-                .navigationBarTitleDisplayMode(.inline)
+                .navigationBarTitleDisplayMode(.automatic)
             }
         }
         .sheet(isPresented: $showBridgesList, onDismiss: {
@@ -81,6 +99,17 @@ struct MainMenuView: View {
             }
         }) {
             BridgesListView(bridges: discoveryService.discoveredBridges, bridgeManager: bridgeManager)
+        }
+        .sheet(isPresented: $showManualEntry) {
+            ManualBridgeEntryView { bridgeInfo in
+                manualBridgeInfo = bridgeInfo
+                showRegistrationForManualBridge = true
+            }
+        }
+        .sheet(isPresented: $showRegistrationForManualBridge) {
+            if let bridge = manualBridgeInfo {
+                BridgesListView(bridges: [bridge], bridgeManager: bridgeManager)
+            }
         }
         .alert("Discovery Error", isPresented: Binding(
             get: { discoveryService.error != nil },
