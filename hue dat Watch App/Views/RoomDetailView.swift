@@ -279,8 +279,8 @@ struct RoomDetailView: View {
             return
         }
 
-        guard let room = room,
-              let groupedLight = room.groupedLights?.first else {
+        guard let currentRoom = room,
+              let groupedLight = currentRoom.groupedLights?.first else {
             print("❌ togglePower blocked: room=\(room != nil), groupedLights=\(room?.groupedLights != nil), count=\(room?.groupedLights?.count ?? 0)")
             return
         }
@@ -358,8 +358,8 @@ struct RoomDetailView: View {
     }
 
     private func setBrightness(_ value: Double) async {
-        guard let room = room,
-              let groupedLight = room.groupedLights?.first else { return }
+        guard let currentRoom = room,
+              let groupedLight = currentRoom.groupedLights?.first else { return }
 
         isSettingBrightness = true
         defer { isSettingBrightness = false }
