@@ -76,15 +76,26 @@ struct RoomsAndZonesListView: View {
             }
 
             ToolbarItem(placement: .topBarTrailing) {
-                Button {
-                    Task {
-                        await refreshData()
+                HStack(spacing: 8) {
+                    // SSE connection indicator (subtle)
+                    if bridgeManager.isSSEConnected {
+                        Image(systemName: "antenna.radiowaves.left.and.right")
+                            .font(.caption2)
+                            .foregroundStyle(.green)
+                            .opacity(0.6)
                     }
-                } label: {
-                    Image(systemName: isRefreshing ? "arrow.clockwise.circle.fill" : "arrow.clockwise")
-                        .rotationEffect(.degrees(rotationAngle))
+
+                    // Refresh button
+                    Button {
+                        Task {
+                            await refreshData()
+                        }
+                    } label: {
+                        Image(systemName: isRefreshing ? "arrow.clockwise.circle.fill" : "arrow.clockwise")
+                            .rotationEffect(.degrees(rotationAngle))
+                    }
+                    .disabled(isRefreshing)
                 }
-                .disabled(isRefreshing)
             }
         }
         .sheet(isPresented: $showSettings) {

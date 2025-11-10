@@ -133,6 +133,9 @@ actor HueAPIService {
     // Combine publisher for stream state changes (thread-safe)
     let streamStateSubject = PassthroughSubject<StreamState, Never>()
 
+    // Combine publisher for parsed SSE events (thread-safe)
+    let eventPublisher = PassthroughSubject<[SSEEvent], Never>()
+
     // Rate limiting state
     private var lastGroupedLightUpdate: [String: Date] = [:] // Track per-light last update
     private let groupedLightRateLimit: TimeInterval = 1.0 // 1 second between updates for grouped lights
@@ -609,10 +612,22 @@ actor HueAPIService {
             for try await line in bytes.lines {
                 // Parse SSE format
                 if line.hasPrefix("data:") {
-                    let data = String(line.dropFirst(5).trimmingCharacters(in: .whitespaces))
-                    if !data.isEmpty {
-                        print("📦 Event data: \(data)")
-                        // TODO: Parse JSON and publish structured events
+                    let jsonString = String(line.dropFirst(5).trimmingCharacters(in: .whitespaces))
+                    if !jsonString.isEmpty {
+                        // Parse JSON data and publish events
+                        if let jsonData = jsonString.data(using: .utf8) {
+                            do {
+                                let events = try JSONDecoder().decode([SSEEvent].self, from: jsonData)
+                                if !events.isEmpty {
+                                    print("📦 Parsed \(events.count) SSE event(s)")
+                                    // Publish to subscribers
+                                    eventPublisher.send(events)
+                                }
+                            } catch {
+                                print("⚠️ Failed to parse SSE event JSON: \(error)")
+                                print("  Raw data: \(jsonString.prefix(200))...")
+                            }
+                        }
                     }
                 } else if line.hasPrefix(":") {
                     // SSE comment (keepalive) - ignore

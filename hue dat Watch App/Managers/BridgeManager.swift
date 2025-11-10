@@ -35,6 +35,13 @@ class BridgeManager: ObservableObject {
         connectionValidationSubject.eraseToAnyPublisher()
     }
 
+    // SSE event handling
+    private var eventSubscription: AnyCancellable?
+    private var streamStateSubscription: AnyCancellable?
+    @Published var isSSEConnected: Bool = false
+    var reconnectAttempts = 0  // Internal so ContentView can reset on successful connection
+    private let maxReconnectAttempts = 5
+
     private let userDefaults = UserDefaults.standard
     private let connectedBridgeKey = "ConnectedBridge"
     private let cachedRoomsKey = "CachedRooms"
@@ -110,7 +117,211 @@ class BridgeManager: ObservableObject {
         scenes = []
         print("🔌 Bridge disconnected and cleared from storage")
     }
-    
+
+    // MARK: - SSE Event Processing
+
+    /// Maps grouped_light ID to room ID for fast lookup
+    private var groupedLightToRoomMap: [String: String] {
+        var map: [String: String] = [:]
+        for room in rooms {
+            if let services = room.services,
+               let groupedLightService = services.first(where: { $0.rtype == "grouped_light" }) {
+                map[groupedLightService.rid] = room.id
+            }
+        }
+        return map
+    }
+
+    /// Maps grouped_light ID to zone ID for fast lookup
+    private var groupedLightToZoneMap: [String: String] {
+        var map: [String: String] = [:]
+        for zone in zones {
+            if let services = zone.services,
+               let groupedLightService = services.first(where: { $0.rtype == "grouped_light" }) {
+                map[groupedLightService.rid] = zone.id
+            }
+        }
+        return map
+    }
+
+    /// Start listening to SSE events from HueAPIService
+    func startListeningToSSEEvents() {
+        print("📡 Starting SSE event listener")
+
+        // Use Task to access actor-isolated properties
+        Task {
+            let service = HueAPIService.shared
+
+            // Subscribe to event publisher using Combine
+            await MainActor.run {
+                eventSubscription = service.eventPublisher
+                    .receive(on: DispatchQueue.main)
+                    .sink { [weak self] events in
+                        guard let self = self else { return }
+                        Task {
+                            await self.processSSEEvents(events)
+                        }
+                    }
+
+                // Subscribe to stream state changes using Combine
+                streamStateSubscription = service.streamStateSubject
+                    .receive(on: DispatchQueue.main)
+                    .sink { [weak self] state in
+                        guard let self = self else { return }
+
+                        // Update connection status
+                        self.isSSEConnected = (state == .connected)
+
+                        // Handle disconnections with auto-reconnect
+                        if case .disconnected = state, self.reconnectAttempts < self.maxReconnectAttempts {
+                            Task {
+                                await self.handleReconnection()
+                            }
+                        }
+                    }
+            }
+        }
+    }
+
+    /// Stop listening to SSE events
+    func stopListeningToSSEEvents() {
+        print("🛑 Stopping SSE event listener")
+        eventSubscription?.cancel()
+        streamStateSubscription?.cancel()
+        eventSubscription = nil
+        streamStateSubscription = nil
+    }
+
+    /// Process incoming SSE events and update local state
+    private func processSSEEvents(_ events: [SSEEvent]) async {
+        let relevantUpdates = events.relevantUpdates
+
+        guard !relevantUpdates.isEmpty else { return }
+
+        print("🔄 Processing \(relevantUpdates.count) relevant event(s)")
+
+        for eventData in relevantUpdates {
+            switch eventData.resourceType {
+            case .groupedLight:
+                await handleGroupedLightUpdate(eventData)
+            case .room:
+                await handleRoomUpdate(eventData)
+            case .zone:
+                await handleZoneUpdate(eventData)
+            case .scene:
+                await handleSceneUpdate(eventData)
+            default:
+                break
+            }
+        }
+    }
+
+    /// Handle grouped_light update event
+    private func handleGroupedLightUpdate(_ data: SSEEventData) async {
+        print("💡 Grouped light update: \(data.debugDescription)")
+
+        let groupedLightId = data.id
+
+        // Check if this grouped light belongs to a room
+        if let roomId = groupedLightToRoomMap[groupedLightId] {
+            // Extract state changes
+            let on = data.on?.on
+            let brightness = data.dimming?.brightness
+
+            // Update local room state
+            await MainActor.run {
+                updateLocalRoomState(roomId: roomId, on: on, brightness: brightness)
+            }
+            print("  ✓ Updated room \(roomId)")
+        }
+
+        // Check if this grouped light belongs to a zone
+        if let zoneId = groupedLightToZoneMap[groupedLightId] {
+            // Extract state changes
+            let on = data.on?.on
+            let brightness = data.dimming?.brightness
+
+            // Update local zone state
+            await MainActor.run {
+                updateLocalZoneState(zoneId: zoneId, on: on, brightness: brightness)
+            }
+            print("  ✓ Updated zone \(zoneId)")
+        }
+    }
+
+    /// Handle room metadata update event
+    private func handleRoomUpdate(_ data: SSEEventData) async {
+        print("🏠 Room update: \(data.debugDescription)")
+
+        let roomId = data.id
+
+        // Check if we need to update metadata
+        if let metadata = data.metadata, let name = metadata.name {
+            await MainActor.run {
+                if let index = rooms.firstIndex(where: { $0.id == roomId }) {
+                    var updatedRoom = rooms[index]
+                    // Create new metadata with updated values
+                    let archetype = metadata.archetype ?? updatedRoom.metadata.archetype
+                    updatedRoom.metadata = HueRoom.RoomMetadata(name: name, archetype: archetype)
+                    rooms[index] = updatedRoom
+                    print("  ✓ Updated room '\(name)' metadata")
+                }
+            }
+        }
+    }
+
+    /// Handle zone metadata update event
+    private func handleZoneUpdate(_ data: SSEEventData) async {
+        print("🗺️ Zone update: \(data.debugDescription)")
+
+        let zoneId = data.id
+
+        // Check if we need to update metadata
+        if let metadata = data.metadata, let name = metadata.name {
+            await MainActor.run {
+                if let index = zones.firstIndex(where: { $0.id == zoneId }) {
+                    var updatedZone = zones[index]
+                    // Create new metadata with updated values
+                    let archetype = metadata.archetype ?? updatedZone.metadata.archetype
+                    updatedZone.metadata = HueZone.ZoneMetadata(name: name, archetype: archetype)
+                    zones[index] = updatedZone
+                    print("  ✓ Updated zone '\(name)' metadata")
+                }
+            }
+        }
+    }
+
+    /// Handle scene status update event
+    private func handleSceneUpdate(_ data: SSEEventData) async {
+        print("🎬 Scene update: \(data.debugDescription)")
+
+        // Log scene activation/deactivation for debugging
+        if let status = data.status?.active {
+            print("  ✓ Scene \(data.id.prefix(8)) is now: \(status)")
+        }
+    }
+
+    /// Handle auto-reconnection with exponential backoff
+    private func handleReconnection() async {
+        reconnectAttempts += 1
+        let delay = min(pow(2.0, Double(reconnectAttempts - 1)), 16.0) // 1s, 2s, 4s, 8s, 16s max
+
+        print("🔄 SSE disconnected. Reconnecting in \(Int(delay))s (attempt \(reconnectAttempts)/\(maxReconnectAttempts))")
+
+        try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
+
+        // Restart the SSE stream
+        do {
+            try await HueAPIService.shared.startEventStream()
+            print("✅ SSE stream reconnected")
+            await MainActor.run {
+                reconnectAttempts = 0  // Reset on success
+            }
+        } catch {
+            print("❌ Failed to reconnect SSE stream: \(error)")
+        }
+    }
+
     private func loadConnectedBridge() {
         print("🔍 Loading bridge connection from UserDefaults...")
         
@@ -246,7 +457,7 @@ class BridgeManager: ObservableObject {
     struct HueRoom: Codable, Identifiable, Equatable, Hashable {
         let id: String
         let type: String
-        let metadata: RoomMetadata
+        var metadata: RoomMetadata
         var children: [HueRoomChild]?
         var services: [HueRoomService]?
         var groupedLights: [HueGroupedLight]?
@@ -439,7 +650,7 @@ class BridgeManager: ObservableObject {
     struct HueZone: Codable, Identifiable, Equatable, Hashable {
         let id: String
         let type: String
-        let metadata: ZoneMetadata
+        var metadata: ZoneMetadata
         var children: [HueZoneChild]?
         var services: [HueZoneService]?
         var groupedLights: [HueGroupedLight]?

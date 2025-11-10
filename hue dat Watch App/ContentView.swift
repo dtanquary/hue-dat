@@ -36,11 +36,23 @@ struct ContentView: View {
             }
         }
         .onChange(of: scenePhase) { oldPhase, newPhase in
-            // When the scene becomes active again, re-validate the connection and reconnect SSE stream
-            if newPhase == .active, bridgeManager.connectedBridge != nil {
-                Task {
-                    await bridgeManager.validateConnection()
-                    await startSSEStream()
+            // Handle app lifecycle for SSE connection
+            if bridgeManager.connectedBridge != nil {
+                switch newPhase {
+                case .active:
+                    // App became active - re-validate and reconnect SSE stream
+                    Task {
+                        await bridgeManager.validateConnection()
+                        await startSSEStream()
+                    }
+                case .background:
+                    // App going to background - stop SSE to save battery
+                    stopSSEStream()
+                case .inactive:
+                    // Transitional state - no action needed
+                    break
+                @unknown default:
+                    break
                 }
             }
         }
@@ -108,11 +120,32 @@ struct ContentView: View {
         }
 
         await HueAPIService.shared.setup(baseUrl: baseUrl, hueApplicationKey: username)
+
+        // Start event listener before starting stream
+        await MainActor.run {
+            bridgeManager.startListeningToSSEEvents()
+        }
+
         do {
             try await HueAPIService.shared.startEventStream()
             print("✅ SSE stream connected")
+            // Reset reconnection attempts on successful connection
+            await MainActor.run {
+                bridgeManager.reconnectAttempts = 0
+            }
         } catch {
             print("❌ Failed to start SSE stream: \(error)")
+        }
+    }
+
+    /// Stop the SSE event stream
+    private func stopSSEStream() {
+        Task {
+            await HueAPIService.shared.stopEventStream()
+            await MainActor.run {
+                bridgeManager.stopListeningToSSEEvents()
+            }
+            print("🛑 SSE stream stopped")
         }
     }
 }
