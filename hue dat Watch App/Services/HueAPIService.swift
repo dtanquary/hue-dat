@@ -133,6 +133,11 @@ actor HueAPIService {
     // Combine publisher for stream state changes (thread-safe)
     let streamStateSubject = PassthroughSubject<StreamState, Never>()
 
+    // Rate limiting state
+    private var lastGroupedLightUpdate: [String: Date] = [:] // Track per-light last update
+    private let groupedLightRateLimit: TimeInterval = 1.0 // 1 second between updates for grouped lights
+    private let individualLightRateLimit: TimeInterval = 0.1 // 10 per second for individual lights
+
     init() {
         let config = URLSessionConfiguration.default
         config.httpMaximumConnectionsPerHost = 1
@@ -322,11 +327,33 @@ actor HueAPIService {
 
     // MARK: - Control Methods
 
+    /// Check and enforce rate limit for grouped light
+    /// Returns: true if request should proceed, false if rate limited
+    private func checkGroupedLightRateLimit(groupedLightId: String) async -> Bool {
+        let now = Date()
+
+        if let lastUpdate = lastGroupedLightUpdate[groupedLightId] {
+            let timeSinceLastUpdate = now.timeIntervalSince(lastUpdate)
+            if timeSinceLastUpdate < groupedLightRateLimit {
+                // Rate limited - wait for remaining time
+                let waitTime = groupedLightRateLimit - timeSinceLastUpdate
+                print("⏱️ Rate limiting grouped light \(groupedLightId): waiting \(String(format: "%.1f", waitTime))s")
+                try? await Task.sleep(nanoseconds: UInt64(waitTime * 1_000_000_000))
+            }
+        }
+
+        lastGroupedLightUpdate[groupedLightId] = Date()
+        return true
+    }
+
     /// Set power state for a grouped light (room or zone)
     /// - Parameters:
     ///   - groupedLightId: The grouped light ID from room/zone services
     ///   - on: true to turn on, false to turn off
     func setPower(groupedLightId: String, on: Bool) async throws {
+        // Enforce rate limit
+        _ = await checkGroupedLightRateLimit(groupedLightId: groupedLightId)
+
         guard let url = URL(string: "https://\(baseURL)/clip/v2/resource/grouped_light/\(groupedLightId)") else {
             throw HueAPIError.invalidURL
         }
@@ -366,6 +393,9 @@ actor HueAPIService {
     ///   - groupedLightId: The grouped light ID from room/zone services
     ///   - brightness: Brightness percentage (0.0 to 100.0)
     func setBrightness(groupedLightId: String, brightness: Double) async throws {
+        // Enforce rate limit
+        _ = await checkGroupedLightRateLimit(groupedLightId: groupedLightId)
+
         guard let url = URL(string: "https://\(baseURL)/clip/v2/resource/grouped_light/\(groupedLightId)") else {
             throw HueAPIError.invalidURL
         }
@@ -405,6 +435,9 @@ actor HueAPIService {
     ///   - groupedLightId: The grouped light ID from room/zone services
     ///   - delta: Relative brightness change (-100.0 to +100.0)
     func adjustBrightness(groupedLightId: String, delta: Double) async throws {
+        // Enforce rate limit
+        _ = await checkGroupedLightRateLimit(groupedLightId: groupedLightId)
+
         guard let url = URL(string: "https://\(baseURL)/clip/v2/resource/grouped_light/\(groupedLightId)") else {
             throw HueAPIError.invalidURL
         }
@@ -441,6 +474,82 @@ actor HueAPIService {
         }
 
         print("✅ Adjusted brightness: \(delta > 0 ? "+" : "")\(delta)% for grouped light \(groupedLightId)")
+    }
+
+    // MARK: - Scene Methods
+
+    /// Fetch all scenes from the bridge
+    /// Returns: Generic Decodable response (typically used with BridgeManager.HueScene)
+    func fetchScenes<T: Decodable>() async throws -> T {
+        return try await request(endpoint: "/clip/v2/resource/scene", method: "GET", timeout: 10.0)
+    }
+
+    /// Activate a scene
+    /// - Parameters:
+    ///   - sceneId: The scene ID to activate
+    func activateScene(sceneId: String) async throws {
+        guard let url = URL(string: "https://\(baseURL)/clip/v2/resource/scene/\(sceneId)") else {
+            throw HueAPIError.invalidURL
+        }
+
+        // Build JSON payload
+        let payload: [String: Any] = [
+            "recall": ["action": "active"]
+        ]
+
+        guard let jsonData = try? JSONSerialization.data(withJSONObject: payload) else {
+            throw HueAPIError.invalidResponse
+        }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "PUT"
+        request.setValue(hueApplicationKey, forHTTPHeaderField: "hue-application-key")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.timeoutInterval = 10.0
+        request.httpBody = jsonData
+
+        let (_, response) = try await session.data(for: request, delegate: sessionDelegate)
+
+        // Validate HTTP response
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw HueAPIError.invalidResponse
+        }
+
+        guard httpResponse.statusCode >= 200 && httpResponse.statusCode < 300 else {
+            throw HueAPIError.httpError(statusCode: httpResponse.statusCode)
+        }
+
+        print("✅ Activated scene \(sceneId)")
+    }
+
+    // MARK: - Connection Validation
+
+    /// Validate connection to the bridge
+    /// Returns: true if connection is valid, throws error otherwise
+    func validateConnection() async throws -> Bool {
+        guard let url = URL(string: "https://\(baseURL)/clip/v2/resource") else {
+            throw HueAPIError.invalidURL
+        }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.setValue(hueApplicationKey, forHTTPHeaderField: "hue-application-key")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.timeoutInterval = 10.0
+
+        let (_, response) = try await session.data(for: request, delegate: sessionDelegate)
+
+        // Validate HTTP response
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw HueAPIError.invalidResponse
+        }
+
+        guard httpResponse.statusCode == 200 else {
+            throw HueAPIError.httpError(statusCode: httpResponse.statusCode)
+        }
+
+        print("✅ Connection validated")
+        return true
     }
 
     // MARK: - Streaming Methods

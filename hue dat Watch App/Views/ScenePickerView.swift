@@ -59,14 +59,6 @@ struct SceneRowView: View {
                 Text(scene.metadata.name)
                     .font(.headline)
                     .foregroundColor(.white)
-
-                // Color preview using mini orbs
-                let colors = bridgeManager.extractColorsFromScene(scene)
-                if !colors.isEmpty {
-                    ColorOrbsBackground(colors: colors, size: .compact)
-                        .frame(height: 35)
-                        .clipShape(RoundedRectangle(cornerRadius: 6))
-                }
             }
 
             Spacer()

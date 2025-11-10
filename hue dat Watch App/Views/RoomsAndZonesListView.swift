@@ -118,12 +118,11 @@ struct RoomsAndZonesListView: View {
                 }
             }
         }
-        .task(id: hasLoadedData) {
-            // Only load data once when view first appears (hasLoadedData starts as false)
-            // After that, user must manually refresh via toolbar button
-            if !hasLoadedData {
-                await refreshData()
-            }
+        .task {
+            // Data is loaded by ContentView on app start/resume
+            // Just mark as loaded to hide the loading overlay
+            // User can manually refresh via toolbar button if needed
+            hasLoadedData = true
         }
         .alert("Unable to Load Rooms & Zones", isPresented: $showNetworkErrorAlert) {
             Button("Retry") {

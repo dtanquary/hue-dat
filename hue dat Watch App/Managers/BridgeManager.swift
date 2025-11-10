@@ -25,7 +25,6 @@ class BridgeManager: ObservableObject {
     @Published var rooms: [HueRoom] = []
     @Published var zones: [HueZone] = []
     @Published var scenes: [HueScene] = []
-    @Published var lightCache: [String: HueLight] = [:]  // Shared cache of all lights by light ID
     @Published var isLoadingRooms: Bool = false
     @Published var isLoadingZones: Bool = false
     @Published var refreshError: String? = nil  // Error message for background refresh failures
@@ -41,7 +40,6 @@ class BridgeManager: ObservableObject {
     private let cachedRoomsKey = "CachedRooms"
     private let cachedZonesKey = "CachedZones"
     private let cachedScenesKey = "CachedScenes"
-    private let cachedLightsKey = "CachedLights"
 
     // Refresh state management (concurrent call protection)
     private var isRefreshingRooms: Bool = false
@@ -52,15 +50,6 @@ class BridgeManager: ObservableObject {
     private var lastZonesRefreshTime: Date? = nil
     private let refreshDebounceInterval: TimeInterval = 30.0  // 30 seconds
 
-    // MARK: - API Rate Limiting
-    // Philips Hue API v2 Rate Limits:
-    // - /light endpoint: Maximum 10 commands per second
-    // - /grouped_light endpoint: Maximum 1 command per second
-    private var lastGroupedLightCommandTime: Date = .distantPast
-    private var lastLightCommandTimes: [Date] = []  // Tracks last 10 light commands for 10/sec throttle
-    private let groupedLightThrottleInterval: TimeInterval = 1.0  // 1 second between grouped_light commands
-    private let lightCommandsPerSecond: Int = 10
-    private let lightThrottleWindow: TimeInterval = 1.0  // 1 second window for light commands
 
     /// Returns the current connected bridge information, or nil if none is connected.
     var currentConnectedBridge: BridgeConnectionInfo? {
@@ -69,7 +58,11 @@ class BridgeManager: ObservableObject {
     
     init() {
         loadConnectedBridge()
-        loadLightsFromStorage()
+        // Clean up old lights cache (migration)
+        if userDefaults.object(forKey: "CachedLights") != nil {
+            userDefaults.removeObject(forKey: "CachedLights")
+            print("🧹 Cleaned up old lights cache")
+        }
         loadRoomsFromStorage()
         loadZonesFromStorage()
         loadScenesFromStorage()
@@ -109,14 +102,12 @@ class BridgeManager: ObservableObject {
         userDefaults.removeObject(forKey: cachedRoomsKey)
         userDefaults.removeObject(forKey: cachedZonesKey)
         userDefaults.removeObject(forKey: cachedScenesKey)
-        userDefaults.removeObject(forKey: cachedLightsKey)
         userDefaults.synchronize()
         connectedBridge = nil
         isConnectionValidated = false
         rooms = []
         zones = []
         scenes = []
-        lightCache = [:]
         print("🔌 Bridge disconnected and cleared from storage")
     }
     
@@ -231,36 +222,6 @@ class BridgeManager: ObservableObject {
         }
     }
 
-    private func loadLightsFromStorage() {
-        guard let data = userDefaults.data(forKey: cachedLightsKey) else {
-            print("📂 No cached lights found")
-            return
-        }
-
-        do {
-            let lightsArray = try JSONDecoder().decode([HueLight].self, from: data)
-            // Convert array to dictionary by ID
-            lightCache = Dictionary(uniqueKeysWithValues: lightsArray.map { ($0.id, $0) })
-            print("✅ Loaded \(lightCache.count) cached lights from storage")
-        } catch {
-            print("❌ Failed to load cached lights: \(error)")
-            // Clean up corrupted data
-            userDefaults.removeObject(forKey: cachedLightsKey)
-        }
-    }
-
-    private func saveLightsToStorage() {
-        do {
-            // Convert dictionary to array for encoding
-            let lightsArray = Array(lightCache.values)
-            let data = try JSONEncoder().encode(lightsArray)
-            userDefaults.set(data, forKey: cachedLightsKey)
-            print("💾 Saved \(lightCache.count) lights to storage (\(data.count) bytes)")
-        } catch {
-            print("❌ Failed to save lights to storage: \(error)")
-        }
-    }
-
     // MARK: - Hue API Response Models
     private struct HueAPIV2Response: Decodable {
         let errors: [HueAPIV2Error]
@@ -289,7 +250,6 @@ class BridgeManager: ObservableObject {
         var children: [HueRoomChild]?
         var services: [HueRoomService]?
         var groupedLights: [HueGroupedLight]?
-        var lights: [HueLight]?
 
         struct RoomMetadata: Codable, Equatable, Hashable {
             let name: String
@@ -483,7 +443,6 @@ class BridgeManager: ObservableObject {
         var children: [HueZoneChild]?
         var services: [HueZoneService]?
         var groupedLights: [HueGroupedLight]?
-        var lights: [HueLight]?
 
         struct ZoneMetadata: Codable, Equatable, Hashable {
             let name: String
@@ -570,236 +529,7 @@ class BridgeManager: ObservableObject {
     var isConnected: Bool {
         connectedBridge != nil
     }
-    
-    /// Print detailed light information for debugging purposes
-    func printDetailedLightInfo(for roomOrZone: String, groupedLights: [HueGroupedLight]?, individualLights: [HueLight]? = nil) {
-        print("🔍 DEBUG: \(roomOrZone) - Light Details:")
-        print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
 
-        // Print grouped lights section
-        if let lights = groupedLights, !lights.isEmpty {
-            print("\n📦 GROUPED LIGHTS (Aggregated State):")
-            print("   Total grouped lights: \(lights.count)")
-
-            for (index, light) in lights.enumerated() {
-                print("\n   Grouped Light \(index + 1):")
-                print("     • ID: \(light.id)")
-                print("     • Type: \(light.type)")
-
-                // Power state
-                if let powerState = light.on?.on {
-                    print("     • Power: \(powerState ? "ON" : "OFF")")
-                } else {
-                    print("     • Power: Unknown")
-                }
-
-                // Brightness
-                if let brightness = light.dimming?.brightness {
-                    print("     • Brightness: \(Int(brightness))% (\(brightness))")
-                } else {
-                    print("     • Brightness: Not available")
-                }
-
-                // Color temperature
-                if let colorTemp = light.color_temperature {
-                    if let mirek = colorTemp.mirek {
-                        let kelvin = 1000000 / mirek
-                        print("     • Color Temperature: \(mirek) mirek (~\(kelvin)K)")
-                        print("     • CT Valid: \(colorTemp.mirek_valid ?? false)")
-                    } else {
-                        print("     • Color Temperature: Not set")
-                    }
-
-                    // Color temperature schema (min/max range)
-                    if let schema = colorTemp.mirek_schema {
-                        let minKelvin = 1000000 / schema.mirek_maximum
-                        let maxKelvin = 1000000 / schema.mirek_minimum
-                        print("     • CT Range: \(schema.mirek_minimum)-\(schema.mirek_maximum) mirek (~\(maxKelvin)K-\(minKelvin)K)")
-                    }
-                } else {
-                    print("     • Color Temperature: Not available")
-                }
-
-                // Color (XY coordinates)
-                if let color = light.color {
-                    if let xy = color.xy {
-                        print("     • Color XY: (\(String(format: "%.4f", xy.x)), \(String(format: "%.4f", xy.y)))")
-                    } else {
-                        print("     • Color XY: Not set")
-                    }
-
-                    if let gamutType = color.gamut_type {
-                        print("     • Color Gamut: \(gamutType)")
-                    }
-
-                    if let gamut = color.gamut {
-                        print("     • Gamut Red: (\(String(format: "%.4f", gamut.red.x)), \(String(format: "%.4f", gamut.red.y)))")
-                        print("     • Gamut Green: (\(String(format: "%.4f", gamut.green.x)), \(String(format: "%.4f", gamut.green.y)))")
-                        print("     • Gamut Blue: (\(String(format: "%.4f", gamut.blue.x)), \(String(format: "%.4f", gamut.blue.y)))")
-                    }
-                } else {
-                    print("     • Color: Not available")
-                }
-            }
-
-            // Summary statistics for grouped lights
-            let lightsOn = lights.filter { $0.on?.on == true }
-            let averageBrightness = lights.compactMap { $0.dimming?.brightness }.average()
-            let averageColorTemp = lights.compactMap { $0.color_temperature?.mirek }.compactMap { $0 }.average().map { Int($0) }
-
-            print("\n   📊 Grouped Lights Summary:")
-            print("     • Lights on: \(lightsOn.count)/\(lights.count)")
-            if let avgBrightness = averageBrightness {
-                print("     • Average brightness: \(Int(avgBrightness))%")
-            }
-            if let avgColorTemp = averageColorTemp {
-                let kelvin = 1000000 / avgColorTemp
-                print("     • Average color temp: \(avgColorTemp) mirek (~\(kelvin)K)")
-            }
-        } else {
-            print("\n📦 GROUPED LIGHTS: None found")
-        }
-
-        // Print individual lights section
-        if let individualLights = individualLights, !individualLights.isEmpty {
-            print("\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
-            print("💡 INDIVIDUAL LIGHTS (Actual Light Colors):")
-            print("   Total individual lights: \(individualLights.count)")
-
-            for (index, light) in individualLights.enumerated() {
-                print("\n   Individual Light \(index + 1):")
-                print("     • ID: \(light.id)")
-                print("     • Type: \(light.type)")
-
-                // Name
-                if let name = light.metadata?.name {
-                    print("     • Name: \"\(name)\"")
-                }
-
-                // Power state
-                if let powerState = light.on?.on {
-                    print("     • Power: \(powerState ? "ON" : "OFF")")
-                } else {
-                    print("     • Power: Unknown")
-                }
-
-                // Brightness
-                if let brightness = light.dimming?.brightness {
-                    print("     • Brightness: \(Int(brightness))% (\(brightness))")
-                } else {
-                    print("     • Brightness: Not available")
-                }
-
-                // Color temperature
-                if let colorTemp = light.color_temperature {
-                    if let mirek = colorTemp.mirek {
-                        let kelvin = 1000000 / mirek
-                        print("     • Color Temperature: \(mirek) mirek (~\(kelvin)K)")
-                        print("     • CT Valid: \(colorTemp.mirek_valid ?? false)")
-                    } else {
-                        print("     • Color Temperature: Not set")
-                    }
-                } else {
-                    print("     • Color Temperature: Not available")
-                }
-
-                // Color (XY coordinates)
-                if let color = light.color {
-                    if let xy = color.xy {
-                        print("     • Color XY: (\(String(format: "%.4f", xy.x)), \(String(format: "%.4f", xy.y)))")
-
-                        // Convert to RGB and display
-                        let brightness = light.dimming?.brightness ?? 100.0
-                        let rgbColor = xyToRGB(x: xy.x, y: xy.y, brightness: brightness)
-
-                        // Get RGB components (approximation for display)
-                        var red: CGFloat = 0
-                        var green: CGFloat = 0
-                        var blue: CGFloat = 0
-                        var alpha: CGFloat = 0
-
-                        #if canImport(UIKit)
-                        UIColor(rgbColor).getRed(&red, green: &green, blue: &blue, alpha: &alpha)
-                        #endif
-
-                        let r = Int(red * 255)
-                        let g = Int(green * 255)
-                        let b = Int(blue * 255)
-                        let hexString = String(format: "#%02X%02X%02X", r, g, b)
-
-                        print("     • RGB Color: \(hexString) (R:\(r), G:\(g), B:\(b))")
-                    } else {
-                        print("     • Color XY: Not set")
-                    }
-
-                    if let gamutType = color.gamut_type {
-                        print("     • Color Gamut: \(gamutType)")
-                    }
-                } else if let colorTemp = light.color_temperature, let mirek = colorTemp.mirek {
-                    // If no XY color but has color temp, convert mirek to RGB
-                    let brightness = light.dimming?.brightness ?? 100.0
-                    let rgbColor = mirekToRGB(mirek: mirek, brightness: brightness)
-
-                    var red: CGFloat = 0
-                    var green: CGFloat = 0
-                    var blue: CGFloat = 0
-                    var alpha: CGFloat = 0
-
-                    #if canImport(UIKit)
-                    UIColor(rgbColor).getRed(&red, green: &green, blue: &blue, alpha: &alpha)
-                    #endif
-
-                    let r = Int(red * 255)
-                    let g = Int(green * 255)
-                    let b = Int(blue * 255)
-                    let hexString = String(format: "#%02X%02X%02X", r, g, b)
-
-                    print("     • RGB Color (from temp): \(hexString) (R:\(r), G:\(g), B:\(b))")
-                } else {
-                    print("     • Color: Not available")
-                }
-            }
-
-            // Summary statistics for individual lights
-            let lightsOn = individualLights.filter { $0.on?.on == true }
-            let averageBrightness = individualLights.compactMap { $0.dimming?.brightness }.average()
-            let averageColorTemp = individualLights.compactMap { $0.color_temperature?.mirek }.average().map { Int($0) }
-
-            // Calculate average color using existing utility
-            let averageColor = averageColorFromLights(individualLights)
-            var red: CGFloat = 0
-            var green: CGFloat = 0
-            var blue: CGFloat = 0
-            var alpha: CGFloat = 0
-
-            #if canImport(UIKit)
-            UIColor(averageColor).getRed(&red, green: &green, blue: &blue, alpha: &alpha)
-            #endif
-
-            let r = Int(red * 255)
-            let g = Int(green * 255)
-            let b = Int(blue * 255)
-            let hexString = String(format: "#%02X%02X%02X", r, g, b)
-
-            print("\n   📊 Individual Lights Summary:")
-            print("     • Lights on: \(lightsOn.count)/\(individualLights.count)")
-            if let avgBrightness = averageBrightness {
-                print("     • Average brightness: \(Int(avgBrightness))%")
-            }
-            if let avgColorTemp = averageColorTemp {
-                let kelvin = 1000000 / avgColorTemp
-                print("     • Average color temp: \(avgColorTemp) mirek (~\(kelvin)K)")
-            }
-            print("     • Average RGB Color: \(hexString) (R:\(r), G:\(g), B:\(b))")
-        } else if individualLights != nil {
-            print("\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
-            print("💡 INDIVIDUAL LIGHTS: None found")
-        }
-
-        print("\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
-        print("🔍 DEBUG: End of light details for \(roomOrZone)\n")
-    }
-    
     /// Validate that the current connection is alive/reachable.
     /// Broadcasts the result via connectionValidationPublisher.
     func validateConnection() async {
@@ -810,83 +540,23 @@ class BridgeManager: ObservableObject {
             return
         }
         isConnectionValidated = false
-        
-        let urlString = "https://\(bridge.internalipaddress)/clip/v2/resource"
 
-        let delegate = InsecureURLSessionDelegate()
-        var config = URLSessionConfiguration.default
-        config.timeoutIntervalForRequest = 10.0  // 10 second timeout for local network
-        config.timeoutIntervalForResource = 30.0
-        let session = URLSession(configuration: config, delegate: delegate, delegateQueue: nil)
+        // Setup HueAPIService with current bridge info
+        await HueAPIService.shared.setup(
+            baseUrl: bridge.internalipaddress,
+            hueApplicationKey: currentConnectedBridge?.username ?? ""
+        )
 
-        guard let url = URL(string: urlString) else {
-            print("❌ validateConnection: Invalid URL: \(urlString)")
-            let errorMessage = "Invalid bridge URL"
-            connectionValidationSubject.send(.failure(message: errorMessage))
-            return
-        }
-
-        var request = URLRequest(url: url)
-        request.httpMethod = "GET"
-        request.setValue(currentConnectedBridge?.username, forHTTPHeaderField: "hue-application-key")
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        
-        print(request)
-        
         do {
-            let (data, response) = try await session.data(for: request)
-
-            if let http = response as? HTTPURLResponse {
-                print("🌐 validateConnection: HTTP \(http.statusCode)")
-            }
-
-            // Attempt to decode Hue API v2 response which has the structure:
-            // {"errors": [], "data": []}
-            do {
-                let response = try JSONDecoder().decode(HueAPIV2Response.self, from: data)
-                
-                // Check for errors first
-                if !response.errors.isEmpty {
-                    let errorMessages = response.errors.map { $0.description }.joined(separator: ", ")
-                    print("❌ validateConnection: Hue API v2 errors: \(errorMessages)")
-                    self.isConnectionValidated = false
-                    // Publish alert to the UI
-                    self.alertMessage = errorMessages
-                    self.showAlert = true
-                    // Broadcast failure event
-                    connectionValidationSubject.send(.failure(message: errorMessages))
-                    return
-                }
-                
-                // If no errors and we have data, connection is valid
-                if response.errors.isEmpty {
-                    print("✅ validateConnection: Success - connection validated with \(response.data.count) data items")
-                    self.isConnectionValidated = true
-                    // Broadcast success event
-                    connectionValidationSubject.send(.success)
-                } else {
-                    print("ℹ️ validateConnection: No errors but unexpected response structure")
-                    self.isConnectionValidated = false
-                    let errorMessage = "Unexpected response from bridge"
-                    connectionValidationSubject.send(.failure(message: errorMessage))
-                }
-            } catch {
-                // If decoding into the Hue v2 format fails, log raw string for diagnostics
-                if let responseString = String(data: data, encoding: .utf8) {
-                    print("ℹ️ validateConnection: Failed to decode v2 response: \(responseString)")
-                } else {
-                    print("ℹ️ validateConnection: Received non-UTF8 data (\(data.count) bytes)")
-                }
-                self.isConnectionValidated = false
-                let errorMessage = "Invalid response from bridge"
-                connectionValidationSubject.send(.failure(message: errorMessage))
-            }
+            _ = try await HueAPIService.shared.validateConnection()
+            print("✅ validateConnection: Success")
+            self.isConnectionValidated = true
+            connectionValidationSubject.send(.success)
         } catch {
-            print("❌ validateConnection: Network error: \(error.localizedDescription)")
+            print("❌ validateConnection: Error: \(error.localizedDescription)")
             self.isConnectionValidated = false
             self.alertMessage = error.localizedDescription
             self.showAlert = true
-            // Broadcast failure event
             connectionValidationSubject.send(.failure(message: error.localizedDescription))
         }
     }
@@ -922,130 +592,42 @@ class BridgeManager: ObservableObject {
         isLoadingRooms = true
         lastRoomsRefreshTime = Date()
 
-        // STEP 1: Fetch all lights FIRST to populate the lightCache
-        print("🏠 getRooms: Step 1 - Fetching all lights into cache")
-        await fetchAllLights()
-
-        let urlString = "https://\(bridge.internalipaddress)/clip/v2/resource/room"
-
         let delegate = InsecureURLSessionDelegate()
         let config = URLSessionConfiguration.default
         config.timeoutIntervalForRequest = 10.0  // 10 second timeout for local network
         config.timeoutIntervalForResource = 30.0
         let session = URLSession(configuration: config, delegate: delegate, delegateQueue: nil)
 
-        guard let url = URL(string: urlString) else {
-            print("❌ getRooms: Invalid URL: \(urlString)")
-            // PROTECTION 3: Keep existing data on error
-            refreshError = "Invalid bridge URL"
-            isLoadingRooms = false
-            isRefreshingRooms = false
-            return
-        }
-
-        var request = URLRequest(url: url)
-        request.httpMethod = "GET"
-        request.setValue(currentConnectedBridge?.username, forHTTPHeaderField: "hue-application-key")
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-
-        print("🏠 getRooms: Step 2 - Requesting rooms from \(urlString)")
+        print("🏠 getRooms: Requesting rooms from bridge")
 
         do {
-            let (data, response) = try await session.data(for: request)
+            // Fetch basic rooms list (without enrichment)
+            let response = try await HueAPIService.shared.fetchRooms()
 
-            if let http = response as? HTTPURLResponse {
-                print("🌐 getRooms: HTTP \(http.statusCode)")
+            // Check for errors first
+            if !response.errors.isEmpty {
+                let errorMessages = response.errors.map { $0.description }.joined(separator: ", ")
+                print("❌ getRooms: Hue API v2 errors: \(errorMessages)")
+                // PROTECTION 3: Keep existing data, set error instead
+                refreshError = "API Error: \(errorMessages)"
+                isLoadingRooms = false
+                isRefreshingRooms = false
+                return
             }
 
-            // Attempt to decode Hue API v2 response for rooms
-            do {
-                let response = try JSONDecoder().decode(HueRoomsResponse.self, from: data)
+            print("✅ getRooms: Success - retrieved \(response.data.count) rooms")
 
-                // Check for errors first
-                if !response.errors.isEmpty {
-                    let errorMessages = response.errors.map { $0.description }.joined(separator: ", ")
-                    print("❌ getRooms: Hue API v2 errors: \(errorMessages)")
-                    // PROTECTION 3: Keep existing data, set error instead
-                    refreshError = "API Error: \(errorMessages)"
-                    return
-                }
+            // Rooms from API already include children and services
+            // We just need to attach grouped light status if needed
+            self.rooms = response.data
+            saveRoomsToStorage()  // Cache successful refresh
+            refreshError = nil  // Clear any previous errors
+            print("🏠 getRooms: Completed with \(response.data.count) rooms")
 
-                // If no errors, get basic rooms first
-                if response.errors.isEmpty {
-                    print("✅ getRooms: Success - retrieved \(response.data.count) rooms")
-
-                    // Now fetch detailed metadata for each room
-                    var enhancedRooms: [HueRoom] = []
-
-                    for room in response.data {
-                        print("  - Fetching details for room: \(room.metadata.name) (ID: \(room.id))")
-
-                        // Get detailed room information
-                        if let detailedRoom = await fetchRoomDetails(roomId: room.id, session: session) {
-                            // Check if room has grouped light services
-                            var groupedLights: [HueGroupedLight] = []
-                            if let services = detailedRoom.services {
-                                let groupedLightServices = services.filter { $0.rtype == "grouped_light" }
-                                for service in groupedLightServices {
-                                    print("    - Fetching grouped light details for service: \(service.rid)")
-                                    if let groupedLight = await fetchGroupedLightDetails(groupedLightId: service.rid, session: session) {
-                                        groupedLights.append(groupedLight)
-                                        print("      ✅ Added grouped light details")
-                                    } else {
-                                        print("      ❌ Failed to fetch grouped light details")
-                                    }
-                                }
-                            }
-
-                            // Merge the detailed information with the basic room
-                            let mergedRoom = HueRoom(
-                                id: room.id,
-                                type: room.type,
-                                metadata: room.metadata,
-                                children: detailedRoom.children,
-                                services: detailedRoom.services,
-                                groupedLights: groupedLights.isEmpty ? nil : groupedLights,
-                                lights: nil // Will be enriched next
-                            )
-
-                            // Enrich with individual light details
-                            let enrichedRoom = await enrichRoomWithLights(room: mergedRoom, session: session)
-                            enhancedRooms.append(enrichedRoom)
-                            print("    ✅ Enhanced room: \(room.metadata.name)")
-                            print("      - Children: \(detailedRoom.children?.count ?? 0)")
-                            print("      - Services: \(detailedRoom.services?.count ?? 0)")
-                            print("      - Grouped Lights: \(groupedLights.count)")
-                            print("      - Individual Lights: \(enrichedRoom.lights?.count ?? 0)")
-                        } else {
-                            // If we can't get details, use the basic room
-                            print("    ⚠️ Using basic room data for: \(room.metadata.name)")
-                            enhancedRooms.append(room)
-                        }
-                    }
-
-                    self.rooms = enhancedRooms
-                    saveRoomsToStorage()  // Cache successful refresh
-                    refreshError = nil  // Clear any previous errors
-                    print("🏠 getRooms: Completed with \(enhancedRooms.count) enhanced rooms")
-                } else {
-                    print("ℹ️ getRooms: No errors but unexpected response structure")
-                    // PROTECTION 3: Keep existing data on unexpected response
-                    refreshError = "Unexpected API response structure"
-                }
-            } catch {
-                // If decoding into the Hue rooms format fails, log raw string for diagnostics
-                if let responseString = String(data: data, encoding: .utf8) {
-                    print("ℹ️ getRooms: Failed to decode rooms response: \(responseString)")
-                } else {
-                    print("ℹ️ getRooms: Received non-UTF8 data (\(data.count) bytes)")
-                }
-                // PROTECTION 3: Keep existing data on decode error
-                refreshError = "Failed to decode rooms data"
-            }
         } catch {
-            print("❌ getRooms: Network error: \(error.localizedDescription)")
-            // PROTECTION 3: Keep existing data on network error
-            refreshError = "Network error: \(error.localizedDescription)"
+            print("❌ getRooms: Error: \(error.localizedDescription)")
+            // PROTECTION 3: Keep existing data on error
+            refreshError = "Error: \(error.localizedDescription)"
         }
 
         isLoadingRooms = false
@@ -1055,500 +637,10 @@ class BridgeManager: ObservableObject {
     /// Refresh a single room by fetching its latest data from the bridge.
     /// Updates only the specified room in the rooms array.
     func refreshRoom(roomId: String) async {
-        guard let bridge = currentConnectedBridge?.bridge else {
-            print("❌ refreshRoom: No connected bridge available")
-            return
-        }
-
-        let delegate = InsecureURLSessionDelegate()
-        let session = URLSession(configuration: .default, delegate: delegate, delegateQueue: nil)
-
-        print("🔄 refreshRoom: Fetching details for room ID: \(roomId)")
-
-        // Get detailed room information
-        guard let detailedRoom = await fetchRoomDetails(roomId: roomId, session: session) else {
-            print("❌ refreshRoom: Failed to fetch room details")
-            return
-        }
-
-        // Fetch grouped light details
-        var groupedLights: [HueGroupedLight] = []
-        if let services = detailedRoom.services {
-            let groupedLightServices = services.filter { $0.rtype == "grouped_light" }
-            for service in groupedLightServices {
-                if let groupedLight = await fetchGroupedLightDetails(groupedLightId: service.rid, session: session) {
-                    groupedLights.append(groupedLight)
-                }
-            }
-        }
-
-        // Preserve existing lights array (only fetch lights on navigation, not on refresh)
-        let existingLights = rooms.first(where: { $0.id == roomId })?.lights
-
-        // Create the updated room
-        let updatedRoom = HueRoom(
-            id: detailedRoom.id,
-            type: detailedRoom.type,
-            metadata: detailedRoom.metadata,
-            children: detailedRoom.children,
-            services: detailedRoom.services,
-            groupedLights: groupedLights.isEmpty ? nil : groupedLights,
-            lights: existingLights
-        )
-
-        // Update the specific room in the array
-        if let index = rooms.firstIndex(where: { $0.id == roomId }) {
-            rooms[index] = updatedRoom
-            print("✅ refreshRoom: Updated room: \(detailedRoom.metadata.name)")
-        } else {
-            print("⚠️ refreshRoom: Room not found in array, appending")
-            rooms.append(updatedRoom)
-        }
+        // Simplified: just refresh all rooms since the API is fast
+        await getRooms()
     }
 
-    /// Fetch detailed metadata for a specific room by its ID
-    private func fetchRoomDetails(roomId: String, session: URLSession) async -> HueRoomDetail? {
-        guard let bridge = currentConnectedBridge?.bridge else {
-            print("❌ fetchRoomDetails: No connected bridge available")
-            return nil
-        }
-        
-        let urlString = "https://\(bridge.internalipaddress)/clip/v2/resource/room/\(roomId)"
-        
-        guard let url = URL(string: urlString) else {
-            print("❌ fetchRoomDetails: Invalid URL: \(urlString)")
-            return nil
-        }
-        
-        var request = URLRequest(url: url)
-        request.httpMethod = "GET"
-        request.setValue(currentConnectedBridge?.username, forHTTPHeaderField: "hue-application-key")
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        
-        do {
-            let (data, response) = try await session.data(for: request)
-            
-            if let http = response as? HTTPURLResponse {
-                print("    🌐 fetchRoomDetails: HTTP \(http.statusCode) for room \(roomId)")
-            }
-            
-            // Decode the detailed room response
-            do {
-                let detailResponse = try JSONDecoder().decode(HueRoomDetailResponse.self, from: data)
-                
-                // Check for errors
-                if !detailResponse.errors.isEmpty {
-                    let errorMessages = detailResponse.errors.map { $0.description }.joined(separator: ", ")
-                    print("    ❌ fetchRoomDetails: API errors for room \(roomId): \(errorMessages)")
-                    return nil
-                }
-                
-                // Return the first (and should be only) room detail
-                return detailResponse.data.first
-                
-            } catch {
-                if let responseString = String(data: data, encoding: .utf8) {
-                    print("    ℹ️ fetchRoomDetails: Failed to decode response for room \(roomId): \(responseString)")
-                } else {
-                    print("    ℹ️ fetchRoomDetails: Received non-UTF8 data for room \(roomId) (\(data.count) bytes)")
-                }
-                return nil
-            }
-            
-        } catch {
-            print("    ❌ fetchRoomDetails: Network error for room \(roomId): \(error.localizedDescription)")
-            return nil
-        }
-    }
-    
-    /// Fetch detailed metadata for a specific zone by its ID
-    private func fetchZoneDetails(zoneId: String, session: URLSession) async -> HueZoneDetail? {
-        guard let bridge = currentConnectedBridge?.bridge else {
-            print("❌ fetchZoneDetails: No connected bridge available")
-            return nil
-        }
-        
-        let urlString = "https://\(bridge.internalipaddress)/clip/v2/resource/zone/\(zoneId)"
-        
-        guard let url = URL(string: urlString) else {
-            print("❌ fetchZoneDetails: Invalid URL: \(urlString)")
-            return nil
-        }
-        
-        var request = URLRequest(url: url)
-        request.httpMethod = "GET"
-        request.setValue(currentConnectedBridge?.username, forHTTPHeaderField: "hue-application-key")
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        
-        do {
-            let (data, response) = try await session.data(for: request)
-            
-            if let http = response as? HTTPURLResponse {
-                print("    🌐 fetchZoneDetails: HTTP \(http.statusCode) for zone \(zoneId)")
-            }
-            
-            // Decode the detailed zone response
-            do {
-                let detailResponse = try JSONDecoder().decode(HueZoneDetailResponse.self, from: data)
-                
-                // Check for errors
-                if !detailResponse.errors.isEmpty {
-                    let errorMessages = detailResponse.errors.map { $0.description }.joined(separator: ", ")
-                    print("    ❌ fetchZoneDetails: API errors for zone \(zoneId): \(errorMessages)")
-                    return nil
-                }
-                
-                // Return the first (and should be only) zone detail
-                return detailResponse.data.first
-                
-            } catch {
-                if let responseString = String(data: data, encoding: .utf8) {
-                    print("    ℹ️ fetchZoneDetails: Failed to decode response for zone \(zoneId): \(responseString)")
-                } else {
-                    print("    ℹ️ fetchZoneDetails: Received non-UTF8 data for zone \(zoneId) (\(data.count) bytes)")
-                }
-                return nil
-            }
-            
-        } catch {
-            print("    ❌ fetchZoneDetails: Network error for zone \(zoneId): \(error.localizedDescription)")
-            return nil
-        }
-    }
-    
-    /// Fetch detailed metadata for a specific grouped light by its ID
-    private func fetchGroupedLightDetails(groupedLightId: String, session: URLSession) async -> HueGroupedLight? {
-        guard let bridge = currentConnectedBridge?.bridge else {
-            print("❌ fetchGroupedLightDetails: No connected bridge available")
-            return nil
-        }
-
-        let urlString = "https://\(bridge.internalipaddress)/clip/v2/resource/grouped_light/\(groupedLightId)"
-
-        guard let url = URL(string: urlString) else {
-            print("❌ fetchGroupedLightDetails: Invalid URL: \(urlString)")
-            return nil
-        }
-
-        var request = URLRequest(url: url)
-        request.httpMethod = "GET"
-        request.setValue(currentConnectedBridge?.username, forHTTPHeaderField: "hue-application-key")
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-
-        do {
-            let (data, response) = try await session.data(for: request)
-
-            if let http = response as? HTTPURLResponse {
-                print("    🌐 fetchGroupedLightDetails: HTTP \(http.statusCode) for grouped light \(groupedLightId)")
-            }
-
-            // Decode the grouped light response
-            do {
-                let lightResponse = try JSONDecoder().decode(HueGroupedLightResponse.self, from: data)
-
-                // Check for errors
-                if !lightResponse.errors.isEmpty {
-                    let errorMessages = lightResponse.errors.map { $0.description }.joined(separator: ", ")
-                    print("    ❌ fetchGroupedLightDetails: API errors for grouped light \(groupedLightId): \(errorMessages)")
-                    return nil
-                }
-
-                // Return the first (and should be only) grouped light detail
-                return lightResponse.data.first
-
-            } catch {
-                if let responseString = String(data: data, encoding: .utf8) {
-                    print("    ℹ️ fetchGroupedLightDetails: Failed to decode response for grouped light \(groupedLightId): \(responseString)")
-                } else {
-                    print("    ℹ️ fetchGroupedLightDetails: Received non-UTF8 data for grouped light \(groupedLightId) (\(data.count) bytes)")
-                }
-                return nil
-            }
-
-        } catch {
-            print("    ❌ fetchGroupedLightDetails: Network error for grouped light \(groupedLightId): \(error.localizedDescription)")
-            return nil
-        }
-    }
-
-    /// Fetch device details to get the light ID from a device ID
-    /// Device abstraction layer: Room/Zone children reference devices, devices contain services with light IDs
-    private func fetchDeviceDetails(deviceId: String, session: URLSession) async -> HueDevice? {
-        guard let bridge = currentConnectedBridge?.bridge else {
-            print("❌ fetchDeviceDetails: No connected bridge available")
-            return nil
-        }
-
-        let urlString = "https://\(bridge.internalipaddress)/clip/v2/resource/device/\(deviceId)"
-
-        guard let url = URL(string: urlString) else {
-            print("❌ fetchDeviceDetails: Invalid URL: \(urlString)")
-            return nil
-        }
-
-        var request = URLRequest(url: url)
-        request.httpMethod = "GET"
-        request.setValue(currentConnectedBridge?.username, forHTTPHeaderField: "hue-application-key")
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-
-        do {
-            let (data, response) = try await session.data(for: request)
-
-            if let http = response as? HTTPURLResponse {
-                print("      🌐 fetchDeviceDetails: HTTP \(http.statusCode) for device \(deviceId)")
-            }
-
-            do {
-                let deviceResponse = try JSONDecoder().decode(HueDeviceResponse.self, from: data)
-
-                if !deviceResponse.errors.isEmpty {
-                    let errorMessages = deviceResponse.errors.map { $0.description }.joined(separator: ", ")
-                    print("      ❌ fetchDeviceDetails: API errors for device \(deviceId): \(errorMessages)")
-                    return nil
-                }
-
-                if let device = deviceResponse.data.first {
-                    let serviceTypes = device.services?.map { $0.rtype }.joined(separator: ", ") ?? "none"
-                    print("      ✅ fetchDeviceDetails: Device \(deviceId) has services: [\(serviceTypes)]")
-                    return device
-                } else {
-                    print("      ⚠️ fetchDeviceDetails: No device data returned for \(deviceId)")
-                    return nil
-                }
-
-            } catch {
-                if let responseString = String(data: data, encoding: .utf8) {
-                    print("      ℹ️ fetchDeviceDetails: Failed to decode response for device \(deviceId): \(responseString)")
-                } else {
-                    print("      ℹ️ fetchDeviceDetails: Received non-UTF8 data for device \(deviceId) (\(data.count) bytes)")
-                }
-                return nil
-            }
-
-        } catch {
-            print("      ❌ fetchDeviceDetails: Network error for device \(deviceId): \(error.localizedDescription)")
-            return nil
-        }
-    }
-
-    /// Fetch detailed metadata for a specific individual light by its ID (actual light ID, not device ID)
-    /// This function expects the actual light resource ID obtained from a device's services
-    private func fetchLightDetails(lightId: String, session: URLSession) async -> HueLight? {
-        guard let bridge = currentConnectedBridge?.bridge else {
-            print("❌ fetchLightDetails: No connected bridge available")
-            return nil
-        }
-
-        let urlString = "https://\(bridge.internalipaddress)/clip/v2/resource/light/\(lightId)"
-
-        guard let url = URL(string: urlString) else {
-            print("❌ fetchLightDetails: Invalid URL: \(urlString)")
-            return nil
-        }
-
-        var request = URLRequest(url: url)
-        request.httpMethod = "GET"
-        request.setValue(currentConnectedBridge?.username, forHTTPHeaderField: "hue-application-key")
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-
-        do {
-            let (data, response) = try await session.data(for: request)
-
-            if let http = response as? HTTPURLResponse {
-                print("      🌐 fetchLightDetails: HTTP \(http.statusCode) for light \(lightId)")
-            }
-
-            // Decode the individual light response
-            do {
-                let lightResponse = try JSONDecoder().decode(HueLightResponse.self, from: data)
-
-                // Check for errors
-                if !lightResponse.errors.isEmpty {
-                    let errorMessages = lightResponse.errors.map { $0.description }.joined(separator: ", ")
-                    print("      ❌ fetchLightDetails: API errors for light \(lightId): \(errorMessages)")
-                    return nil
-                }
-
-                // Return the first (and should be only) light detail
-                return lightResponse.data.first
-
-            } catch {
-                if let responseString = String(data: data, encoding: .utf8) {
-                    print("      ℹ️ fetchLightDetails: Failed to decode response for light \(lightId): \(responseString)")
-                } else {
-                    print("      ℹ️ fetchLightDetails: Received non-UTF8 data for light \(lightId) (\(data.count) bytes)")
-                }
-                return nil
-            }
-
-        } catch {
-            print("      ❌ fetchLightDetails: Network error for light \(lightId): \(error.localizedDescription)")
-            return nil
-        }
-    }
-
-    /// Enrich a room with individual light details by fetching each light referenced in children
-    private func enrichRoomWithLights(room: HueRoom, session: URLSession) async -> HueRoom {
-        guard let children = room.children else {
-            print("    ℹ️ enrichRoomWithLights: Room '\(room.metadata.name)' has no children")
-            return room
-        }
-
-        // Debug: show all child types
-        let childTypes = children.map { $0.rtype }.joined(separator: ", ")
-        print("    📋 enrichRoomWithLights: Room '\(room.metadata.name)' has children types: [\(childTypes)]")
-
-        // Filter for device children (Hue API v2 uses device abstraction layer)
-        let deviceChildren = children.filter { $0.rtype == "device" }
-        guard !deviceChildren.isEmpty else {
-            print("    ℹ️ enrichRoomWithLights: Room '\(room.metadata.name)' has no device children (has \(children.count) children of other types)")
-            return room
-        }
-
-        print("    💡 enrichRoomWithLights: Fetching \(deviceChildren.count) individual lights for room '\(room.metadata.name)'")
-        var lights: [HueLight] = []
-
-        for child in deviceChildren {
-            // Step 1: Fetch device details to get the light service ID
-            guard let device = await fetchDeviceDetails(deviceId: child.rid, session: session) else {
-                print("      ❌ Failed to fetch device with ID: \(child.rid)")
-                continue
-            }
-
-            // Step 2: Find the light service in the device's services
-            guard let lightService = device.services?.first(where: { $0.rtype == "light" }) else {
-                print("      ⚠️ Device \(child.rid) has no light service")
-                continue
-            }
-
-            // Step 3: Lookup the light data from the lightCache (already populated)
-            if let light = lightCache[lightService.rid] {
-                lights.append(light)
-                print("      ✅ Added light from cache: \(light.metadata?.name ?? "Unknown") (ID: \(light.id))")
-            } else {
-                print("      ⚠️ Light \(lightService.rid) not found in cache")
-            }
-        }
-
-        // Return room with enriched light data
-        return HueRoom(
-            id: room.id,
-            type: room.type,
-            metadata: room.metadata,
-            children: room.children,
-            services: room.services,
-            groupedLights: room.groupedLights,
-            lights: lights.isEmpty ? nil : lights
-        )
-    }
-
-    /// Enrich a zone with individual light details by fetching each light referenced in children
-    private func enrichZoneWithLights(zone: HueZone, session: URLSession) async -> HueZone {
-        guard let children = zone.children else {
-            print("    ℹ️ enrichZoneWithLights: Zone '\(zone.metadata.name)' has no children")
-            return zone
-        }
-
-        // Debug: show all child types
-        let childTypes = children.map { $0.rtype }.joined(separator: ", ")
-        print("    📋 enrichZoneWithLights: Zone '\(zone.metadata.name)' has children types: [\(childTypes)]")
-
-        var lights: [HueLight] = []
-
-        // Zones can contain both room children and direct device children
-        let roomChildren = children.filter { $0.rtype == "room" }
-        let deviceChildren = children.filter { $0.rtype == "device" }
-
-        // Process room children first (zones often contain rooms)
-        if !roomChildren.isEmpty {
-            print("    🏠 enrichZoneWithLights: Processing \(roomChildren.count) room children for zone '\(zone.metadata.name)'")
-
-            for roomChild in roomChildren {
-                // Fetch the room details to get its device children
-                guard let roomDetail = await fetchRoomDetails(roomId: roomChild.rid, session: session) else {
-                    print("      ❌ Failed to fetch room details for room ID: \(roomChild.rid)")
-                    continue
-                }
-
-                // Get device children from this room
-                guard let roomDeviceChildren = roomDetail.children?.filter({ $0.rtype == "device" }) else {
-                    print("      ℹ️ Room '\(roomDetail.metadata.name)' has no device children")
-                    continue
-                }
-
-                print("      🏠 Room '\(roomDetail.metadata.name)' has \(roomDeviceChildren.count) device(s)")
-
-                // Process each device in the room
-                for deviceChild in roomDeviceChildren {
-                    // Step 1: Fetch device details to get the light service ID
-                    guard let device = await fetchDeviceDetails(deviceId: deviceChild.rid, session: session) else {
-                        print("        ❌ Failed to fetch device with ID: \(deviceChild.rid)")
-                        continue
-                    }
-
-                    // Step 2: Find the light service in the device's services
-                    guard let lightService = device.services?.first(where: { $0.rtype == "light" }) else {
-                        print("        ⚠️ Device \(deviceChild.rid) has no light service")
-                        continue
-                    }
-
-                    // Step 3: Lookup the light data from the lightCache (already populated)
-                    if let light = lightCache[lightService.rid] {
-                        lights.append(light)
-                        print("        ✅ Added light from room (cache): \(light.metadata?.name ?? "Unknown") (ID: \(light.id))")
-                    } else {
-                        print("        ⚠️ Light \(lightService.rid) not found in cache")
-                    }
-                }
-            }
-        }
-
-        // Process direct device children (if any)
-        if !deviceChildren.isEmpty {
-            print("    💡 enrichZoneWithLights: Processing \(deviceChildren.count) direct device children for zone '\(zone.metadata.name)'")
-
-            for child in deviceChildren {
-                // Step 1: Fetch device details to get the light service ID
-                guard let device = await fetchDeviceDetails(deviceId: child.rid, session: session) else {
-                    print("      ❌ Failed to fetch device with ID: \(child.rid)")
-                    continue
-                }
-
-                // Step 2: Find the light service in the device's services
-                guard let lightService = device.services?.first(where: { $0.rtype == "light" }) else {
-                    print("      ⚠️ Device \(child.rid) has no light service")
-                    continue
-                }
-
-                // Step 3: Lookup the light data from the lightCache (already populated)
-                if let light = lightCache[lightService.rid] {
-                    lights.append(light)
-                    print("      ✅ Added direct light from cache: \(light.metadata?.name ?? "Unknown") (ID: \(light.id))")
-                } else {
-                    print("      ⚠️ Light \(lightService.rid) not found in cache")
-                }
-            }
-        }
-
-        // If no room or device children were found, log a warning
-        if roomChildren.isEmpty && deviceChildren.isEmpty {
-            print("    ℹ️ enrichZoneWithLights: Zone '\(zone.metadata.name)' has no room or device children (has \(children.count) children of other types)")
-        }
-
-        print("    ✅ enrichZoneWithLights: Zone '\(zone.metadata.name)' enriched with \(lights.count) total lights")
-
-        // Return zone with enriched light data
-        return HueZone(
-            id: zone.id,
-            type: zone.type,
-            metadata: zone.metadata,
-            children: zone.children,
-            services: zone.services,
-            groupedLights: zone.groupedLights,
-            lights: lights.isEmpty ? nil : lights
-        )
-    }
-    
     /// Retrieve the list of zones from the connected bridge.
     /// Updates the zones published property with the results.
     func getZones() async {
@@ -1580,130 +672,42 @@ class BridgeManager: ObservableObject {
         isLoadingZones = true
         lastZonesRefreshTime = Date()
 
-        // STEP 1: Fetch all lights FIRST to populate the lightCache
-        print("🏢 getZones: Step 1 - Fetching all lights into cache")
-        await fetchAllLights()
-
-        let urlString = "https://\(bridge.internalipaddress)/clip/v2/resource/zone"
-
         let delegate = InsecureURLSessionDelegate()
-        var config = URLSessionConfiguration.default
+        let config = URLSessionConfiguration.default
         config.timeoutIntervalForRequest = 10.0  // 10 second timeout for local network
         config.timeoutIntervalForResource = 30.0
         let session = URLSession(configuration: config, delegate: delegate, delegateQueue: nil)
 
-        guard let url = URL(string: urlString) else {
-            print("❌ getZones: Invalid URL: \(urlString)")
-            // PROTECTION 3: Keep existing data on error
-            refreshError = "Invalid bridge URL"
-            isLoadingZones = false
-            isRefreshingZones = false
-            return
-        }
-
-        var request = URLRequest(url: url)
-        request.httpMethod = "GET"
-        request.setValue(currentConnectedBridge?.username, forHTTPHeaderField: "hue-application-key")
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-
-        print("🏢 getZones: Step 2 - Requesting zones from \(urlString)")
+        print("🏢 getZones: Requesting zones from bridge")
 
         do {
-            let (data, response) = try await session.data(for: request)
+            // Fetch basic zones list (without enrichment)
+            let response = try await HueAPIService.shared.fetchZones()
 
-            if let http = response as? HTTPURLResponse {
-                print("🌐 getZones: HTTP \(http.statusCode)")
+            // Check for errors first
+            if !response.errors.isEmpty {
+                let errorMessages = response.errors.map { $0.description }.joined(separator: ", ")
+                print("❌ getZones: Hue API v2 errors: \(errorMessages)")
+                // PROTECTION 3: Keep existing data, set error instead
+                refreshError = "API Error: \(errorMessages)"
+                isLoadingZones = false
+                isRefreshingZones = false
+                return
             }
 
-            // Attempt to decode Hue API v2 response for zones
-            do {
-                let response = try JSONDecoder().decode(HueZonesResponse.self, from: data)
+            print("✅ getZones: Success - retrieved \(response.data.count) zones")
 
-                // Check for errors first
-                if !response.errors.isEmpty {
-                    let errorMessages = response.errors.map { $0.description }.joined(separator: ", ")
-                    print("❌ getZones: Hue API v2 errors: \(errorMessages)")
-                    // PROTECTION 3: Keep existing data, set error instead
-                    refreshError = "API Error: \(errorMessages)"
-                    return
-                }
+            // Zones from API already include children and services
+            // We just need to attach grouped light status if needed
+            self.zones = response.data
+            saveZonesToStorage()  // Cache successful refresh
+            refreshError = nil  // Clear any previous errors
+            print("🏢 getZones: Completed with \(response.data.count) zones")
 
-                // If no errors, get basic zones first
-                if response.errors.isEmpty {
-                    print("✅ getZones: Success - retrieved \(response.data.count) zones")
-
-                    // Now fetch detailed metadata for each zone
-                    var enhancedZones: [HueZone] = []
-
-                    for zone in response.data {
-                        print("  - Fetching details for zone: \(zone.metadata.name) (ID: \(zone.id))")
-
-                        // Get detailed zone information
-                        if let detailedZone = await fetchZoneDetails(zoneId: zone.id, session: session) {
-                            // Check if zone has grouped light services
-                            var groupedLights: [HueGroupedLight] = []
-                            if let services = detailedZone.services {
-                                let groupedLightServices = services.filter { $0.rtype == "grouped_light" }
-                                for service in groupedLightServices {
-                                    print("    - Fetching grouped light details for service: \(service.rid)")
-                                    if let groupedLight = await fetchGroupedLightDetails(groupedLightId: service.rid, session: session) {
-                                        groupedLights.append(groupedLight)
-                                        print("      ✅ Added grouped light details")
-                                    } else {
-                                        print("      ❌ Failed to fetch grouped light details")
-                                    }
-                                }
-                            }
-
-                            // Merge the detailed information with the basic zone
-                            let mergedZone = HueZone(
-                                id: zone.id,
-                                type: zone.type,
-                                metadata: zone.metadata,
-                                children: detailedZone.children,
-                                services: detailedZone.services,
-                                groupedLights: groupedLights.isEmpty ? nil : groupedLights,
-                                lights: nil // Will be enriched next
-                            )
-
-                            // Enrich with individual light details
-                            let enrichedZone = await enrichZoneWithLights(zone: mergedZone, session: session)
-                            enhancedZones.append(enrichedZone)
-                            print("    ✅ Enhanced zone: \(zone.metadata.name)")
-                            print("      - Children: \(detailedZone.children?.count ?? 0)")
-                            print("      - Services: \(detailedZone.services?.count ?? 0)")
-                            print("      - Grouped Lights: \(groupedLights.count)")
-                            print("      - Individual Lights: \(enrichedZone.lights?.count ?? 0)")
-                        } else {
-                            // If we can't get details, use the basic zone
-                            print("    ⚠️ Using basic zone data for: \(zone.metadata.name)")
-                            enhancedZones.append(zone)
-                        }
-                    }
-
-                    self.zones = enhancedZones
-                    saveZonesToStorage()  // Cache successful refresh
-                    refreshError = nil  // Clear any previous errors
-                    print("🏢 getZones: Completed with \(enhancedZones.count) enhanced zones")
-                } else {
-                    print("ℹ️ getZones: No errors but unexpected response structure")
-                    // PROTECTION 3: Keep existing data on unexpected response
-                    refreshError = "Unexpected API response structure"
-                }
-            } catch {
-                // If decoding into the Hue zones format fails, log raw string for diagnostics
-                if let responseString = String(data: data, encoding: .utf8) {
-                    print("ℹ️ getZones: Failed to decode zones response: \(responseString)")
-                } else {
-                    print("ℹ️ getZones: Received non-UTF8 data (\(data.count) bytes)")
-                }
-                // PROTECTION 3: Keep existing data on decode error
-                refreshError = "Failed to decode zones data"
-            }
         } catch {
-            print("❌ getZones: Network error: \(error.localizedDescription)")
-            // PROTECTION 3: Keep existing data on network error
-            refreshError = "Network error: \(error.localizedDescription)"
+            print("❌ getZones: Error: \(error.localizedDescription)")
+            // PROTECTION 3: Keep existing data on error
+            refreshError = "Error: \(error.localizedDescription)"
         }
 
         isLoadingZones = false
@@ -1713,55 +717,8 @@ class BridgeManager: ObservableObject {
     /// Refresh a single zone by fetching its latest data from the bridge.
     /// Updates only the specified zone in the zones array.
     func refreshZone(zoneId: String) async {
-        guard let bridge = currentConnectedBridge?.bridge else {
-            print("❌ refreshZone: No connected bridge available")
-            return
-        }
-
-        let delegate = InsecureURLSessionDelegate()
-        let session = URLSession(configuration: .default, delegate: delegate, delegateQueue: nil)
-
-        print("🔄 refreshZone: Fetching details for zone ID: \(zoneId)")
-
-        // Get detailed zone information
-        guard let detailedZone = await fetchZoneDetails(zoneId: zoneId, session: session) else {
-            print("❌ refreshZone: Failed to fetch zone details")
-            return
-        }
-
-        // Fetch grouped light details
-        var groupedLights: [HueGroupedLight] = []
-        if let services = detailedZone.services {
-            let groupedLightServices = services.filter { $0.rtype == "grouped_light" }
-            for service in groupedLightServices {
-                if let groupedLight = await fetchGroupedLightDetails(groupedLightId: service.rid, session: session) {
-                    groupedLights.append(groupedLight)
-                }
-            }
-        }
-
-        // Preserve existing lights array (only fetch lights on navigation, not on refresh)
-        let existingLights = zones.first(where: { $0.id == zoneId })?.lights
-
-        // Create the updated zone
-        let updatedZone = HueZone(
-            id: detailedZone.id,
-            type: detailedZone.type,
-            metadata: detailedZone.metadata,
-            children: detailedZone.children,
-            services: detailedZone.services,
-            groupedLights: groupedLights.isEmpty ? nil : groupedLights,
-            lights: existingLights
-        )
-
-        // Update the specific zone in the array
-        if let index = zones.firstIndex(where: { $0.id == zoneId }) {
-            zones[index] = updatedZone
-            print("✅ refreshZone: Updated zone: \(detailedZone.metadata.name)")
-        } else {
-            print("⚠️ refreshZone: Zone not found in array, appending")
-            zones.append(updatedZone)
-        }
+        // Simplified: just refresh all zones since the API is fast
+        await getZones()
     }
 
     // MARK: - Color Conversion Utilities
@@ -1856,35 +813,6 @@ class BridgeManager: ObservableObject {
 
     /// Extract a displayable color from a HueLight
     /// Returns nil if light should be hidden (off and user chose to hide)
-    func colorForLight(_ light: HueLight) -> Color? {
-        let isOn = light.on?.on ?? false
-        let brightness = light.dimming?.brightness ?? 0.0
-
-        // If light is off, return very dim version
-        if !isOn {
-            // Use last known color if available, otherwise gray
-            if let xy = light.color?.xy {
-                return xyToRGB(x: xy.x, y: xy.y, brightness: brightness * 0.1) // 10% of brightness
-            } else if let mirek = light.color_temperature?.mirek {
-                return mirekToRGB(mirek: mirek, brightness: brightness * 0.1)
-            } else {
-                // Default to very dim gray
-                return Color(red: 0.05, green: 0.05, blue: 0.05)
-            }
-        }
-
-        // Light is on - check if it has color
-        if let xy = light.color?.xy {
-            return xyToRGB(x: xy.x, y: xy.y, brightness: brightness)
-        } else if let mirek = light.color_temperature?.mirek {
-            return mirekToRGB(mirek: mirek, brightness: brightness)
-        } else {
-            // No color data, return white at current brightness
-            let b = brightness / 100.0
-            return Color(red: b, green: b, blue: b)
-        }
-    }
-
     // MARK: - Background Refresh Management
 
     /// Refresh all rooms and zones data
@@ -1924,42 +852,9 @@ class BridgeManager: ObservableObject {
 
             guard response.errors.isEmpty else { return }
 
-            // Fetch updated data for each room
-            var updatedRooms: [HueRoom] = []
-
-            for basicRoom in response.data {
-                // Get detailed room information
-                if let detailedRoom = await fetchRoomDetails(roomId: basicRoom.id, session: session) {
-                    // Fetch grouped lights
-                    var groupedLights: [HueGroupedLight] = []
-                    if let services = detailedRoom.services {
-                        let groupedLightServices = services.filter { $0.rtype == "grouped_light" }
-                        for service in groupedLightServices {
-                            if let groupedLight = await fetchGroupedLightDetails(groupedLightId: service.rid, session: session) {
-                                groupedLights.append(groupedLight)
-                            }
-                        }
-                    }
-
-                    // Preserve existing lights array (only refresh on navigation)
-                    let existingLights = rooms.first(where: { $0.id == basicRoom.id })?.lights
-
-                    let updatedRoom = HueRoom(
-                        id: detailedRoom.id,
-                        type: detailedRoom.type,
-                        metadata: detailedRoom.metadata,
-                        children: detailedRoom.children,
-                        services: detailedRoom.services,
-                        groupedLights: groupedLights.isEmpty ? nil : groupedLights,
-                        lights: existingLights
-                    )
-
-                    updatedRooms.append(updatedRoom)
-                }
-            }
-
+            // Rooms from API already include children and services
             // Smart update - merge with existing data
-            smartUpdateRooms(with: updatedRooms)
+            smartUpdateRooms(with: response.data)
 
         } catch {
             print("❌ refreshRoomsData: \(error.localizedDescription)")
@@ -1987,42 +882,9 @@ class BridgeManager: ObservableObject {
 
             guard response.errors.isEmpty else { return }
 
-            // Fetch updated data for each zone
-            var updatedZones: [HueZone] = []
-
-            for basicZone in response.data {
-                // Get detailed zone information
-                if let detailedZone = await fetchZoneDetails(zoneId: basicZone.id, session: session) {
-                    // Fetch grouped lights
-                    var groupedLights: [HueGroupedLight] = []
-                    if let services = detailedZone.services {
-                        let groupedLightServices = services.filter { $0.rtype == "grouped_light" }
-                        for service in groupedLightServices {
-                            if let groupedLight = await fetchGroupedLightDetails(groupedLightId: service.rid, session: session) {
-                                groupedLights.append(groupedLight)
-                            }
-                        }
-                    }
-
-                    // Preserve existing lights array (only refresh on navigation)
-                    let existingLights = zones.first(where: { $0.id == basicZone.id })?.lights
-
-                    let updatedZone = HueZone(
-                        id: detailedZone.id,
-                        type: detailedZone.type,
-                        metadata: detailedZone.metadata,
-                        children: detailedZone.children,
-                        services: detailedZone.services,
-                        groupedLights: groupedLights.isEmpty ? nil : groupedLights,
-                        lights: existingLights
-                    )
-
-                    updatedZones.append(updatedZone)
-                }
-            }
-
+            // Zones from API already include children and services
             // Smart update - merge with existing data
-            smartUpdateZones(with: updatedZones)
+            smartUpdateZones(with: response.data)
 
         } catch {
             print("❌ refreshZonesData: \(error.localizedDescription)")
@@ -2171,186 +1033,35 @@ class BridgeManager: ObservableObject {
         await refreshAllData()
     }
 
-    /// Refresh a single room immediately - optimized for fast UI updates after control actions
-    func refreshSingleRoom(roomId: String) async {
-        print("⚡ Fast refresh for room: \(roomId)")
-
-        let delegate = InsecureURLSessionDelegate()
-        let session = URLSession(configuration: .default, delegate: delegate, delegateQueue: nil)
-
-        // Fetch detailed room information
-        guard let detailedRoom = await fetchRoomDetails(roomId: roomId, session: session) else {
-            print("❌ Failed to fetch room details for: \(roomId)")
-            return
-        }
-
-        // Fetch grouped lights
-        var groupedLights: [HueGroupedLight] = []
-        if let services = detailedRoom.services {
-            let groupedLightServices = services.filter { $0.rtype == "grouped_light" }
-            for service in groupedLightServices {
-                if let groupedLight = await fetchGroupedLightDetails(groupedLightId: service.rid, session: session) {
-                    groupedLights.append(groupedLight)
-                }
-            }
-        }
-
-        // Fetch individual lights (via device abstraction layer)
-        var lights: [HueLight] = []
-        if let children = detailedRoom.children {
-            let deviceChildren = children.filter { $0.rtype == "device" }
-            for child in deviceChildren {
-                // Step 1: Fetch device to get light service ID
-                guard let device = await fetchDeviceDetails(deviceId: child.rid, session: session),
-                      // Step 2: Find the light service
-                      let lightService = device.services?.first(where: { $0.rtype == "light" }),
-                      // Step 3: Fetch the actual light data
-                      let light = await fetchLightDetails(lightId: lightService.rid, session: session) else {
-                    continue
-                }
-                lights.append(light)
-            }
-        }
-
-        // Create updated room
-        let updatedRoom = HueRoom(
-            id: detailedRoom.id,
-            type: detailedRoom.type,
-            metadata: detailedRoom.metadata,
-            children: detailedRoom.children,
-            services: detailedRoom.services,
-            groupedLights: groupedLights.isEmpty ? nil : groupedLights,
-            lights: lights.isEmpty ? nil : lights
-        )
-
-        // Update just this room in the array without affecting other rooms
-        updateSingleRoom(updatedRoom)
-        print("✅ Room \(roomId) refreshed")
-    }
-
-    /// Refresh a single zone immediately - optimized for fast UI updates after control actions
-    func refreshSingleZone(zoneId: String) async {
-        print("⚡ Fast refresh for zone: \(zoneId)")
-
-        let delegate = InsecureURLSessionDelegate()
-        let session = URLSession(configuration: .default, delegate: delegate, delegateQueue: nil)
-
-        // Fetch detailed zone information
-        guard let detailedZone = await fetchZoneDetails(zoneId: zoneId, session: session) else {
-            print("❌ Failed to fetch zone details for: \(zoneId)")
-            return
-        }
-
-        // Fetch grouped lights
-        var groupedLights: [HueGroupedLight] = []
-        if let services = detailedZone.services {
-            let groupedLightServices = services.filter { $0.rtype == "grouped_light" }
-            for service in groupedLightServices {
-                if let groupedLight = await fetchGroupedLightDetails(groupedLightId: service.rid, session: session) {
-                    groupedLights.append(groupedLight)
-                }
-            }
-        }
-
-        // Fetch individual lights (via device abstraction layer)
-        var lights: [HueLight] = []
-        if let children = detailedZone.children {
-            let deviceChildren = children.filter { $0.rtype == "device" }
-            for child in deviceChildren {
-                // Step 1: Fetch device to get light service ID
-                guard let device = await fetchDeviceDetails(deviceId: child.rid, session: session),
-                      // Step 2: Find the light service
-                      let lightService = device.services?.first(where: { $0.rtype == "light" }),
-                      // Step 3: Fetch the actual light data
-                      let light = await fetchLightDetails(lightId: lightService.rid, session: session) else {
-                    continue
-                }
-                lights.append(light)
-            }
-        }
-
-        // Create updated zone
-        let updatedZone = HueZone(
-            id: detailedZone.id,
-            type: detailedZone.type,
-            metadata: detailedZone.metadata,
-            children: detailedZone.children,
-            services: detailedZone.services,
-            groupedLights: groupedLights.isEmpty ? nil : groupedLights,
-            lights: lights.isEmpty ? nil : lights
-        )
-
-        // Update just this zone in the array without affecting other zones
-        updateSingleZone(updatedZone)
-        print("✅ Zone \(zoneId) refreshed")
-    }
-
     // MARK: - Scene Management
 
     /// Fetch all scenes from the connected bridge
     func fetchScenes() async {
-        guard let bridge = currentConnectedBridge?.bridge else {
+        guard currentConnectedBridge?.bridge != nil else {
             print("❌ fetchScenes: No connected bridge available")
             scenes = []
             return
         }
 
-        let urlString = "https://\(bridge.internalipaddress)/clip/v2/resource/scene"
-
-        let delegate = InsecureURLSessionDelegate()
-        let session = URLSession(configuration: .default, delegate: delegate, delegateQueue: nil)
-
-        guard let url = URL(string: urlString) else {
-            print("❌ fetchScenes: Invalid URL: \(urlString)")
-            scenes = []
-            return
-        }
-
-        var request = URLRequest(url: url)
-        request.httpMethod = "GET"
-        request.setValue(currentConnectedBridge?.username, forHTTPHeaderField: "hue-application-key")
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-
-        print("🎬 fetchScenes: Requesting scenes from \(urlString)")
+        print("🎬 fetchScenes: Requesting scenes from bridge")
 
         do {
-            let (data, response) = try await session.data(for: request)
+            let response: HueScenesResponse = try await HueAPIService.shared.fetchScenes()
 
-            if let http = response as? HTTPURLResponse {
-                print("🌐 fetchScenes: HTTP \(http.statusCode)")
-            }
-
-            // Decode Hue API v2 response for scenes
-            do {
-                let response = try JSONDecoder().decode(HueScenesResponse.self, from: data)
-
-                // Check for errors first
-                if !response.errors.isEmpty {
-                    let errorMessages = response.errors.map { $0.description }.joined(separator: ", ")
-                    print("❌ fetchScenes: Hue API v2 errors: \(errorMessages)")
-                    self.scenes = []
-                    return
-                }
-
-                // If no errors, update scenes
-                if response.errors.isEmpty {
-                    self.scenes = response.data
-                    saveScenesToStorage()
-                    print("✅ fetchScenes: Success - retrieved \(response.data.count) scenes")
-                } else {
-                    print("ℹ️ fetchScenes: No errors but unexpected response structure")
-                    self.scenes = []
-                }
-            } catch {
-                if let responseString = String(data: data, encoding: .utf8) {
-                    print("ℹ️ fetchScenes: Failed to decode scenes response: \(responseString)")
-                } else {
-                    print("ℹ️ fetchScenes: Received non-UTF8 data (\(data.count) bytes)")
-                }
+            // Check for errors first
+            if !response.errors.isEmpty {
+                let errorMessages = response.errors.map { $0.description }.joined(separator: ", ")
+                print("❌ fetchScenes: Hue API v2 errors: \(errorMessages)")
                 self.scenes = []
+                return
             }
+
+            // If no errors, update scenes
+            self.scenes = response.data
+            saveScenesToStorage()
+            print("✅ fetchScenes: Success - retrieved \(response.data.count) scenes")
         } catch {
-            print("❌ fetchScenes: Network error: \(error.localizedDescription)")
+            print("❌ fetchScenes: Error: \(error.localizedDescription)")
             self.scenes = []
         }
     }
@@ -2383,57 +1094,17 @@ class BridgeManager: ObservableObject {
 
     /// Activate a specific scene
     func activateScene(_ sceneId: String) async -> Result<Void, Error> {
-        guard let bridge = currentConnectedBridge?.bridge else {
+        guard currentConnectedBridge?.bridge != nil else {
             print("❌ activateScene: No connected bridge available")
             return .failure(NSError(domain: "BridgeManager", code: -1, userInfo: [NSLocalizedDescriptionKey: "No bridge connection available"]))
         }
 
-        let urlString = "https://\(bridge.internalipaddress)/clip/v2/resource/scene/\(sceneId)"
-
-        let delegate = InsecureURLSessionDelegate()
-        let session = URLSession(configuration: .default, delegate: delegate, delegateQueue: nil)
-
-        guard let url = URL(string: urlString) else {
-            print("❌ activateScene: Invalid URL: \(urlString)")
-            return .failure(NSError(domain: "BridgeManager", code: -1, userInfo: [NSLocalizedDescriptionKey: "Invalid URL"]))
-        }
-
-        var request = URLRequest(url: url)
-        request.httpMethod = "PUT"
-        request.setValue(currentConnectedBridge?.username, forHTTPHeaderField: "hue-application-key")
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-
-        // Scene activation payload
-        let payload: [String: Any] = [
-            "recall": [
-                "action": "active"
-            ]
-        ]
-
         do {
-            request.httpBody = try JSONSerialization.data(withJSONObject: payload)
-            let (data, response) = try await session.data(for: request)
-
-            if let http = response as? HTTPURLResponse {
-                print("🌐 activateScene: HTTP \(http.statusCode)")
-            }
-
-            if let responseString = String(data: data, encoding: .utf8) {
-                print("🎬 activateScene response: \(responseString)")
-            }
-
-            // Parse response to check for errors
-            if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-               let errors = json["errors"] as? [[String: Any]],
-               !errors.isEmpty {
-                let errorDesc = errors.first?["description"] as? String ?? "Unknown error"
-                return .failure(NSError(domain: "HueBridge", code: -1, userInfo: [NSLocalizedDescriptionKey: errorDesc]))
-            }
-
+            try await HueAPIService.shared.activateScene(sceneId: sceneId)
             print("✅ activateScene: Successfully activated scene \(sceneId)")
             return .success(())
         } catch {
-            print("❌ activateScene: Network error: \(error.localizedDescription)")
+            print("❌ activateScene: Error: \(error.localizedDescription)")
             return .failure(error)
         }
     }
@@ -2497,118 +1168,6 @@ class BridgeManager: ObservableObject {
     // MARK: - Light Cache Management
 
     /// Fetch all lights in a single API call and cache them
-    func fetchAllLights() async {
-        guard let bridge = currentConnectedBridge?.bridge else {
-            print("❌ fetchAllLights: No connected bridge available")
-            return
-        }
-
-        let urlString = "https://\(bridge.internalipaddress)/clip/v2/resource/light"
-
-        let delegate = InsecureURLSessionDelegate()
-        let session = URLSession(configuration: .default, delegate: delegate, delegateQueue: nil)
-
-        guard let url = URL(string: urlString) else {
-            print("❌ fetchAllLights: Invalid URL: \(urlString)")
-            return
-        }
-
-        var request = URLRequest(url: url)
-        request.httpMethod = "GET"
-        request.setValue(currentConnectedBridge?.username, forHTTPHeaderField: "hue-application-key")
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-
-        print("💡 fetchAllLights: Requesting all lights from \(urlString)")
-
-        do {
-            let (data, response) = try await session.data(for: request)
-
-            if let http = response as? HTTPURLResponse {
-                print("🌐 fetchAllLights: HTTP \(http.statusCode)")
-            }
-
-            do {
-                let response = try JSONDecoder().decode(HueLightsResponse.self, from: data)
-
-                if !response.errors.isEmpty {
-                    let errorMessages = response.errors.map { $0.description }.joined(separator: ", ")
-                    print("❌ fetchAllLights: Hue API v2 errors: \(errorMessages)")
-                    return
-                }
-
-                // Convert array to dictionary by ID
-                lightCache = Dictionary(uniqueKeysWithValues: response.data.map { ($0.id, $0) })
-                saveLightsToStorage()
-                print("✅ fetchAllLights: Success - cached \(lightCache.count) lights")
-
-            } catch {
-                if let responseString = String(data: data, encoding: .utf8) {
-                    print("ℹ️ fetchAllLights: Failed to decode response: \(responseString)")
-                } else {
-                    print("ℹ️ fetchAllLights: Received non-UTF8 data (\(data.count) bytes)")
-                }
-            }
-        } catch {
-            print("❌ fetchAllLights: Network error: \(error.localizedDescription)")
-        }
-    }
-
-    /// Extract colors from an array of lights (fallback when no scene is active)
-    func extractColorsFromLights(_ lights: [HueLight]) -> [Color] {
-        let colors = lights.compactMap { light -> Color? in
-            colorForLight(light)
-        }
-
-        print("🎨 extractColorsFromLights: Extracted \(colors.count) colors from \(lights.count) lights")
-        return colors
-    }
-
-    /// Calculate average color from an array of lights
-    func averageColorFromLights(_ lights: [HueLight]) -> Color {
-        let colors = extractColorsFromLights(lights)
-
-        guard !colors.isEmpty else {
-            print("🎨 averageColorFromLights: No colors found, returning gray")
-            return .gray
-        }
-
-        // Convert SwiftUI Colors to RGB components and average them
-        var totalRed: CGFloat = 0
-        var totalGreen: CGFloat = 0
-        var totalBlue: CGFloat = 0
-        var validColors = 0
-
-        for color in colors {
-            // Use UIColor to extract RGB components
-            #if os(watchOS)
-            let uiColor = UIColor(color)
-            var red: CGFloat = 0
-            var green: CGFloat = 0
-            var blue: CGFloat = 0
-            var alpha: CGFloat = 0
-
-            if uiColor.getRed(&red, green: &green, blue: &blue, alpha: &alpha) {
-                totalRed += red
-                totalGreen += green
-                totalBlue += blue
-                validColors += 1
-            }
-            #endif
-        }
-
-        guard validColors > 0 else {
-            print("🎨 averageColorFromLights: Could not extract RGB, returning gray")
-            return .gray
-        }
-
-        let avgRed = totalRed / CGFloat(validColors)
-        let avgGreen = totalGreen / CGFloat(validColors)
-        let avgBlue = totalBlue / CGFloat(validColors)
-
-        print("🎨 averageColorFromLights: Averaged \(validColors) colors -> RGB(\(avgRed), \(avgGreen), \(avgBlue))")
-        return Color(red: avgRed, green: avgGreen, blue: avgBlue)
-    }
-
     // MARK: - Local State Updates
 
     /// Update local room state optimistically after a successful control action
@@ -2698,319 +1257,98 @@ class BridgeManager: ObservableObject {
     /// Fetch the current state of a grouped light from the bridge
     /// Returns the updated grouped light data including current brightness
     func fetchGroupedLight(groupedLightId: String) async -> HueGroupedLight? {
-        let delegate = InsecureURLSessionDelegate()
-        let session = URLSession(configuration: .default, delegate: delegate, delegateQueue: nil)
-        return await fetchGroupedLightDetails(groupedLightId: groupedLightId, session: session)
-    }
-
-    /// Fetch and cache individual lights for a specific room
-    /// Updates the room in the local cache with enriched light data
-    func fetchLightsForRoom(roomId: String) async {
-        guard let index = rooms.firstIndex(where: { $0.id == roomId }) else {
-            print("⚠️ fetchLightsForRoom: Room \(roomId) not found")
-            return
-        }
-
-        let room = rooms[index]
-
-        // Skip if lights are already loaded
-        if let lights = room.lights, !lights.isEmpty {
-            print("ℹ️ fetchLightsForRoom: Room '\(room.metadata.name)' already has \(lights.count) lights loaded")
-            return
-        }
-
-        print("💡 fetchLightsForRoom: Fetching lights for room '\(room.metadata.name)'")
+        guard let bridge = currentConnectedBridge?.bridge else { return nil }
 
         let delegate = InsecureURLSessionDelegate()
         let session = URLSession(configuration: .default, delegate: delegate, delegateQueue: nil)
 
-        let enrichedRoom = await enrichRoomWithLights(room: room, session: session)
+        let urlString = "https://\(bridge.internalipaddress)/clip/v2/resource/grouped_light/\(groupedLightId)"
+        guard let url = URL(string: urlString) else { return nil }
 
-        // Update the room in the array
-        rooms[index] = enrichedRoom
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.setValue(currentConnectedBridge?.username, forHTTPHeaderField: "hue-application-key")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
 
-        // Save to cache
-        saveRoomsToStorage()
-
-        if let lightCount = enrichedRoom.lights?.count {
-            print("✅ fetchLightsForRoom: Loaded \(lightCount) lights for room '\(room.metadata.name)'")
-        }
-    }
-
-    /// Fetch and cache individual lights for a specific zone
-    /// Updates the zone in the local cache with enriched light data
-    func fetchLightsForZone(zoneId: String) async {
-        guard let index = zones.firstIndex(where: { $0.id == zoneId }) else {
-            print("⚠️ fetchLightsForZone: Zone \(zoneId) not found")
-            return
-        }
-
-        let zone = zones[index]
-
-        // Skip if lights are already loaded
-        if let lights = zone.lights, !lights.isEmpty {
-            print("ℹ️ fetchLightsForZone: Zone '\(zone.metadata.name)' already has \(lights.count) lights loaded")
-            return
-        }
-
-        print("💡 fetchLightsForZone: Fetching lights for zone '\(zone.metadata.name)'")
-
-        let delegate = InsecureURLSessionDelegate()
-        let session = URLSession(configuration: .default, delegate: delegate, delegateQueue: nil)
-
-        let enrichedZone = await enrichZoneWithLights(zone: zone, session: session)
-
-        // Update the zone in the array
-        zones[index] = enrichedZone
-
-        // Save to cache
-        saveZonesToStorage()
-
-        if let lightCount = enrichedZone.lights?.count {
-            print("✅ fetchLightsForZone: Loaded \(lightCount) lights for zone '\(zone.metadata.name)'")
+        do {
+            let (data, _) = try await session.data(for: request)
+            let response = try JSONDecoder().decode(HueGroupedLightsResponse.self, from: data)
+            return response.data.first
+        } catch {
+            print("❌ fetchGroupedLight: \(error.localizedDescription)")
+            return nil
         }
     }
 
     // MARK: - Centralized Light Control Methods with Rate Limiting
 
-    /// Send a command to a grouped light endpoint with automatic 1/sec rate limiting
-    ///
-    /// Philips Hue API v2 Rate Limit: Maximum 1 command per second to /grouped_light
-    ///
-    /// Example Request:
-    /// ```
-    /// PUT https://{bridge-ip}/clip/v2/resource/grouped_light/{id}
-    /// Headers: hue-application-key: {username}
-    /// Body: {"on": {"on": true}, "dimming": {"brightness": 75.0}}
-    /// ```
-    ///
-    /// Example Response (Success):
-    /// ```json
-    /// {
-    ///   "errors": [],
-    ///   "data": [{"rid": "...", "rtype": "grouped_light"}]
-    /// }
-    /// ```
-    ///
-    /// - Parameters:
-    ///   - groupedLightId: The ID of the grouped light to control
-    ///   - payload: Dictionary containing the command (e.g., on, dimming, color)
-    /// - Returns: Result with success or error
-    private func sendGroupedLightCommand(groupedLightId: String, payload: [String: Any]) async -> Result<Void, Error> {
-        guard let bridge = currentConnectedBridge else {
-            return .failure(NSError(domain: "BridgeManager", code: -1, userInfo: [NSLocalizedDescriptionKey: "No bridge connected"]))
-        }
-
-        // Enforce 1 command per second rate limit
-        let now = Date()
-        let timeSinceLastCommand = now.timeIntervalSince(lastGroupedLightCommandTime)
-
-        if timeSinceLastCommand < groupedLightThrottleInterval {
-            let delay = groupedLightThrottleInterval - timeSinceLastCommand
-            print("⏱️ Throttling grouped_light command (waiting \(Int(delay * 1000))ms)")
-            try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
-        }
-
-        lastGroupedLightCommandTime = Date()
-
-        let delegate = InsecureURLSessionDelegate()
-        let session = URLSession(configuration: .default, delegate: delegate, delegateQueue: nil)
-
-        let urlString = "https://\(bridge.bridge.internalipaddress)/clip/v2/resource/grouped_light/\(groupedLightId)"
-        guard let url = URL(string: urlString) else {
-            return .failure(NSError(domain: "BridgeManager", code: -2, userInfo: [NSLocalizedDescriptionKey: "Invalid URL"]))
-        }
-
-        var request = URLRequest(url: url)
-        request.httpMethod = "PUT"
-        request.setValue(bridge.username, forHTTPHeaderField: "hue-application-key")
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-
-        guard let jsonData = try? JSONSerialization.data(withJSONObject: payload) else {
-            return .failure(NSError(domain: "BridgeManager", code: -3, userInfo: [NSLocalizedDescriptionKey: "Invalid payload"]))
-        }
-        request.httpBody = jsonData
-
-        do {
-            let (data, response) = try await session.data(for: request)
-
-            if let http = response as? HTTPURLResponse {
-                if http.statusCode >= 200 && http.statusCode < 300 {
-                    print("✅ Grouped light command success (HTTP \(http.statusCode))")
-                    return .success(())
-                } else {
-                    let errorMsg = "HTTP \(http.statusCode)"
-                    print("❌ Grouped light command failed: \(errorMsg)")
-                    return .failure(NSError(domain: "BridgeManager", code: http.statusCode, userInfo: [NSLocalizedDescriptionKey: errorMsg]))
-                }
-            }
-            return .success(())
-        } catch {
-            print("❌ Grouped light command error: \(error.localizedDescription)")
-            return .failure(error)
-        }
-    }
-
-    /// Send a command to an individual light endpoint with automatic 10/sec rate limiting
-    ///
-    /// Philips Hue API v2 Rate Limit: Maximum 10 commands per second to /light
-    ///
-    /// Example Request:
-    /// ```
-    /// PUT https://{bridge-ip}/clip/v2/resource/light/{id}
-    /// Headers: hue-application-key: {username}
-    /// Body: {"on": {"on": false}}
-    /// ```
-    ///
-    /// Example Response (Success):
-    /// ```json
-    /// {
-    ///   "errors": [],
-    ///   "data": [{"rid": "...", "rtype": "light"}]
-    /// }
-    /// ```
-    ///
-    /// - Parameters:
-    ///   - lightId: The ID of the individual light to control
-    ///   - payload: Dictionary containing the command (e.g., on, dimming, color)
-    /// - Returns: Result with success or error
-    private func sendLightCommand(lightId: String, payload: [String: Any]) async -> Result<Void, Error> {
-        guard let bridge = currentConnectedBridge else {
-            return .failure(NSError(domain: "BridgeManager", code: -1, userInfo: [NSLocalizedDescriptionKey: "No bridge connected"]))
-        }
-
-        // Enforce 10 commands per second rate limit
-        let now = Date()
-
-        // Remove timestamps older than 1 second
-        lastLightCommandTimes = lastLightCommandTimes.filter { now.timeIntervalSince($0) < lightThrottleWindow }
-
-        // If we've sent 10 commands in the last second, wait
-        if lastLightCommandTimes.count >= lightCommandsPerSecond {
-            if let oldestTime = lastLightCommandTimes.first {
-                let delay = lightThrottleWindow - now.timeIntervalSince(oldestTime)
-                if delay > 0 {
-                    print("⏱️ Throttling light command (waiting \(Int(delay * 1000))ms)")
-                    try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
-                    // Clean up again after sleep
-                    let afterSleep = Date()
-                    lastLightCommandTimes = lastLightCommandTimes.filter { afterSleep.timeIntervalSince($0) < lightThrottleWindow }
-                }
-            }
-        }
-
-        lastLightCommandTimes.append(Date())
-
-        let delegate = InsecureURLSessionDelegate()
-        let session = URLSession(configuration: .default, delegate: delegate, delegateQueue: nil)
-
-        let urlString = "https://\(bridge.bridge.internalipaddress)/clip/v2/resource/light/\(lightId)"
-        guard let url = URL(string: urlString) else {
-            return .failure(NSError(domain: "BridgeManager", code: -2, userInfo: [NSLocalizedDescriptionKey: "Invalid URL"]))
-        }
-
-        var request = URLRequest(url: url)
-        request.httpMethod = "PUT"
-        request.setValue(bridge.username, forHTTPHeaderField: "hue-application-key")
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-
-        guard let jsonData = try? JSONSerialization.data(withJSONObject: payload) else {
-            return .failure(NSError(domain: "BridgeManager", code: -3, userInfo: [NSLocalizedDescriptionKey: "Invalid payload"]))
-        }
-        request.httpBody = jsonData
-
-        do {
-            let (data, response) = try await session.data(for: request)
-
-            if let http = response as? HTTPURLResponse {
-                if http.statusCode >= 200 && http.statusCode < 300 {
-                    return .success(())
-                } else {
-                    let errorMsg = "HTTP \(http.statusCode)"
-                    return .failure(NSError(domain: "BridgeManager", code: http.statusCode, userInfo: [NSLocalizedDescriptionKey: errorMsg]))
-                }
-            }
-            return .success(())
-        } catch {
-            return .failure(error)
-        }
-    }
 
     /// Set the power state of a grouped light (room or zone)
-    ///
-    /// Automatically throttled to 1 command per second (Hue API limit)
-    ///
-    /// Example Request Payload:
-    /// ```json
-    /// {"on": {"on": true}}
-    /// ```
-    ///
     /// - Parameters:
     ///   - id: The grouped light ID
     ///   - on: Power state (true = on, false = off)
     /// - Returns: Result with success or error
     func setGroupedLightPower(id: String, on: Bool) async -> Result<Void, Error> {
-        let payload: [String: Any] = [
-            "on": ["on": on]
-        ]
-        return await sendGroupedLightCommand(groupedLightId: id, payload: payload)
+        guard currentConnectedBridge != nil else {
+            return .failure(NSError(domain: "BridgeManager", code: -1, userInfo: [NSLocalizedDescriptionKey: "No bridge connected"]))
+        }
+
+        do {
+            try await HueAPIService.shared.setPower(groupedLightId: id, on: on)
+            return .success(())
+        } catch {
+            return .failure(error)
+        }
     }
 
     /// Set the brightness of a grouped light (room or zone)
-    ///
-    /// Automatically throttled to 1 command per second (Hue API limit)
-    ///
-    /// Example Request Payload:
-    /// ```json
-    /// {"dimming": {"brightness": 75.0}}
-    /// ```
-    ///
     /// - Parameters:
     ///   - id: The grouped light ID
     ///   - brightness: Brightness level (0.0 to 100.0)
     /// - Returns: Result with success or error
     func setGroupedLightBrightness(id: String, brightness: Double) async -> Result<Void, Error> {
-        let payload: [String: Any] = [
-            "dimming": ["brightness": brightness]
-        ]
-        return await sendGroupedLightCommand(groupedLightId: id, payload: payload)
+        guard currentConnectedBridge != nil else {
+            return .failure(NSError(domain: "BridgeManager", code: -1, userInfo: [NSLocalizedDescriptionKey: "No bridge connected"]))
+        }
+
+        do {
+            try await HueAPIService.shared.setBrightness(groupedLightId: id, brightness: brightness)
+            return .success(())
+        } catch {
+            return .failure(error)
+        }
     }
 
     /// Set both power state and brightness of a grouped light in a single command
-    ///
-    /// Automatically throttled to 1 command per second (Hue API limit)
-    ///
-    /// Example Request Payload:
-    /// ```json
-    /// {"on": {"on": true}, "dimming": {"brightness": 75.0}}
-    /// ```
-    ///
+    /// Note: This now makes two separate calls (power then brightness) through HueAPIService
     /// - Parameters:
     ///   - id: The grouped light ID
     ///   - on: Power state (true = on, false = off)
     ///   - brightness: Brightness level (0.0 to 100.0)
     /// - Returns: Result with success or error
     func setGroupedLightPowerAndBrightness(id: String, on: Bool, brightness: Double) async -> Result<Void, Error> {
-        let payload: [String: Any] = [
-            "on": ["on": on],
-            "dimming": ["brightness": brightness]
-        ]
-        return await sendGroupedLightCommand(groupedLightId: id, payload: payload)
+        guard currentConnectedBridge != nil else {
+            return .failure(NSError(domain: "BridgeManager", code: -1, userInfo: [NSLocalizedDescriptionKey: "No bridge connected"]))
+        }
+
+        do {
+            // Make two separate calls - rate limiting is handled by HueAPIService
+            try await HueAPIService.shared.setPower(groupedLightId: id, on: on)
+            try await HueAPIService.shared.setBrightness(groupedLightId: id, brightness: brightness)
+            return .success(())
+        } catch {
+            return .failure(error)
+        }
     }
 
     // MARK: - Bulk Operations
 
     /// Turn off all lights in all rooms and zones
     ///
-    /// **Performance Optimization:** Uses individual /light endpoints (10 req/sec) instead of
-    /// /grouped_light endpoints (1 req/sec) for 2.8x-4x faster execution.
+    /// Uses grouped_light endpoints to turn off lights by room/zone
     ///
-    /// Example Performance (typical setup with 50 lights):
-    /// - Old approach (grouped_light): ~16 seconds
-    /// - New approach (individual lights): ~5 seconds
-    ///
-    /// API Endpoint: PUT /clip/v2/resource/light/{id}
-    /// Rate Limit: 10 commands per second (automatically enforced by sendLightCommand)
+    /// API Endpoint: PUT /clip/v2/resource/grouped_light/{id}
+    /// Rate Limit: 1 command per second (automatically enforced by sendGroupedLightCommand)
     ///
     /// Request Payload:
     /// ```json
@@ -3023,48 +1361,39 @@ class BridgeManager: ObservableObject {
 
         print("🔴 Turning off all lights...")
 
-        // Collect all individual light IDs from lightCache
-        let lightIds = Array(lightCache.keys)
-
-        guard !lightIds.isEmpty else {
-            print("⚠️ No lights found to turn off")
-            return .success(())
+        // Collect all grouped light IDs from rooms and zones
+        var groupedLightIds: [String] = []
+        for room in rooms {
+            if let groupedLights = room.groupedLights {
+                groupedLightIds.append(contentsOf: groupedLights.map { $0.id })
+            }
         }
-
-        print("💡 Found \(lightIds.count) individual lights to turn off")
-        print("⏱️ Estimated time: ~\(Int(ceil(Double(lightIds.count) / 10.0))) seconds (10 lights/sec)")
-
-        let payload: [String: Any] = ["on": ["on": false]]
-
-        // Turn off each light using throttled command (10 req/sec automatically enforced)
-        var successCount = 0
-        var failureCount = 0
-
-        for lightId in lightIds {
-            let result = await sendLightCommand(lightId: lightId, payload: payload)
-            switch result {
-            case .success:
-                successCount += 1
-                print("  ✓ Turned off light \(lightId.prefix(8))... (\(successCount)/\(lightIds.count))")
-            case .failure(let error):
-                failureCount += 1
-                print("  ✗ Failed to turn off light \(lightId.prefix(8))...: \(error.localizedDescription)")
+        for zone in zones {
+            if let groupedLights = zone.groupedLights {
+                groupedLightIds.append(contentsOf: groupedLights.map { $0.id })
             }
         }
 
-        // Update local cache - mark all lights as off in lightCache
-        for lightId in lightCache.keys {
-            if var light = lightCache[lightId] {
-                light = HueLight(
-                    id: light.id,
-                    type: light.type,
-                    metadata: light.metadata,
-                    on: HueLight.LightOn(on: false),
-                    dimming: light.dimming,
-                    color_temperature: light.color_temperature,
-                    color: light.color
-                )
-                lightCache[lightId] = light
+        guard !groupedLightIds.isEmpty else {
+            print("⚠️ No grouped lights found to turn off")
+            return .success(())
+        }
+
+        print("💡 Found \(groupedLightIds.count) grouped lights to turn off")
+        print("⏱️ Estimated time: ~\(groupedLightIds.count) seconds (1 group/sec)")
+
+        // Turn off each grouped light using HueAPIService (rate limiting automatically enforced)
+        var successCount = 0
+        var failureCount = 0
+
+        for groupedLightId in groupedLightIds {
+            do {
+                try await HueAPIService.shared.setPower(groupedLightId: groupedLightId, on: false)
+                successCount += 1
+                print("  ✓ Turned off grouped light \(groupedLightId.prefix(8))... (\(successCount)/\(groupedLightIds.count))")
+            } catch {
+                failureCount += 1
+                print("  ✗ Failed to turn off grouped light \(groupedLightId.prefix(8))...: \(error.localizedDescription)")
             }
         }
 
@@ -3083,22 +1412,6 @@ class BridgeManager: ObservableObject {
                 }
                 rooms[index].groupedLights = groupedLights
             }
-
-            // Update individual lights in rooms
-            if var lights = rooms[index].lights {
-                for i in lights.indices {
-                    lights[i] = HueLight(
-                        id: lights[i].id,
-                        type: lights[i].type,
-                        metadata: lights[i].metadata,
-                        on: HueLight.LightOn(on: false),
-                        dimming: lights[i].dimming,
-                        color_temperature: lights[i].color_temperature,
-                        color: lights[i].color
-                    )
-                }
-                rooms[index].lights = lights
-            }
         }
 
         for index in zones.indices {
@@ -3115,25 +1428,8 @@ class BridgeManager: ObservableObject {
                 }
                 zones[index].groupedLights = groupedLights
             }
-
-            // Update individual lights in zones
-            if var lights = zones[index].lights {
-                for i in lights.indices {
-                    lights[i] = HueLight(
-                        id: lights[i].id,
-                        type: lights[i].type,
-                        metadata: lights[i].metadata,
-                        on: HueLight.LightOn(on: false),
-                        dimming: lights[i].dimming,
-                        color_temperature: lights[i].color_temperature,
-                        color: lights[i].color
-                    )
-                }
-                zones[index].lights = lights
-            }
         }
 
-        saveLightsToStorage()
         saveRoomsToStorage()
         saveZonesToStorage()
 

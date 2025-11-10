@@ -2,19 +2,14 @@
 //  ColorOrbsBackground.swift
 //  hue dat Watch App
 //
-//  Animated gradient orb background for visualizing light colors
+//  Simplified brightness-controlled background orb
 //
 
 import SwiftUI
 
 struct ColorOrbsBackground: View {
-    enum SizeMode {
-        case fullscreen
-        case compact
-    }
-
-    let colors: [Color]
-    var size: SizeMode = .fullscreen
+    let brightness: Double  // 0-100
+    let isOn: Bool
 
     var body: some View {
         GeometryReader { geometry in
@@ -23,68 +18,25 @@ struct ColorOrbsBackground: View {
                 Color.black
                     .ignoresSafeArea()
 
-                // Draw orbs for each color
-                ForEach(Array(colors.enumerated()), id: \.offset) { index, color in
-                    let position = orbPosition(for: index, total: colors.count, in: geometry.size)
-                    let orbSize = self.orbSize(for: colors.count, in: geometry.size, mode: size)
+                // Single centered orb
+                let orbSize = min(geometry.size.width, geometry.size.height) * 2.5
+                let orbColor = isOn ? Color.orange : Color.gray
+                let orbOpacity = isOn ? (brightness / 100.0) : 0.2
 
-                    RadialGradient(
-                        gradient: Gradient(colors: [color, color.opacity(0.3), .clear]),
-                        center: .center,
-                        startRadius: 0,
-                        endRadius: orbSize / 2
-                    )
-                    .frame(width: orbSize, height: orbSize)
-                    .position(position)
-                    .blendMode(.screen) // Additive blending for color mixing
-                }
+                RadialGradient(
+                    gradient: Gradient(colors: [
+                        orbColor.opacity(orbOpacity),
+                        orbColor.opacity(orbOpacity * 0.3),
+                        .clear
+                    ]),
+                    center: .center,
+                    startRadius: 0,
+                    endRadius: orbSize / 2
+                )
+                .frame(width: orbSize, height: orbSize)
+                .position(x: geometry.size.width / 2, y: geometry.size.height / 2)
+                .blendMode(.screen)
             }
         }
-    }
-
-    // Calculate position for each orb in a circular/spiral arrangement
-    private func orbPosition(for index: Int, total: Int, in size: CGSize) -> CGPoint {
-        let centerX = size.width / 2
-        let centerY = size.height / 2
-
-        if total == 1 {
-            // Single orb in center
-            return CGPoint(x: centerX, y: centerY)
-        } else if total == 2 {
-            // Two orbs side by side
-            let offset = size.width * 0.25
-            return CGPoint(
-                x: index == 0 ? centerX - offset : centerX + offset,
-                y: centerY
-            )
-        } else {
-            // Multiple orbs in circular pattern
-            let radius = min(size.width, size.height) * 0.35
-            let angle = (2 * .pi / Double(total)) * Double(index) - .pi / 2
-
-            return CGPoint(
-                x: centerX + cos(angle) * radius,
-                y: centerY + sin(angle) * radius
-            )
-        }
-    }
-
-    // Calculate orb size based on number of lights and available space
-    private func orbSize(for count: Int, in size: CGSize, mode: SizeMode) -> CGFloat {
-        let baseSize = min(size.width, size.height)
-
-        let multiplier: CGFloat
-        switch count {
-        case 1:
-            multiplier = mode == .fullscreen ? 2.5 : 1.2 // Very large or compact single orb
-        case 2:
-            multiplier = mode == .fullscreen ? 1.8 : 0.9 // Large or compact orbs
-        case 3...4:
-            multiplier = mode == .fullscreen ? 1.4 : 0.7 // Medium-large or small orbs
-        default:
-            multiplier = mode == .fullscreen ? 1.2 : 0.6 // Still large or very small for many lights
-        }
-
-        return baseSize * multiplier
     }
 }

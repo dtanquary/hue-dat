@@ -35,9 +35,6 @@ struct ZoneDetailView: View {
     @State private var optimisticBrightness: Double?
     @State private var previousBrightness: Double?
 
-    // Error handling
-    @State private var showBridgeUnreachableAlert = false
-
     // Scene picker state
     @State private var availableScenes: [HueScene] = []
     @State private var activeSceneId: String?
@@ -89,25 +86,18 @@ struct ZoneDetailView: View {
                 }
             }
         }
-        .alert("Bridge Unreachable", isPresented: $showBridgeUnreachableAlert) {
-            Button("OK", role: .cancel) { }
-        } message: {
-            Text("Unable to connect to the Hue bridge. Please check your network connection.")
-        }
     }
 
     @ViewBuilder
     private func zoneContent(for zone: BridgeManager.HueZone) -> some View {
         GeometryReader { outerGeometry in
             ZStack {
-                // Layer 1: Single orb background with average light color
-                // Use optimistic scene colors if available (instant feedback when scene selected)
-                // Otherwise fall back to actual light colors
-                let lights = zone.lights ?? []
-                let actualColor: Color = lights.isEmpty ? .gray : bridgeManager.averageColorFromLights(lights)
-                let colors = optimisticSceneColors ?? [actualColor]
+                // Layer 1: Brightness-controlled orange/grey orb background
+                let groupedLight = zone.groupedLights?.first
+                let isOn = groupedLight?.on?.on ?? false
+                let currentBrightness = groupedLight?.dimming?.brightness ?? 0.0
 
-                ColorOrbsBackground(colors: colors, size: .fullscreen)
+                ColorOrbsBackground(brightness: currentBrightness, isOn: isOn)
                     .opacity(orbOpacity)
                     .animation(.easeInOut(duration: 0.3), value: orbOpacity)
                     .zIndex(0)
@@ -237,9 +227,6 @@ struct ZoneDetailView: View {
         .navigationTitle(zone.metadata.name)
         .navigationBarTitleDisplayMode(.inline)
         .onAppear {
-            // Print detailed light information for debugging (both grouped and individual lights)
-            bridgeManager.printDetailedLightInfo(for: "Zone '\(zone.metadata.name)'", groupedLights: zone.groupedLights, individualLights: zone.lights)
-
             // Initialize UI from cached data only (no API call)
             if let lights = zone.groupedLights, !lights.isEmpty {
                 let actualOn = lights.contains { $0.on?.on == true }
@@ -265,9 +252,6 @@ struct ZoneDetailView: View {
             // Load individual lights for color orb (if not already loaded)
             // and load scenes for this zone
             Task {
-                // Fetch individual lights for accurate color display
-                await bridgeManager.fetchLightsForZone(zoneId: zoneId)
-
                 // Fetch scenes
                 availableScenes = await bridgeManager.fetchScenes(forZoneId: zoneId)
 
@@ -299,9 +283,6 @@ struct ZoneDetailView: View {
         guard let zone = zone,
               let groupedLight = zone.groupedLights?.first else { return }
 
-        // Store current state for rollback
-        let previousState = displayIsOn
-
         // Give initial haptic feedback
         if !hasGivenInitialPowerHaptic {
             WKInterfaceDevice.current().play(.start)
@@ -315,50 +296,35 @@ struct ZoneDetailView: View {
         // Clear scene colors since user is manually controlling the lights
         optimisticSceneColors = nil
 
-        // Send API request using BridgeManager (automatically throttled)
-        let result = await bridgeManager.setGroupedLightPower(id: groupedLight.id, on: displayIsOn)
+        // Send API request - assume success
+        _ = await bridgeManager.setGroupedLightPower(id: groupedLight.id, on: displayIsOn)
 
-        switch result {
-        case .success:
-            // If we just turned ON the light, fetch the current brightness from the bridge
-            if displayIsOn {
-                if let updatedGroupedLight = await bridgeManager.fetchGroupedLight(groupedLightId: groupedLight.id) {
-                    if let currentBrightness = updatedGroupedLight.dimming?.brightness {
-                        print("🔄 Fetched brightness after power on: \(Int(currentBrightness))%")
-                        // Update brightness with animation to ensure orb opacity updates smoothly
-                        withAnimation(.easeInOut(duration: 0.3)) {
-                            brightness = currentBrightness
-                        }
-                        bridgeManager.updateLocalZoneState(zoneId: zoneId, on: displayIsOn, brightness: currentBrightness)
-                    } else {
-                        bridgeManager.updateLocalZoneState(zoneId: zoneId, on: displayIsOn)
+        // If we just turned ON the light, fetch the current brightness from the bridge
+        if displayIsOn {
+            if let updatedGroupedLight = await bridgeManager.fetchGroupedLight(groupedLightId: groupedLight.id) {
+                if let currentBrightness = updatedGroupedLight.dimming?.brightness {
+                    print("🔄 Fetched brightness after power on: \(Int(currentBrightness))%")
+                    // Update brightness with animation to ensure orb opacity updates smoothly
+                    withAnimation(.easeInOut(duration: 0.3)) {
+                        brightness = currentBrightness
                     }
+                    bridgeManager.updateLocalZoneState(zoneId: zoneId, on: displayIsOn, brightness: currentBrightness)
                 } else {
-                    // Fetch failed, just update on state
                     bridgeManager.updateLocalZoneState(zoneId: zoneId, on: displayIsOn)
                 }
             } else {
-                // Light was turned OFF, just update the on state
+                // Fetch failed, just update on state
                 bridgeManager.updateLocalZoneState(zoneId: zoneId, on: displayIsOn)
             }
+        } else {
+            // Light was turned OFF, just update the on state
+            bridgeManager.updateLocalZoneState(zoneId: zoneId, on: displayIsOn)
+        }
 
-            // Give success haptic
-            if !hasGivenFinalPowerHaptic {
-                WKInterfaceDevice.current().play(.success)
-                hasGivenFinalPowerHaptic = true
-            }
-
-        case .failure(let error):
-            print("❌ Toggle power failed: \(error.localizedDescription)")
-
-            // Give failure haptic
-            WKInterfaceDevice.current().play(.failure)
-
-            // Rollback to previous state
-            displayIsOn = previousState
-
-            // Show alert that bridge was not reachable
-            showBridgeUnreachableAlert = true
+        // Give success haptic
+        if !hasGivenFinalPowerHaptic {
+            WKInterfaceDevice.current().play(.success)
+            hasGivenFinalPowerHaptic = true
         }
 
         // Unlock UI
@@ -389,71 +355,43 @@ struct ZoneDetailView: View {
         // Clear scene colors since user is manually controlling the lights
         optimisticSceneColors = nil
 
-        // Store previous states for rollback
-        let previousDisplayIsOn = displayIsOn
-        previousBrightness = lightStatus
-
         // If light is OFF, we need to turn it ON first with the target brightness
         if !displayIsOn {
             // Optimistic updates for turning on + setting brightness
             displayIsOn = true
             optimisticBrightness = value
 
-            // Use combined method (single API call with throttling)
-            let result = await bridgeManager.setGroupedLightPowerAndBrightness(id: groupedLight.id, on: true, brightness: value)
+            // Use combined method - assume success
+            _ = await bridgeManager.setGroupedLightPowerAndBrightness(id: groupedLight.id, on: true, brightness: value)
 
-            switch result {
-            case .success:
-                // Update local state in BridgeManager so list view reflects the change
-                bridgeManager.updateLocalZoneState(zoneId: zoneId, on: true, brightness: value)
+            // Update local state in BridgeManager so list view reflects the change
+            bridgeManager.updateLocalZoneState(zoneId: zoneId, on: true, brightness: value)
 
-                // Clear optimistic state
-                optimisticBrightness = nil
-                // Success haptic
-                if !hasGivenFinalBrightnessHaptic {
-                    WKInterfaceDevice.current().play(.success)
-                    hasGivenFinalBrightnessHaptic = true
-                }
-
-            case .failure(let error):
-                print("❌ Set power and brightness failed: \(error.localizedDescription)")
-                // Revert to previous state
-                displayIsOn = previousDisplayIsOn
-                optimisticBrightness = previousBrightness
-                // Error haptic
-                WKInterfaceDevice.current().play(.failure)
+            // Clear optimistic state
+            optimisticBrightness = nil
+            // Success haptic
+            if !hasGivenFinalBrightnessHaptic {
+                WKInterfaceDevice.current().play(.success)
+                hasGivenFinalBrightnessHaptic = true
             }
         } else {
             // Light is already ON, just set brightness
             // Optimistic update
             optimisticBrightness = value
 
-            let result = await bridgeManager.setGroupedLightBrightness(id: groupedLight.id, brightness: value)
+            _ = await bridgeManager.setGroupedLightBrightness(id: groupedLight.id, brightness: value)
 
-            switch result {
-            case .success:
-                // Update local state in BridgeManager so list view reflects the change
-                bridgeManager.updateLocalZoneState(zoneId: zoneId, brightness: value)
+            // Update local state in BridgeManager so list view reflects the change
+            bridgeManager.updateLocalZoneState(zoneId: zoneId, brightness: value)
 
-                // Clear optimistic state
-                optimisticBrightness = nil
-                // Success haptic
-                if !hasGivenFinalBrightnessHaptic {
-                    WKInterfaceDevice.current().play(.success)
-                    hasGivenFinalBrightnessHaptic = true
-                }
-
-            case .failure(let error):
-                print("❌ Set brightness failed: \(error.localizedDescription)")
-                // Revert to previous brightness
-                optimisticBrightness = previousBrightness
-                // Error haptic
-                WKInterfaceDevice.current().play(.failure)
+            // Clear optimistic state
+            optimisticBrightness = nil
+            // Success haptic
+            if !hasGivenFinalBrightnessHaptic {
+                WKInterfaceDevice.current().play(.success)
+                hasGivenFinalBrightnessHaptic = true
             }
         }
-
-        // Clear previous state
-        previousBrightness = nil
     }
 
     // MARK: - View Components
@@ -537,11 +475,7 @@ struct ZoneDetailView: View {
 
         case .failure(let error):
             print("❌ Failed to activate scene: \(error.localizedDescription)")
-            // Revert optimistic colors on failure
-            withAnimation(.easeInOut(duration: 0.3)) {
-                optimisticSceneColors = nil
-            }
-            showBridgeUnreachableAlert = true
+            // Scene activation failed, continue without showing error
         }
     }
 

@@ -48,13 +48,21 @@ struct ContentView: View {
             switch result {
             case .success:
                 print("✅ ContentView: Bridge connection validation succeeded")
-                // Navigate to rooms and zones view (data will load there)
+                // Navigate to rooms and zones view
                 if navigationPath.isEmpty {
                     navigationPath.append("roomsAndZones")
                 }
 
-                // Start SSE stream
+                // Refresh data and start SSE stream
                 Task {
+                    async let roomsRefresh: Void = bridgeManager.getRooms()
+                    async let zonesRefresh: Void = bridgeManager.getZones()
+                    async let scenesRefresh: Void = bridgeManager.fetchScenes()
+
+                    // Wait for all data refresh to complete
+                    _ = await (roomsRefresh, zonesRefresh, scenesRefresh)
+
+                    // Start SSE stream after data is loaded
                     await startSSEStream()
                 }
 
