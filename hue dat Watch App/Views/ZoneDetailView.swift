@@ -277,11 +277,21 @@ struct ZoneDetailView: View {
     }
 
     private func togglePower() async {
+        print("🔘 togglePower() called - displayIsOn: \(displayIsOn), isTogglingPower: \(isTogglingPower), isSettingBrightness: \(isSettingBrightness)")
+
         // Don't allow toggling power while brightness is being set
-        guard !isSettingBrightness else { return }
+        guard !isSettingBrightness else {
+            print("❌ togglePower blocked: brightness is being set")
+            return
+        }
 
         guard let zone = zone,
-              let groupedLight = zone.groupedLights?.first else { return }
+              let groupedLight = zone.groupedLights?.first else {
+            print("❌ togglePower blocked: zone=\(zone != nil), groupedLights=\(zone?.groupedLights != nil), count=\(zone?.groupedLights?.count ?? 0)")
+            return
+        }
+
+        print("✅ togglePower proceeding with groupedLight.id=\(groupedLight.id)")
 
         // Give initial haptic feedback
         if !hasGivenInitialPowerHaptic {
