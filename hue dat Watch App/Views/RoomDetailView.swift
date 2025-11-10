@@ -290,35 +290,43 @@ struct RoomDetailView: View {
         // Clear scene colors since user is manually controlling the lights
         optimisticSceneColors = nil
 
-        // Send API request - assume success
-        _ = await bridgeManager.setGroupedLightPower(id: groupedLight.id, on: displayIsOn)
+        // Send API request directly to HueAPIService - only revert on network failure
+        do {
+            try await HueAPIService.shared.setPower(groupedLightId: groupedLight.id, on: displayIsOn)
+            print("✅ Power toggle succeeded: \(displayIsOn ? "ON" : "OFF")")
 
-        // If we just turned ON the light, fetch the current brightness from the bridge
-        if displayIsOn {
-            if let updatedGroupedLight = await bridgeManager.fetchGroupedLight(groupedLightId: groupedLight.id) {
-                if let currentBrightness = updatedGroupedLight.dimming?.brightness {
-                    print("🔄 Fetched brightness after power on: \(Int(currentBrightness))%")
-                    // Update brightness with animation to ensure orb opacity updates smoothly
-                    withAnimation(.easeInOut(duration: 0.3)) {
-                        brightness = currentBrightness
+            // If we just turned ON the light, fetch the current brightness from the bridge
+            if displayIsOn {
+                if let updatedGroupedLight = await bridgeManager.fetchGroupedLight(groupedLightId: groupedLight.id) {
+                    if let currentBrightness = updatedGroupedLight.dimming?.brightness {
+                        print("🔄 Fetched brightness after power on: \(Int(currentBrightness))%")
+                        // Update brightness with animation to ensure orb opacity updates smoothly
+                        withAnimation(.easeInOut(duration: 0.3)) {
+                            brightness = currentBrightness
+                        }
+                        bridgeManager.updateLocalRoomState(roomId: roomId, on: displayIsOn, brightness: currentBrightness)
+                    } else {
+                        bridgeManager.updateLocalRoomState(roomId: roomId, on: displayIsOn)
                     }
-                    bridgeManager.updateLocalRoomState(roomId: roomId, on: displayIsOn, brightness: currentBrightness)
                 } else {
+                    // Fetch failed, just update on state
                     bridgeManager.updateLocalRoomState(roomId: roomId, on: displayIsOn)
                 }
             } else {
-                // Fetch failed, just update on state
+                // Light was turned OFF, just update the on state
                 bridgeManager.updateLocalRoomState(roomId: roomId, on: displayIsOn)
             }
-        } else {
-            // Light was turned OFF, just update the on state
-            bridgeManager.updateLocalRoomState(roomId: roomId, on: displayIsOn)
-        }
 
-        // Give success haptic
-        if !hasGivenFinalPowerHaptic {
-            WKInterfaceDevice.current().play(.success)
-            hasGivenFinalPowerHaptic = true
+            // Give success haptic
+            if !hasGivenFinalPowerHaptic {
+                WKInterfaceDevice.current().play(.success)
+                hasGivenFinalPowerHaptic = true
+            }
+        } catch {
+            // Network failure - revert UI state
+            print("❌ Power toggle failed: \(error.localizedDescription)")
+            displayIsOn = !displayIsOn  // Revert to previous state
+            WKInterfaceDevice.current().play(.failure)
         }
 
         // Unlock UI
