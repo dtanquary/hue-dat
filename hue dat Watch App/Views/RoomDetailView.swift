@@ -106,14 +106,14 @@ struct RoomDetailView: View {
                     .zIndex(0)
                     .id(backgroundUpdateTrigger) // Force re-render when trigger changes
 
-                // Layer 2: Centered ON/OFF text with limited tap area
+                // Layer 2: Centered power icon with limited tap area
                 VStack {
                     Spacer()
-                    Text(displayIsOn ? "ON" : "OFF")
+                    Image(systemName: "power")
                         .font(.system(size: 48, weight: .bold))
                         .foregroundStyle(displayIsOn ? .yellow : .gray)
                         .shadow(color: .black.opacity(0.3), radius: 2, x: 0, y: 1)
-                        .fixedSize() // Prevent text truncation
+                        .fixedSize() // Prevent icon truncation
                         .padding(20)
                         .contentShape(Circle()) // Circular tap area
                         .onTapGesture {

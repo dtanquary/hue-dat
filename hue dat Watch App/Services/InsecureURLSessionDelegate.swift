@@ -8,11 +8,27 @@
 import Foundation
 
 // MARK: - Insecure URL Session Delegate
-class InsecureURLSessionDelegate: NSObject, URLSessionDelegate {
+class InsecureURLSessionDelegate: NSObject, URLSessionDelegate, URLSessionTaskDelegate {
+
+    // Session-level challenge handler (for backward compatibility with data(for:) and other methods)
     func urlSession(_ session: URLSession,
                    didReceive challenge: URLAuthenticationChallenge,
                    completionHandler: @escaping (URLSession.AuthChallengeDisposition, URLCredential?) -> Void) {
-        // Accept any certificate (insecure!)
+        handleChallenge(challenge, completionHandler: completionHandler)
+    }
+
+    // Task-level challenge handler (required for bytes(for:) and async streaming methods)
+    func urlSession(_ session: URLSession,
+                   task: URLSessionTask,
+                   didReceive challenge: URLAuthenticationChallenge,
+                   completionHandler: @escaping (URLSession.AuthChallengeDisposition, URLCredential?) -> Void) {
+        handleChallenge(challenge, completionHandler: completionHandler)
+    }
+
+    // Shared SSL bypass logic
+    private func handleChallenge(_ challenge: URLAuthenticationChallenge,
+                                completionHandler: @escaping (URLSession.AuthChallengeDisposition, URLCredential?) -> Void) {
+        // Accept any certificate (insecure - only use for trusted local network devices!)
         if challenge.protectionSpace.authenticationMethod == NSURLAuthenticationMethodServerTrust,
            let trust = challenge.protectionSpace.serverTrust {
             let credential = URLCredential(trust: trust)

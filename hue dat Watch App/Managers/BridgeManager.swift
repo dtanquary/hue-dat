@@ -929,7 +929,7 @@ class BridgeManager: ObservableObject {
         let urlString = "https://\(bridge.internalipaddress)/clip/v2/resource/room"
 
         let delegate = InsecureURLSessionDelegate()
-        var config = URLSessionConfiguration.default
+        let config = URLSessionConfiguration.default
         config.timeoutIntervalForRequest = 10.0  // 10 second timeout for local network
         config.timeoutIntervalForResource = 30.0
         let session = URLSession(configuration: config, delegate: delegate, delegateQueue: nil)

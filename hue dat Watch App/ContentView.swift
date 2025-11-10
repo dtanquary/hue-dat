@@ -36,10 +36,11 @@ struct ContentView: View {
             }
         }
         .onChange(of: scenePhase) { oldPhase, newPhase in
-            // When the scene becomes active again, re-validate the connection
+            // When the scene becomes active again, re-validate the connection and reconnect SSE stream
             if newPhase == .active, bridgeManager.connectedBridge != nil {
                 Task {
                     await bridgeManager.validateConnection()
+                    await startSSEStream()
                 }
             }
         }
@@ -51,6 +52,12 @@ struct ContentView: View {
                 if navigationPath.isEmpty {
                     navigationPath.append("roomsAndZones")
                 }
+
+                // Start SSE stream
+                Task {
+                    await startSSEStream()
+                }
+
             case .failure(let message):
                 print("❌ ContentView: Bridge connection validation failed: \(message)")
                 // Store failure message and show alert
@@ -79,6 +86,25 @@ struct ContentView: View {
             if newValue == nil {
                 navigationPath.removeLast(navigationPath.count)
             }
+        }
+    }
+
+    // MARK: - Helper Methods
+
+    /// Start or restart the SSE event stream
+    private func startSSEStream() async {
+        guard let baseUrl = bridgeManager.connectedBridge?.bridge.displayAddress,
+              let username = bridgeManager.connectedBridge?.username else {
+            print("⚠️ Cannot start SSE stream: Missing bridge connection details")
+            return
+        }
+
+        await HueAPIService.shared.setup(baseUrl: baseUrl, hueApplicationKey: username)
+        do {
+            try await HueAPIService.shared.startEventStream()
+            print("✅ SSE stream connected")
+        } catch {
+            print("❌ Failed to start SSE stream: \(error)")
         }
     }
 }
