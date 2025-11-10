@@ -617,12 +617,22 @@ class BridgeManager: ObservableObject {
 
             print("✅ getRooms: Success - retrieved \(response.data.count) rooms")
 
-            // Rooms from API already include children and services
-            // We just need to attach grouped light status if needed
-            self.rooms = response.data
+            // Enrich rooms with grouped light status
+            var enrichedRooms = response.data
+            for (index, room) in enrichedRooms.enumerated() {
+                if let services = room.services,
+                   let groupedLightService = services.first(where: { $0.rtype == "grouped_light" }) {
+                    if let groupedLight = await fetchGroupedLight(groupedLightId: groupedLightService.rid) {
+                        enrichedRooms[index].groupedLights = [groupedLight]
+                        print("  ✓ Enriched room '\(room.metadata.name)' with grouped light status (brightness: \(groupedLight.dimming?.brightness ?? 0)%)")
+                    }
+                }
+            }
+
+            self.rooms = enrichedRooms
             saveRoomsToStorage()  // Cache successful refresh
             refreshError = nil  // Clear any previous errors
-            print("🏠 getRooms: Completed with \(response.data.count) rooms")
+            print("🏠 getRooms: Completed with \(enrichedRooms.count) rooms")
 
         } catch {
             print("❌ getRooms: Error: \(error.localizedDescription)")
@@ -697,12 +707,22 @@ class BridgeManager: ObservableObject {
 
             print("✅ getZones: Success - retrieved \(response.data.count) zones")
 
-            // Zones from API already include children and services
-            // We just need to attach grouped light status if needed
-            self.zones = response.data
+            // Enrich zones with grouped light status
+            var enrichedZones = response.data
+            for (index, zone) in enrichedZones.enumerated() {
+                if let services = zone.services,
+                   let groupedLightService = services.first(where: { $0.rtype == "grouped_light" }) {
+                    if let groupedLight = await fetchGroupedLight(groupedLightId: groupedLightService.rid) {
+                        enrichedZones[index].groupedLights = [groupedLight]
+                        print("  ✓ Enriched zone '\(zone.metadata.name)' with grouped light status (brightness: \(groupedLight.dimming?.brightness ?? 0)%)")
+                    }
+                }
+            }
+
+            self.zones = enrichedZones
             saveZonesToStorage()  // Cache successful refresh
             refreshError = nil  // Clear any previous errors
-            print("🏢 getZones: Completed with \(response.data.count) zones")
+            print("🏢 getZones: Completed with \(enrichedZones.count) zones")
 
         } catch {
             print("❌ getZones: Error: \(error.localizedDescription)")
