@@ -14,10 +14,16 @@ struct RoomsAndZonesListView: View {
     @State private var rotationAngle: Double = 0
     @State private var showSettings = false
     @State private var showNetworkErrorAlert = false
+    @State private var isTurningOffLights = false
+    @State private var hasGivenInitialHaptic = false
+    @State private var hasGivenFinalHaptic = false
+    @State private var hasGivenRefreshInitialHaptic = false
+    @State private var hasGivenRefreshFinalHaptic = false
 
     // Dynamic Type scaled metrics
     @ScaledMetric(relativeTo: .body) private var emptyStateSpacing: CGFloat = 12
     @ScaledMetric(relativeTo: .caption) private var loadingSpacing: CGFloat = 12
+    @ScaledMetric(relativeTo: .body) private var labelIconSpacing: CGFloat = 6
 
     var body: some View {
         Group {
@@ -61,47 +67,58 @@ struct RoomsAndZonesListView: View {
                             }
                         }
                     }
+
+                    // Turn Off All Lights section
+                    Section("More") {
+                        Button {
+                            Task {
+                                await turnOffAllLights()
+                            }
+                        } label: {
+                            HStack(spacing: labelIconSpacing) {
+                                Image(systemName: "lightbulb.slash")
+                                    .font(.body)
+                                    .frame(minWidth: labelIconSpacing * 3, alignment: .leading)
+                                Text("Turn Off All Lights")
+                                    .font(.body)
+                                Spacer()
+                                if isTurningOffLights {
+                                    ProgressView()
+                                }
+                            }
+                        }
+                        .disabled(isTurningOffLights || bridgeManager.connectedBridge == nil)
+                        
+                        Button {
+                            Task {
+                                await refreshData()
+                            }
+                        } label: {
+                            HStack(spacing: labelIconSpacing) {
+                                Image(systemName: "arrow.clockwise")
+                                    .font(.body)
+                                    .frame(minWidth: labelIconSpacing * 3, alignment: .leading)
+                                Text("Refresh Data")
+                                    .font(.body)
+                                Spacer()
+                                if isRefreshing {
+                                    ProgressView()
+                                }
+                            }
+                        }
+                        .disabled(isRefreshing || bridgeManager.connectedBridge == nil)
+                    }
                 }
             }
         }
         .navigationTitle("Rooms & Zones")
-        .navigationBarTitleDisplayMode(.inline)
+        .navigationBarTitleDisplayMode(.automatic)
         .toolbar {
             ToolbarItem(placement: .topBarLeading) {
                 Button {
                     showSettings = true
                 } label: {
                     Image(systemName: "gear")
-                }
-            }
-
-            ToolbarItem(placement: .topBarTrailing) {
-                HStack(spacing: 0) {
-                    // SSE connection indicator (subtle)
-                    if bridgeManager.isSSEConnected {
-                        Image(systemName: "antenna.radiowaves.left.and.right")
-                            .font(.caption2)
-                            .foregroundStyle(.green)
-                            .opacity(0.6)
-                    } else {
-                        Image(systemName: "antenna.radiowaves.left.and.right.slash")
-                            .font(.caption2)
-                            .foregroundStyle(.red)
-                            .opacity(0.6)
-                    }
-
-                    // Refresh button
-                    /*
-                    Button {
-                        Task {
-                            await refreshData()
-                        }
-                    } label: {
-                        Image(systemName: isRefreshing ? "arrow.clockwise.circle.fill" : "arrow.clockwise")
-                            .rotationEffect(.degrees(rotationAngle))
-                    }
-                    .disabled(isRefreshing)
-                     */
                 }
             }
         }
@@ -137,13 +154,21 @@ struct RoomsAndZonesListView: View {
             }
         }
         .task {
-            // Data is loaded by ContentView on app start/resume
-            // Just mark as loaded to hide the loading overlay
-            // User can manually refresh via toolbar button if needed
+            // Load data once when first navigating to this view
+            // Only load if data is empty (first time or after disconnect)
+            if bridgeManager.rooms.isEmpty && bridgeManager.zones.isEmpty {
+                await refreshData()
+            }
             hasLoadedData = true
         }
         .alert("Unable to Load Rooms & Zones", isPresented: $showNetworkErrorAlert) {
             Button("Retry") {
+                Task {
+                    await refreshData()
+                }
+            }
+            Button("Try Demo Mode") {
+                bridgeManager.enableDemoMode()
                 Task {
                     await refreshData()
                 }
@@ -173,11 +198,70 @@ struct RoomsAndZonesListView: View {
     }
 
     private func refreshData() async {
+        // Give initial haptic feedback
+        if !hasGivenRefreshInitialHaptic {
+            WKInterfaceDevice.current().play(.start)
+            hasGivenRefreshInitialHaptic = true
+        }
+
         isRefreshing = true
-        await bridgeManager.getRooms()
-        await bridgeManager.getZones()
+
+        // Refresh rooms, zones, and scenes in parallel
+        async let roomsRefresh: Void = bridgeManager.getRooms()
+        async let zonesRefresh: Void = bridgeManager.getZones()
+        async let scenesRefresh: Void = bridgeManager.fetchScenes()
+
+        // Wait for all to complete
+        _ = await (roomsRefresh, zonesRefresh, scenesRefresh)
+
+        // Give success haptic
+        if !hasGivenRefreshFinalHaptic {
+            WKInterfaceDevice.current().play(.success)
+            hasGivenRefreshFinalHaptic = true
+        }
+
         isRefreshing = false
         hasLoadedData = true
+
+        // Reset haptic flags after a delay
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+            hasGivenRefreshInitialHaptic = false
+            hasGivenRefreshFinalHaptic = false
+        }
+    }
+
+    private func turnOffAllLights() async {
+        // Give initial haptic feedback
+        if !hasGivenInitialHaptic {
+            WKInterfaceDevice.current().play(.start)
+            hasGivenInitialHaptic = true
+        }
+
+        isTurningOffLights = true
+
+        let result = await bridgeManager.turnOffAllLights()
+
+        switch result {
+        case .success:
+            // Give success haptic
+            if !hasGivenFinalHaptic {
+                WKInterfaceDevice.current().play(.success)
+                hasGivenFinalHaptic = true
+            }
+
+        case .failure(let error):
+            print("❌ Failed to turn off all lights: \(error.localizedDescription)")
+            // Give failure haptic
+            WKInterfaceDevice.current().play(.failure)
+        }
+
+        isTurningOffLights = false
+
+        // Reset haptic flags after a delay
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+            hasGivenInitialHaptic = false
+            hasGivenFinalHaptic = false
+        }
     }
 }
 

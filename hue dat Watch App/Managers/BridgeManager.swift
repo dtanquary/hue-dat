@@ -28,6 +28,7 @@ class BridgeManager: ObservableObject {
     @Published var isLoadingRooms: Bool = false
     @Published var isLoadingZones: Bool = false
     @Published var refreshError: String? = nil  // Error message for background refresh failures
+    @Published var isDemoMode: Bool = false  // Demo mode flag for offline demonstration
 
     // Event broadcasting for connection validation
     private let connectionValidationSubject = PassthroughSubject<ConnectionValidationResult, Never>()
@@ -47,6 +48,7 @@ class BridgeManager: ObservableObject {
     private let cachedRoomsKey = "CachedRooms"
     private let cachedZonesKey = "CachedZones"
     private let cachedScenesKey = "CachedScenes"
+    private let demoModeKey = "DemoMode"
 
     // Refresh state management (concurrent call protection)
     private var isRefreshingRooms: Bool = false
@@ -65,6 +67,7 @@ class BridgeManager: ObservableObject {
     
     init() {
         loadConnectedBridge()
+        loadDemoModeState()
         // Clean up old lights cache (migration)
         if userDefaults.object(forKey: "CachedLights") != nil {
             userDefaults.removeObject(forKey: "CachedLights")
@@ -118,6 +121,162 @@ class BridgeManager: ObservableObject {
         print("🔌 Bridge disconnected and cleared from storage")
     }
 
+    // MARK: - Demo Mode Management
+
+    /// Load demo mode state from UserDefaults
+    private func loadDemoModeState() {
+        isDemoMode = userDefaults.bool(forKey: demoModeKey)
+        if isDemoMode {
+            print("🎭 Demo mode is ENABLED")
+        }
+    }
+
+    /// Enable demo mode for offline demonstration
+    func enableDemoMode() {
+        isDemoMode = true
+        userDefaults.set(true, forKey: demoModeKey)
+        userDefaults.synchronize()
+        print("🎭 Demo mode ENABLED")
+    }
+
+    /// Disable demo mode and return to normal operation
+    func disableDemoMode() {
+        isDemoMode = false
+        userDefaults.set(false, forKey: demoModeKey)
+        userDefaults.synchronize()
+        print("🎭 Demo mode DISABLED")
+    }
+
+    /// Get demo data - uses cached data if available, otherwise returns hardcoded demo data
+    private func getDemoRooms() -> [HueRoom] {
+        // If we have cached rooms, use those for demo
+        if !rooms.isEmpty {
+            return rooms
+        }
+
+        // Otherwise load from storage if available
+        if let data = userDefaults.data(forKey: cachedRoomsKey),
+           let cachedRooms = try? JSONDecoder().decode([HueRoom].self, from: data),
+           !cachedRooms.isEmpty {
+            return cachedRooms
+        }
+
+        // Fallback to hardcoded demo data
+        return createHardcodedDemoRooms()
+    }
+
+    private func getDemoZones() -> [HueZone] {
+        // If we have cached zones, use those for demo
+        if !zones.isEmpty {
+            return zones
+        }
+
+        // Otherwise load from storage if available
+        if let data = userDefaults.data(forKey: cachedZonesKey),
+           let cachedZones = try? JSONDecoder().decode([HueZone].self, from: data),
+           !cachedZones.isEmpty {
+            return cachedZones
+        }
+
+        // Fallback to hardcoded demo data
+        return createHardcodedDemoZones()
+    }
+
+    private func getDemoScenes() -> [HueScene] {
+        // If we have cached scenes, use those for demo
+        if !scenes.isEmpty {
+            return scenes
+        }
+
+        // Otherwise load from storage if available
+        if let data = userDefaults.data(forKey: cachedScenesKey),
+           let cachedScenes = try? JSONDecoder().decode([HueScene].self, from: data),
+           !cachedScenes.isEmpty {
+            return cachedScenes
+        }
+
+        // Fallback to hardcoded demo data
+        return []
+    }
+
+    /// Create hardcoded demo rooms for initial demo when no cache exists
+    private func createHardcodedDemoRooms() -> [HueRoom] {
+        let demoGroupedLight = HueGroupedLight(
+            id: "demo-grouped-light-1",
+            type: "grouped_light",
+            on: HueGroupedLight.GroupedLightOn(on: true),
+            dimming: HueGroupedLight.GroupedLightDimming(brightness: 75.0),
+            color_temperature: nil,
+            color: HueGroupedLight.GroupedLightColor(
+                xy: HueGroupedLight.GroupedLightColor.GroupedLightColorXY(x: 0.4573, y: 0.41),
+                gamut: nil,
+                gamut_type: nil
+            )
+        )
+
+        return [
+            HueRoom(
+                id: "demo-room-1",
+                type: "room",
+                metadata: HueRoom.RoomMetadata(name: "Living Room", archetype: "living_room"),
+                children: nil,
+                services: [HueRoom.HueRoomService(rid: "demo-grouped-light-1", rtype: "grouped_light")],
+                groupedLights: [demoGroupedLight]
+            ),
+            HueRoom(
+                id: "demo-room-2",
+                type: "room",
+                metadata: HueRoom.RoomMetadata(name: "Bedroom", archetype: "bedroom"),
+                children: nil,
+                services: [HueRoom.HueRoomService(rid: "demo-grouped-light-2", rtype: "grouped_light")],
+                groupedLights: [HueGroupedLight(
+                    id: "demo-grouped-light-2",
+                    type: "grouped_light",
+                    on: HueGroupedLight.GroupedLightOn(on: false),
+                    dimming: HueGroupedLight.GroupedLightDimming(brightness: 50.0),
+                    color_temperature: HueGroupedLight.GroupedLightColorTemperature(mirek: 366, mirek_valid: true, mirek_schema: nil),
+                    color: nil
+                )]
+            ),
+            HueRoom(
+                id: "demo-room-3",
+                type: "room",
+                metadata: HueRoom.RoomMetadata(name: "Kitchen", archetype: "kitchen"),
+                children: nil,
+                services: [HueRoom.HueRoomService(rid: "demo-grouped-light-3", rtype: "grouped_light")],
+                groupedLights: [HueGroupedLight(
+                    id: "demo-grouped-light-3",
+                    type: "grouped_light",
+                    on: HueGroupedLight.GroupedLightOn(on: true),
+                    dimming: HueGroupedLight.GroupedLightDimming(brightness: 100.0),
+                    color_temperature: HueGroupedLight.GroupedLightColorTemperature(mirek: 250, mirek_valid: true, mirek_schema: nil),
+                    color: nil
+                )]
+            )
+        ]
+    }
+
+    /// Create hardcoded demo zones for initial demo when no cache exists
+    private func createHardcodedDemoZones() -> [HueZone] {
+        return [
+            HueZone(
+                id: "demo-zone-1",
+                type: "zone",
+                metadata: HueZone.ZoneMetadata(name: "Downstairs", archetype: "home"),
+                children: nil,
+                services: [HueZone.HueZoneService(rid: "demo-zone-light-1", rtype: "grouped_light")],
+                groupedLights: [HueGroupedLight(
+                    id: "demo-zone-light-1",
+                    type: "grouped_light",
+                    on: HueGroupedLight.GroupedLightOn(on: true),
+                    dimming: HueGroupedLight.GroupedLightDimming(brightness: 80.0),
+                    color_temperature: nil,
+                    color: nil
+                )]
+            )
+        ]
+    }
+
     // MARK: - SSE Event Processing
 
     /// Maps grouped_light ID to room ID for fast lookup
@@ -146,6 +305,12 @@ class BridgeManager: ObservableObject {
 
     /// Start listening to SSE events from HueAPIService
     func startListeningToSSEEvents() {
+        // Demo mode: Skip SSE event listening
+        if isDemoMode {
+            print("🎭 startListeningToSSEEvents: Demo mode - skipping SSE")
+            return
+        }
+
         print("📡 Starting SSE event listener")
 
         // Use Task to access actor-isolated properties
@@ -744,6 +909,14 @@ class BridgeManager: ObservableObject {
     /// Validate that the current connection is alive/reachable.
     /// Broadcasts the result via connectionValidationPublisher.
     func validateConnection() async {
+        // Demo mode: Skip validation and return success
+        if isDemoMode {
+            print("🎭 validateConnection: Demo mode - skipping validation")
+            isConnectionValidated = true
+            connectionValidationSubject.send(.success)
+            return
+        }
+
         guard let bridge = currentConnectedBridge?.bridge else {
             print("❌ validateConnection: No connected bridge available")
             isConnectionValidated = false
@@ -775,6 +948,15 @@ class BridgeManager: ObservableObject {
     /// Retrieve the list of rooms from the connected bridge.
     /// Updates the rooms published property with the results.
     func getRooms() async {
+        // Demo mode: Return cached/demo data
+        if isDemoMode {
+            print("🎭 getRooms: Demo mode - returning demo data")
+            let demoRooms = getDemoRooms()
+            self.rooms = demoRooms
+            print("🎭 getRooms: Loaded \(demoRooms.count) demo rooms")
+            return
+        }
+
         // PROTECTION 1: Concurrent call protection
         guard !isRefreshingRooms else {
             print("⏭️ getRooms: Already refreshing rooms, skipping duplicate call")
@@ -865,6 +1047,15 @@ class BridgeManager: ObservableObject {
     /// Retrieve the list of zones from the connected bridge.
     /// Updates the zones published property with the results.
     func getZones() async {
+        // Demo mode: Return cached/demo data
+        if isDemoMode {
+            print("🎭 getZones: Demo mode - returning demo data")
+            let demoZones = getDemoZones()
+            self.zones = demoZones
+            print("🎭 getZones: Loaded \(demoZones.count) demo zones")
+            return
+        }
+
         // PROTECTION 1: Concurrent call protection
         guard !isRefreshingZones else {
             print("⏭️ getZones: Already refreshing zones, skipping duplicate call")
@@ -1268,6 +1459,15 @@ class BridgeManager: ObservableObject {
 
     /// Fetch all scenes from the connected bridge
     func fetchScenes() async {
+        // Demo mode: Return cached/demo data
+        if isDemoMode {
+            print("🎭 fetchScenes: Demo mode - returning demo data")
+            let demoScenes = getDemoScenes()
+            self.scenes = demoScenes
+            print("🎭 fetchScenes: Loaded \(demoScenes.count) demo scenes")
+            return
+        }
+
         guard currentConnectedBridge?.bridge != nil else {
             print("❌ fetchScenes: No connected bridge available")
             scenes = []
@@ -1325,6 +1525,12 @@ class BridgeManager: ObservableObject {
 
     /// Activate a specific scene
     func activateScene(_ sceneId: String) async -> Result<Void, Error> {
+        // Demo mode: Just return success without network call
+        if isDemoMode {
+            print("🎭 activateScene: Demo mode - skipping network call")
+            return .success(())
+        }
+
         guard currentConnectedBridge?.bridge != nil else {
             print("❌ activateScene: No connected bridge available")
             return .failure(NSError(domain: "BridgeManager", code: -1, userInfo: [NSLocalizedDescriptionKey: "No bridge connection available"]))
@@ -1520,6 +1726,12 @@ class BridgeManager: ObservableObject {
     ///   - on: Power state (true = on, false = off)
     /// - Returns: Result with success or error
     func setGroupedLightPower(id: String, on: Bool) async -> Result<Void, Error> {
+        // Demo mode: Just return success without network call
+        if isDemoMode {
+            print("🎭 setGroupedLightPower: Demo mode - skipping network call")
+            return .success(())
+        }
+
         guard currentConnectedBridge != nil else {
             return .failure(NSError(domain: "BridgeManager", code: -1, userInfo: [NSLocalizedDescriptionKey: "No bridge connected"]))
         }
@@ -1538,6 +1750,12 @@ class BridgeManager: ObservableObject {
     ///   - brightness: Brightness level (0.0 to 100.0)
     /// - Returns: Result with success or error
     func setGroupedLightBrightness(id: String, brightness: Double) async -> Result<Void, Error> {
+        // Demo mode: Just return success without network call
+        if isDemoMode {
+            print("🎭 setGroupedLightBrightness: Demo mode - skipping network call")
+            return .success(())
+        }
+
         guard currentConnectedBridge != nil else {
             return .failure(NSError(domain: "BridgeManager", code: -1, userInfo: [NSLocalizedDescriptionKey: "No bridge connected"]))
         }
@@ -1558,6 +1776,12 @@ class BridgeManager: ObservableObject {
     ///   - brightness: Brightness level (0.0 to 100.0)
     /// - Returns: Result with success or error
     func setGroupedLightPowerAndBrightness(id: String, on: Bool, brightness: Double) async -> Result<Void, Error> {
+        // Demo mode: Just return success without network call
+        if isDemoMode {
+            print("🎭 setGroupedLightPowerAndBrightness: Demo mode - skipping network call")
+            return .success(())
+        }
+
         guard currentConnectedBridge != nil else {
             return .failure(NSError(domain: "BridgeManager", code: -1, userInfo: [NSLocalizedDescriptionKey: "No bridge connected"]))
         }
@@ -1586,6 +1810,47 @@ class BridgeManager: ObservableObject {
     /// {"on": {"on": false}}
     /// ```
     func turnOffAllLights() async -> Result<Void, Error> {
+        // Demo mode: Update local state only
+        if isDemoMode {
+            print("🎭 turnOffAllLights: Demo mode - updating local state only")
+
+            // Update grouped lights in rooms to reflect off state
+            for index in rooms.indices {
+                if var groupedLights = rooms[index].groupedLights {
+                    for i in groupedLights.indices {
+                        groupedLights[i] = HueGroupedLight(
+                            id: groupedLights[i].id,
+                            type: groupedLights[i].type,
+                            on: HueGroupedLight.GroupedLightOn(on: false),
+                            dimming: groupedLights[i].dimming,
+                            color_temperature: groupedLights[i].color_temperature,
+                            color: groupedLights[i].color
+                        )
+                    }
+                    rooms[index].groupedLights = groupedLights
+                }
+            }
+
+            // Update grouped lights in zones to reflect off state
+            for index in zones.indices {
+                if var groupedLights = zones[index].groupedLights {
+                    for i in groupedLights.indices {
+                        groupedLights[i] = HueGroupedLight(
+                            id: groupedLights[i].id,
+                            type: groupedLights[i].type,
+                            on: HueGroupedLight.GroupedLightOn(on: false),
+                            dimming: groupedLights[i].dimming,
+                            color_temperature: groupedLights[i].color_temperature,
+                            color: groupedLights[i].color
+                        )
+                    }
+                    zones[index].groupedLights = groupedLights
+                }
+            }
+
+            return .success(())
+        }
+
         guard currentConnectedBridge != nil else {
             return .failure(NSError(domain: "BridgeManager", code: -1, userInfo: [NSLocalizedDescriptionKey: "No bridge connected"]))
         }

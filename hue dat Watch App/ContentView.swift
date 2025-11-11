@@ -43,7 +43,17 @@ struct ContentView: View {
                     // App became active - re-validate and reconnect SSE stream
                     Task {
                         await bridgeManager.validateConnection()
-                        await startSSEStream()
+
+                        // Reset reconnection backoff when returning from idle
+                        await MainActor.run {
+                            bridgeManager.reconnectAttempts = 0
+                        }
+
+                        // Attempt to reconnect if not already connected
+                        if !bridgeManager.isSSEConnected {
+                            print("🔄 App became active - attempting SSE reconnection")
+                            await startSSEStream()
+                        }
                     }
                 case .background:
                     // App going to background - stop SSE to save battery
@@ -65,16 +75,8 @@ struct ContentView: View {
                     navigationPath.append("roomsAndZones")
                 }
 
-                // Refresh data and start SSE stream
+                // Start SSE stream (data loading happens in RoomsAndZonesListView)
                 Task {
-                    async let roomsRefresh: Void = bridgeManager.getRooms()
-                    async let zonesRefresh: Void = bridgeManager.getZones()
-                    async let scenesRefresh: Void = bridgeManager.fetchScenes()
-
-                    // Wait for all data refresh to complete
-                    _ = await (roomsRefresh, zonesRefresh, scenesRefresh)
-
-                    // Start SSE stream after data is loaded
                     await startSSEStream()
                 }
 
@@ -91,6 +93,12 @@ struct ContentView: View {
         }
         .alert("Bridge Connection Failed", isPresented: $showConnectionFailedAlert) {
             Button("Retry") {
+                Task {
+                    await bridgeManager.validateConnection()
+                }
+            }
+            Button("Use Demo Mode") {
+                bridgeManager.enableDemoMode()
                 Task {
                     await bridgeManager.validateConnection()
                 }
@@ -113,6 +121,12 @@ struct ContentView: View {
 
     /// Start or restart the SSE event stream
     private func startSSEStream() async {
+        // Demo mode: Skip SSE stream
+        if bridgeManager.isDemoMode {
+            print("🎭 startSSEStream: Demo mode - skipping SSE")
+            return
+        }
+
         guard let baseUrl = bridgeManager.connectedBridge?.bridge.displayAddress,
               let username = bridgeManager.connectedBridge?.username else {
             print("⚠️ Cannot start SSE stream: Missing bridge connection details")
