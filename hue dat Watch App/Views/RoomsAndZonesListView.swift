@@ -76,16 +76,22 @@ struct RoomsAndZonesListView: View {
             }
 
             ToolbarItem(placement: .topBarTrailing) {
-                HStack(spacing: 8) {
+                HStack(spacing: 0) {
                     // SSE connection indicator (subtle)
                     if bridgeManager.isSSEConnected {
                         Image(systemName: "antenna.radiowaves.left.and.right")
                             .font(.caption2)
                             .foregroundStyle(.green)
                             .opacity(0.6)
+                    } else {
+                        Image(systemName: "antenna.radiowaves.left.and.right.slash")
+                            .font(.caption2)
+                            .foregroundStyle(.red)
+                            .opacity(0.6)
                     }
 
                     // Refresh button
+                    /*
                     Button {
                         Task {
                             await refreshData()
@@ -95,6 +101,7 @@ struct RoomsAndZonesListView: View {
                             .rotationEffect(.degrees(rotationAngle))
                     }
                     .disabled(isRefreshing)
+                     */
                 }
             }
         }

@@ -42,6 +42,7 @@ struct RoomDetailView: View {
     @State private var showScenePicker: Bool = false
     @State private var backgroundUpdateTrigger: UUID = UUID()
     @State private var optimisticSceneColors: [Color]? = nil  // For instant orb updates when scene selected
+    @State private var hasFetchedScenes: Bool = false  // Guard to prevent duplicate fetchScenes calls
 
     // Computed property to get live room data
     private var room: BridgeManager.HueRoom? {
@@ -140,7 +141,7 @@ struct RoomDetailView: View {
                                     .foregroundColor(.white)
                                     .background(Color.clear)
                             }
-                            .buttonStyle(.plain)
+                            .buttonStyle(.borderless)
                             .padding(8)
                             .glassEffect()
 
@@ -148,7 +149,7 @@ struct RoomDetailView: View {
                         }
                     }
                     .zIndex(125)
-                    .offset(x: 16, y: 0)
+                    .offset(x: 16, y: 16)
                 }
 
                 // Layer 5: Brightness percentage popover (top layer)
@@ -243,24 +244,16 @@ struct RoomDetailView: View {
                 }
             }
 
-            // Load individual lights for color orb (if not already loaded)
-            // and load scenes for this room
+            // Load scenes for this room (guard against duplicate calls)
             Task {
+                guard !hasFetchedScenes else {
+                    print("⏭️ RoomDetailView: Skipping duplicate fetchScenes call")
+                    return
+                }
+                hasFetchedScenes = true
+
                 // Fetch scenes
                 availableScenes = await bridgeManager.fetchScenes(forRoomId: roomId)
-
-                // Detect active scene
-                if let activeScene = await bridgeManager.getActiveScene(forRoomId: roomId) {
-                    activeSceneId = activeScene.id
-                    print("🎬 RoomDetailView: Active scene is '\(activeScene.metadata.name)'")
-
-                    // Restore scene colors if a scene is active (persist across navigation)
-                    let sceneColors = bridgeManager.extractColorsFromScene(activeScene)
-                    if !sceneColors.isEmpty {
-                        optimisticSceneColors = sceneColors
-                        print("🎨 RoomDetailView: Restored scene colors for '\(activeScene.metadata.name)'")
-                    }
-                }
             }
 
             // Mark initial load as complete AFTER a brief delay to ensure programmatic brightness changes don't trigger haptics

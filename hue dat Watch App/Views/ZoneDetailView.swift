@@ -41,6 +41,7 @@ struct ZoneDetailView: View {
     @State private var showScenePicker: Bool = false
     @State private var backgroundUpdateTrigger: UUID = UUID()
     @State private var optimisticSceneColors: [Color]? = nil  // For instant orb updates when scene selected
+    @State private var hasFetchedScenes: Bool = false  // Guard to prevent duplicate fetchScenes calls
 
     // Computed property to get live zone data
     private var zone: BridgeManager.HueZone? {
@@ -146,7 +147,7 @@ struct ZoneDetailView: View {
                                     .foregroundColor(.white)
                                     .background(Color.clear)
                             }
-                            .buttonStyle(.plain)
+                            .buttonStyle(.borderless)
                             .padding(8)
                             .glassEffect()
 
@@ -154,7 +155,7 @@ struct ZoneDetailView: View {
                         }
                     }
                     .zIndex(125)
-                    .offset(x: 16, y: 0)
+                    .offset(x: 16, y: 16)
                 }
 
                 // Layer 5: Brightness percentage popover (top layer)
@@ -249,24 +250,16 @@ struct ZoneDetailView: View {
                 }
             }
 
-            // Load individual lights for color orb (if not already loaded)
-            // and load scenes for this zone
+            // Load scenes for this zone (guard against duplicate calls)
             Task {
+                guard !hasFetchedScenes else {
+                    print("⏭️ ZoneDetailView: Skipping duplicate fetchScenes call")
+                    return
+                }
+                hasFetchedScenes = true
+
                 // Fetch scenes
                 availableScenes = await bridgeManager.fetchScenes(forZoneId: zoneId)
-
-                // Detect active scene
-                if let activeScene = await bridgeManager.getActiveScene(forZoneId: zoneId) {
-                    activeSceneId = activeScene.id
-                    print("🎬 ZoneDetailView: Active scene is '\(activeScene.metadata.name)'")
-
-                    // Restore scene colors if a scene is active (persist across navigation)
-                    let sceneColors = bridgeManager.extractColorsFromScene(activeScene)
-                    if !sceneColors.isEmpty {
-                        optimisticSceneColors = sceneColors
-                        print("🎨 ZoneDetailView: Restored scene colors for '\(activeScene.metadata.name)'")
-                    }
-                }
             }
 
             // Mark initial load as complete AFTER a brief delay to ensure programmatic brightness changes don't trigger haptics

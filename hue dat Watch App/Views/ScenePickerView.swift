@@ -29,11 +29,14 @@ struct ScenePickerView: View {
                             bridgeManager: bridgeManager
                         )
                     }
+                    .padding(14)
+                    .glassEffect()
                     .listRowBackground(Color.clear)
                 }
+                .listRowInsets(.init(top: 0, leading: 0, bottom: 0, trailing: 0))
             }
-            .navigationTitle("Scenes")
-            .navigationBarTitleDisplayMode(.inline)
+            .navigationTitle("Scenes (\(scenes.lazy.count))")
+            .navigationBarTitleDisplayMode(.automatic)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button(action: {
@@ -57,7 +60,7 @@ struct SceneRowView: View {
             VStack(alignment: .leading, spacing: 6) {
                 // Scene name
                 Text(scene.metadata.name)
-                    .font(.headline)
+                    .font(.subheadline)
                     .foregroundColor(.white)
             }
 
@@ -70,6 +73,5 @@ struct SceneRowView: View {
                     .font(.title3)
             }
         }
-        .padding(.vertical, 2)
     }
 }

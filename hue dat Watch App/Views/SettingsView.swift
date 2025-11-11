@@ -20,6 +20,7 @@ struct SettingsView: View {
     @ScaledMetric(relativeTo: .body) private var labelIconSpacing: CGFloat = 6
 
     var body: some View {
+        /*
         HStack(spacing: 10) {
             Image(systemName: "lightbulb.slash")
                 .font(.title3)
@@ -30,6 +31,7 @@ struct SettingsView: View {
             }
         }
         .padding(.vertical, 10)
+         */
         
         NavigationStack {
             List {
@@ -53,8 +55,11 @@ struct SettingsView: View {
                         }
                     }
                     .disabled(isTurningOffLights || bridgeManager.connectedBridge == nil)
+                    .padding(14)
                     .glassEffect()
+                    .listRowBackground(Color.clear)
                 }
+                .listRowInsets(.init(top: 0, leading: 0, bottom: 0, trailing: 0))
 
                 // Bridge Connection Section
                 Section("Bridge Connection") {
