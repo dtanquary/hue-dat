@@ -34,12 +34,10 @@ struct SettingsView: View {
                                     .fill(bridgeManager.isSSEConnected ? Color.green : Color.red)
                                     .frame(width: 6, height: 6)
                                  */
-                                Image(systemName: "antenna.radiowaves.left.and.right")
-                                    .symbolEffect(.variableColor)
+                                Image(systemName: bridgeManager.isSSEConnected ? "antenna.radiowaves.left.and.right" : "antenna.radiowaves.left.and.right.slash")
                                     .font(.title3)
-                                    .foregroundStyle(.green)
+                                    .foregroundStyle(bridgeManager.isSSEConnected ? Color.green : Color.red)
                                 Text(bridgeManager.isSSEConnected ? "Connected" : "Disconnected")
-                                    .foregroundStyle(bridgeManager.isSSEConnected ? .primary : .secondary)
                                     .font(.caption.monospaced())
                                     .padding(.leading, 2)
                             }
