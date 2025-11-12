@@ -42,6 +42,7 @@ struct ZoneDetailView: View {
     @State private var backgroundUpdateTrigger: UUID = UUID()
     @State private var optimisticSceneColors: [Color]? = nil  // For instant orb updates when scene selected
     @State private var hasFetchedScenes: Bool = false  // Guard to prevent duplicate fetchScenes calls
+    @State private var isApplyingScene: Bool = false  // Guard to prevent onChange from firing during scene activation
 
     // Computed property to get live zone data
     private var zone: BridgeManager.HueZone? {
@@ -191,6 +192,9 @@ struct ZoneDetailView: View {
 
             // Don't allow brightness adjustment while power is being toggled
             guard !isTogglingPower else { return }
+
+            // Don't trigger API call when applying scene brightness
+            guard !isApplyingScene else { return }
 
             // If starting a new adjustment session (after previous session completed),
             // reset the final haptic flag so the user gets feedback for this new session
@@ -478,6 +482,9 @@ struct ZoneDetailView: View {
             }
         }
 
+        // Extract scene brightness before making API call
+        let sceneBrightness = bridgeManager.extractAverageBrightnessFromScene(scene)
+
         let result = await bridgeManager.activateScene(scene.id)
 
         switch result {
@@ -486,6 +493,24 @@ struct ZoneDetailView: View {
             activeSceneId = scene.id
             // Keep using scene colors - no need to revert to light data
             // The scene colors ARE the correct colors for this scene
+
+            // Update brightness slider to match scene brightness
+            if let sceneBrightness = sceneBrightness {
+                // Set flag to prevent onChange from triggering API call
+                isApplyingScene = true
+
+                withAnimation(.easeInOut(duration: 0.3)) {
+                    brightness = sceneBrightness
+                    optimisticBrightness = sceneBrightness
+                    displayIsOn = sceneBrightness > 0
+                }
+                print("💡 Updated brightness slider to scene value: \(sceneBrightness)%")
+
+                // Reset flag after a short delay to allow onChange to complete
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                    isApplyingScene = false
+                }
+            }
 
         case .failure(let error):
             print("❌ Failed to activate scene: \(error.localizedDescription)")

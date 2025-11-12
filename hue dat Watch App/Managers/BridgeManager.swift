@@ -1602,6 +1602,27 @@ class BridgeManager: ObservableObject {
         return colors
     }
 
+    /// Extract average brightness from a scene's actions
+    func extractAverageBrightnessFromScene(_ scene: HueScene) -> Double? {
+        guard let actions = scene.actions else {
+            print("⚠️ extractAverageBrightnessFromScene: Scene '\(scene.metadata.name)' has no actions")
+            return nil
+        }
+
+        let brightnesses = actions.compactMap { action -> Double? in
+            return action.action.dimming?.brightness
+        }
+
+        guard !brightnesses.isEmpty else {
+            print("⚠️ extractAverageBrightnessFromScene: No brightness data in scene '\(scene.metadata.name)'")
+            return nil
+        }
+
+        let average = brightnesses.reduce(0.0, +) / Double(brightnesses.count)
+        print("💡 extractAverageBrightnessFromScene: Average brightness for scene '\(scene.metadata.name)' is \(average)%")
+        return average
+    }
+
     // MARK: - Light Cache Management
 
     /// Fetch all lights in a single API call and cache them
