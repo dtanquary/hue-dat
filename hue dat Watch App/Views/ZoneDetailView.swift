@@ -107,20 +107,23 @@ struct ZoneDetailView: View {
                 // Layer 2: Centered power icon with limited tap area
                 VStack {
                     Spacer()
-                    Image(systemName: "power")
-                        .font(.system(size: 48, weight: .bold))
-                        .foregroundStyle(displayIsOn ? .yellow : .gray)
-                        .shadow(color: .black.opacity(0.3), radius: 2, x: 0, y: 1)
-                        .fixedSize() // Prevent icon truncation
-                        .padding(20)
-                        .contentShape(Circle()) // Circular tap area
-                        .onTapGesture {
-                            guard !isTogglingPower else { return }
-                            Task {
-                                await togglePower()
-                            }
+                    Button {
+                        guard !isTogglingPower else { return }
+                        Task {
+                            await togglePower()
                         }
-                        .allowsHitTesting(!isTogglingPower)
+                    } label: {
+                        Image(systemName: "power")
+                            .font(.system(size: 48, weight: .bold))
+                            .foregroundStyle(displayIsOn ? .yellow : .gray)
+                            .shadow(color: .black.opacity(0.3), radius: 2, x: 0, y: 1)
+                            .fixedSize() // Prevent icon truncation
+                            .padding(20)
+                            .contentShape(Circle()) // Circular tap area
+                    }
+                    .buttonStyle(.plain)
+                    .handGestureShortcut(.primaryAction, isEnabled: !isTogglingPower)
+                    .allowsHitTesting(!isTogglingPower)
                     Spacer()
                 }
                 .zIndex(50)
