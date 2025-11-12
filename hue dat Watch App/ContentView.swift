@@ -30,13 +30,15 @@ struct ContentView: View {
                 Task {
                     await bridgeManager.validateConnection()
                 }
+                // Start periodic refresh when app appears
+                bridgeManager.startPeriodicRefresh()
             } else {
                 // No bridge configured - stay on setup view
                 navigationPath.removeLast(navigationPath.count)
             }
         }
         .onChange(of: scenePhase) { oldPhase, newPhase in
-            // Handle app lifecycle for SSE connection
+            // Handle app lifecycle for SSE connection and periodic refresh
             if bridgeManager.connectedBridge != nil {
                 switch newPhase {
                 case .active:
@@ -55,12 +57,14 @@ struct ContentView: View {
                             await startSSEStream()
                         }
                     }
-                case .background:
-                    // App going to background - stop SSE to save battery
+                    // Start periodic refresh when app becomes active
+                    bridgeManager.startPeriodicRefresh()
+
+                case .background, .inactive:
+                    // App going to background/inactive - stop SSE and periodic refresh to save battery
                     stopSSEStream()
-                case .inactive:
-                    // Transitional state - no action needed
-                    break
+                    bridgeManager.stopPeriodicRefresh()
+
                 @unknown default:
                     break
                 }

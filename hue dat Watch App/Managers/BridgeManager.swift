@@ -59,6 +59,10 @@ class BridgeManager: ObservableObject {
     private var lastZonesRefreshTime: Date? = nil
     private let refreshDebounceInterval: TimeInterval = 30.0  // 30 seconds
 
+    // Periodic refresh
+    private var refreshTimer: Timer?
+    @Published var lastRefreshTimestamp: Date?
+
 
     /// Returns the current connected bridge information, or nil if none is connected.
     var currentConnectedBridge: BridgeConnectionInfo? {
@@ -1237,20 +1241,54 @@ class BridgeManager: ObservableObject {
     /// Returns nil if light should be hidden (off and user chose to hide)
     // MARK: - Background Refresh Management
 
-    /// Refresh all rooms and zones data
-    /// Now uses getRooms() and getZones() which have built-in protections
+    /// Refresh all rooms, zones, and scenes data
+    /// Now uses getRooms(), getZones(), and fetchScenes() which have built-in protections
     private func refreshAllData() async {
-        print("🔄 Refreshing all data")
+        print("🔄 Refreshing all data (rooms, zones, scenes)")
 
-        // Use the protected getRooms() and getZones() functions which have:
+        // Use the protected getRooms(), getZones(), and fetchScenes() functions which have:
         // - Concurrent call protection
         // - Debouncing
         // - Data preservation on error
         async let roomsRefresh: Void = getRooms()
         async let zonesRefresh: Void = getZones()
+        async let scenesRefresh: Void = fetchScenes()
 
-        // Wait for both to complete
-        _ = await (roomsRefresh, zonesRefresh)
+        // Wait for all three to complete
+        _ = await (roomsRefresh, zonesRefresh, scenesRefresh)
+
+        // Update timestamp after successful refresh
+        lastRefreshTimestamp = Date()
+        print("✅ Refresh completed at \(lastRefreshTimestamp!)")
+    }
+
+    /// Start periodic background refresh (every 60 seconds)
+    func startPeriodicRefresh() {
+        // Stop any existing timer first
+        stopPeriodicRefresh()
+
+        print("⏰ Starting periodic refresh (60 second interval)")
+
+        // Create timer that fires every 60 seconds
+        refreshTimer = Timer.scheduledTimer(withTimeInterval: 60.0, repeats: true) { [weak self] _ in
+            guard let self = self else { return }
+
+            Task { @MainActor in
+                await self.refreshAllData()
+            }
+        }
+
+        // Also trigger an immediate refresh
+        Task {
+            await refreshAllData()
+        }
+    }
+
+    /// Stop periodic background refresh
+    func stopPeriodicRefresh() {
+        refreshTimer?.invalidate()
+        refreshTimer = nil
+        print("⏹️ Stopped periodic refresh")
     }
 
     /// Refresh rooms data using smart update logic

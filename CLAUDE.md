@@ -26,7 +26,7 @@ The project does not currently have unit tests configured.
 ## Architecture
 
 ### Service Layer Architecture
-The app uses a clean service-oriented architecture with three main services:
+The app uses a clean service-oriented architecture with four main services:
 
 1. **BridgeDiscoveryService** (`Services/BridgeDiscoveryService.swift`): Handles network discovery of Hue bridges
    - Primary method: Discovery endpoint API (`https://discovery.meethue.com`)
@@ -39,15 +39,31 @@ The app uses a clean service-oriented architecture with three main services:
    - Uses `InsecureURLSessionDelegate` (from `Services/InsecureURLSessionDelegate.swift`) to bypass SSL certificate validation
    - Returns `BridgeRegistrationResponse` containing username and client key
 
-3. **BridgeManager** (`Managers/BridgeManager.swift`): Persists and manages the active bridge connection
+3. **HueAPIService** (`Services/HueAPIService.swift`): Actor-based API service for all Hue bridge communication
+   - **Thread-safe actor implementation** with shared singleton instance
+   - **HTTP/2 Multiplexing**: Single URLSession for both REST API and SSE streaming
+   - **REST API Methods**: Generic request handler, fetchRooms, fetchZones, fetchGroupedLights
+   - **Control Methods**: setPower, setBrightness, adjustBrightness for grouped lights
+   - **Scene Methods**: fetchScenes, activateScene
+   - **Rate Limiting**: 1-second minimum interval between grouped light updates
+   - **Connection Validation**: validateConnection method for testing bridge connectivity
+   - **Server-Sent Events (SSE)**: Real-time event streaming from bridge (`/eventstream/clip/v2`)
+   - **Combine Publishers**: `streamStateSubject` for stream state, `eventPublisher` for parsed SSE events
+   - **Stream Management**: startEventStream, stopEventStream, automatic reconnection handling
+   - Uses `InsecureURLSessionDelegate` for SSL certificate bypass
+   - Configured with infinite timeouts for SSE streaming, 10-second timeouts for REST calls
+
+4. **BridgeManager** (`Managers/BridgeManager.swift`): Persists and manages the active bridge connection
    - Stores `BridgeConnectionInfo` in UserDefaults
    - Caches `rooms` and `zones` separately in UserDefaults for offline access and faster app startup
    - Tracks the currently connected bridge across app sessions
    - Provides connection lifecycle methods (save, disconnect, load)
-   - **Hue API v2 Integration**: Fetches rooms, zones, and grouped light status
+   - **Hue API v2 Integration**: Uses `HueAPIService` for all bridge communication
    - Validates connection and fetches live data from `/clip/v2/resource/` endpoints
    - Publishes connection validation results via Combine publisher (`connectionValidationPublisher`)
    - Includes comprehensive data models for `HueRoom`, `HueZone`, `HueGroupedLight`, and `HueLight`
+   - **Automatic Periodic Refresh**: 60-second timer-based background refresh of rooms, zones, grouped lights, and scenes
+   - **Last Refresh Timestamp**: `@Published var lastRefreshTimestamp: Date?` tracks when data was last updated
    - **Manual Refresh**: User-triggered refresh via toolbar button in `RoomsAndZonesListView`
    - **Smart Updates**: Only updates changed items in arrays to prevent UI flicker
    - **Targeted Refresh**: `refreshSingleRoom()` and `refreshSingleZone()` for fast UI updates after control actions
@@ -56,11 +72,20 @@ The app uses a clean service-oriented architecture with three main services:
 ### Data Models
 
 **Bridge Connection Models** (`Models/BridgeModels.swift`):
-- **BridgeInfo**: Basic bridge network information (ID, IP, port)
+- **BridgeInfo**: Basic bridge network information (ID, IP, port, optional serviceName)
 - **BridgeConnectionInfo**: Complete connection state including credentials and connection date
 - **BridgeRegistrationResponse**: API response from successful registration
 - **BridgeRegistrationError**: Custom error types for registration failures
 - **HueBridgeError** & **HueBridgeErrorResponse**: Error response structures
+
+**Server-Sent Events Models** (`Models/SSEEventModels.swift`):
+- **SSEEvent**: Top-level wrapper for SSE events from Hue API v2 with creationtime, data array, id, and type
+- **SSEEventType**: Enum for event types (update, add, delete, error)
+- **SSEResourceType**: Enum for resource types (light, grouped_light, room, zone, scene, device, motion, button, etc.)
+- **SSEEventData**: Individual resource update with state fields for lights, rooms, zones, and scenes
+- **Nested State Types**: OnState, DimmingState, ColorTemperatureState, ColorState (with XYColor), MetadataState, ChildReference, ServiceReference, SceneStatus, SceneRecall
+- **Processing Helpers**: `shouldProcessUpdate` property filters relevant events, `debugDescription` for logging
+- **Array Extensions**: `allEventData`, `relevantUpdates`, `eventCountByType` for batch processing
 
 **Hue API v2 Models** (nested in `BridgeManager`):
 - **HueRoom**: Room data including metadata (name, archetype), children, services, grouped lights, and individual lights. Conforms to `Equatable` and `Hashable`.
@@ -96,6 +121,9 @@ The app uses a navigation-based architecture with the following views:
   - Listens to `connectionValidationPublisher` for validation results
   - Navigates to rooms/zones view on successful validation (data loads there, not here)
   - Wraps `MainMenuView` and coordinates with `BridgeManager`
+  - **Periodic Refresh Management**: Starts/stops automatic background refresh based on app lifecycle
+  - Starts refresh timer when app appears and becomes active
+  - Stops refresh timer when app enters background or inactive state (battery conservation)
   - Includes utility extension: `Array<Double>.average()` for aggregating brightness values
 
 - **MainMenuView**: Primary navigation hub
@@ -110,6 +138,7 @@ The app uses a navigation-based architecture with the following views:
   - Organized into sections (Rooms, Zones)
   - Shows live status (on/off, brightness) for each room/zone with colored status dots (green=on, gray=off)
   - Refresh button in toolbar to manually update data (with rotation animation)
+  - **Last Refresh Timestamp Display**: Shows "Updated X ago" using relative time formatting in More section
   - Loading overlay during initial data fetch
   - Empty state with refresh button when no rooms/zones available
   - Task-based data loading on appear (ONLY place where automatic data loading occurs)
@@ -169,11 +198,24 @@ The app uses a navigation-based architecture with the following views:
   - Link button alert with retry mechanism
   - Automatic connection save on successful registration
   - Done button disabled during active registration
+  - Manual bridge entry option via "Add Bridge Manually" button
+
+- **ManualBridgeEntryView**: Manual bridge IP address entry interface
+  - Text fields for IP address (required) and bridge name (optional)
+  - IP address validation with regex pattern and octet range checking (0-255)
+  - Generates pseudo bridge ID from IP address (`manual_` prefix + IP with underscores)
+  - Creates `BridgeInfo` with port 443 for HTTPS connection
+  - Glass effect button styling matching app design
+  - Callback-based architecture to pass entered bridge info to parent view
 
 Views use `@StateObject` for service ownership and `@ObservedObject`/`@Published` for reactive updates.
 
 ### State Management
-All services use `@MainActor` to ensure UI updates happen on the main thread. Services are `ObservableObject` instances with `@Published` properties for reactive SwiftUI bindings.
+- **MainActor Isolation**: BridgeManager and BridgeDiscoveryService use `@MainActor` to ensure UI updates happen on the main thread
+- **Actor-Based API Service**: HueAPIService uses Swift's `actor` for thread-safe concurrent access
+- **ObservableObject Pattern**: Services are `ObservableObject` instances with `@Published` properties for reactive SwiftUI bindings
+- **Combine Integration**: Stream state and events published via `PassthroughSubject` for decoupled architecture
+- **Task Detachment**: JSON decoding performed in detached tasks to avoid actor isolation warnings with MainActor-isolated models
 
 ## Important Implementation Details
 
@@ -185,10 +227,48 @@ The app uses `WKInterfaceDevice.current().identifierForVendor` to generate a uni
 - Device registrations appear as `hue_dat_watch_app#A1B2C3D4` (first 8 chars of UUID)
 
 ### SSL Certificate Handling
-The app uses `InsecureURLSessionDelegate` (`Services/InsecureURLSessionDelegate.swift`) to accept self-signed certificates from local Hue bridges. This delegate is used by all services that communicate with the bridge (BridgeRegistrationService, BridgeManager). This is necessary because bridges use HTTPS with self-signed certs. Do not remove this unless implementing proper certificate pinning.
+The app uses `InsecureURLSessionDelegate` (`Services/InsecureURLSessionDelegate.swift`) to accept self-signed certificates from local Hue bridges. This delegate is used by all services that communicate with the bridge (BridgeRegistrationService, HueAPIService). This is necessary because bridges use HTTPS with self-signed certs. Do not remove this unless implementing proper certificate pinning.
+
+### Error Handling
+The app implements comprehensive error handling across multiple layers:
+
+**HueAPIError (in HueAPIService):**
+- `invalidURL`: Malformed URL construction
+- `invalidResponse`: Non-HTTP response received
+- `httpError(statusCode)`: HTTP errors with status code
+- `decodingError(Error)`: JSON decoding failures with wrapped error
+- All errors conform to `LocalizedError` for user-friendly descriptions
+
+**StreamState (for SSE):**
+- `idle`: No active connection
+- `connecting`: Connection attempt in progress
+- `connected`: Stream actively receiving events
+- `disconnected(Error?)`: Stream ended (with optional error)
+- `error(String)`: Stream error with description
+- Conforms to `Equatable` for state comparison
+
+**Bridge Registration Errors:**
+- Link button error (type 101) triggers special retry flow
+- Detailed console logging of payloads, raw responses, and parsed JSON
+- Specific error messages for each bridge error type
+
+**View-Level Error Handling:**
+- Optimistic UI updates with automatic rollback on API failure
+- Error alerts shown when bridge is unreachable
+- Loading states prevent user actions during network operations
 
 ### Discovery Strategy
-The production implementation uses the Philips Hue Discovery API endpoint (`discovery.meethue.com`) rather than local mDNS. The mDNS implementation exists but is commented out. The discovery endpoint approach works reliably but requires internet connectivity.
+The production implementation uses the Philips Hue Discovery API endpoint (`discovery.meethue.com`) rather than local mDNS. The mDNS implementation exists but is commented out. The discovery endpoint approach works reliably but requires internet connectivity. The app also supports manual bridge IP entry via `ManualBridgeEntryView` for cases where automatic discovery fails.
+
+### Rate Limiting (HueAPIService)
+The `HueAPIService` implements server-side rate limiting to prevent overwhelming the Hue bridge:
+- **Grouped Light Rate Limit**: 1-second minimum interval between control commands for the same grouped light
+- **Per-Light Tracking**: Dictionary tracks last update timestamp for each grouped light ID
+- **Automatic Throttling**: Control methods check rate limit and automatically sleep if needed
+- **Wait Time Logging**: Console logs when rate limiting is applied and how long the wait is
+- **Individual Light Rate Limit**: Configurable at 0.1 seconds (10 per second) for future individual light control
+- **Why Necessary**: Prevents excessive API requests that could make the bridge unresponsive
+- **Complementary to View Debouncing**: Works alongside the 500ms debouncing in RoomDetailView/ZoneDetailView
 
 ### Link Button Flow
 Bridge registration requires the physical link button on the bridge to be pressed. The `BridgeRegistrationService` handles the two-step process:
@@ -210,33 +290,42 @@ The app uses UserDefaults for all persistence:
 - Cached data is updated whenever fresh data is fetched from the bridge
 
 ### Data Refresh Architecture
-The app uses a **strictly manual refresh** strategy:
+The app uses an **automatic periodic refresh** strategy with manual override options:
 
-**Manual Refresh Only:**
-- Data loads ONLY when first navigating to `RoomsAndZonesListView` (via `.task` modifier)
-- User-triggered refresh via toolbar button in `RoomsAndZonesListView`
-- NO automatic refreshes after connection validation
+**Automatic Periodic Refresh:**
+- **60-second timer**: Automatically refreshes all data (rooms, zones, grouped lights, scenes) every 60 seconds
+- **Lifecycle aware**: Timer starts when app becomes active, stops when entering background/inactive (battery conservation)
+- **Managed by ContentView**: `startPeriodicRefresh()` and `stopPeriodicRefresh()` called based on scene phase
+- **Initial refresh**: Immediate refresh triggered when timer starts
+- **Timestamp tracking**: `lastRefreshTimestamp` property updated after each successful refresh
+- **User visibility**: Last refresh time displayed in RoomsAndZonesListView as "Updated X ago"
+
+**Manual Refresh Options:**
+- **Initial load**: Data loads when first navigating to `RoomsAndZonesListView` (via `.task` modifier)
+- **User-triggered refresh**: Toolbar button in `RoomsAndZonesListView` for immediate manual refresh
+- **Respects debouncing**: 30-second minimum interval between refreshes prevents spam
+
+**Refresh Behavior:**
+- `refreshAllData()`: Refreshes rooms, zones, AND scenes in parallel using async let
 - NO automatic refreshes after control actions (power toggle, brightness, scene activation)
-- NO background polling or refresh loops
 - Data persists in cache between app launches
-- **Note**: Data becomes stale if external changes occur (e.g., lights controlled via Hue app), user must manually refresh
+- Grouped light status enriched automatically during room/zone fetch
 
-**Smart Update Logic (Available but not auto-triggered):**
-- `refreshAllData()`: Refreshes all rooms and zones in parallel using async let
+**Smart Update Logic:**
 - `smartUpdateRooms()` and `smartUpdateZones()`: Only update array items that have actually changed
 - Custom equality methods (`areRoomsEqual()`, `areZonesEqual()`, `areGroupedLightsEqual()`) compare state
 - Preserves existing data during partial refreshes to prevent UI flicker
 - Minimizes SwiftUI re-renders by only updating changed items
 
-**Targeted Refresh (Available but removed from auto-trigger points):**
+**Targeted Refresh (Available but not auto-triggered):**
 - `refreshSingleRoom(roomId:)`: Fast refresh of just one room (3-4 API calls)
 - `refreshSingleZone(zoneId:)`: Fast refresh of just one zone (3-4 API calls)
 - Methods exist but are NOT called after control actions
 - Can be manually invoked if needed in future
 - Uses same smart update logic to only modify the specific room/zone in the array
 
-### Digital Crown Support & Throttling
-Both `RoomDetailView` and `ZoneDetailView` implement Digital Crown support for brightness control with throttling and haptic feedback:
+### Digital Crown Support & Debouncing
+Both `RoomDetailView` and `ZoneDetailView` implement Digital Crown support for brightness control with debouncing and haptic feedback:
 
 **Digital Crown Implementation:**
 - Uses `.digitalCrownRotation($brightness, from: 0, through: 100, by: 1, sensitivity: .low)` modifier
@@ -247,18 +336,19 @@ Both `RoomDetailView` and `ZoneDetailView` implement Digital Crown support for b
 **Drag Gesture Brightness Control:**
 - Vertical drag gesture on brightness bar (8pt wide on right side)
 - Inverted Y-axis: dragging up increases brightness, dragging down decreases
-- Same throttling system as crown rotation
+- Same debouncing system as crown rotation
 - Visual feedback via animated brightness percentage popover
 - Popover auto-hides after 1 second of inactivity
 
-**Throttling Strategy (CRITICAL):**
-- Crown/drag input triggers `throttledSetBrightness()` instead of direct API calls
-- Uses Timer-based throttling with 300ms interval
-- Tracks `lastBrightnessUpdate` timestamp to determine if enough time has passed
-- If throttle interval hasn't elapsed, schedules update for later and stores `pendingBrightness`
-- Previous pending updates are cancelled when new input arrives
+**Debouncing Strategy (CRITICAL):**
+- Crown/drag input updates local brightness state immediately for instant visual feedback
+- Uses Timer-based debouncing with 500ms delay
+- Timer is cancelled and reset on every brightness change (debouncing behavior)
+- API call only fires after user **stops adjusting** for 500ms
+- More network-friendly than throttling: single API call per adjustment session instead of periodic calls
+- Previous debounce timers are cancelled when new input arrives
 - This prevents excessive API requests during rapid crown rotation or drag adjustments
-- Without throttling, rapid input could generate 100+ API calls, overwhelming the bridge
+- Without debouncing, rapid input could generate 100+ API calls, overwhelming the bridge
 
 **Optimistic UI Updates:**
 - Immediate UI response for both power toggle and brightness changes
@@ -289,7 +379,8 @@ Both `RoomDetailView` and `ZoneDetailView` implement Digital Crown support for b
 **Why This Approach:**
 - Hue bridges have rate limits and can become unresponsive with excessive requests
 - Digital Crown rotation and drag gestures are continuous and can be very rapid
-- The 300ms throttle interval balances responsiveness (feels instant) with API efficiency
+- The 500ms debounce delay allows user to settle on desired brightness before API call
+- Debouncing is more network-friendly than throttling: one API call per adjustment vs multiple periodic calls
 - Optimistic updates provide instant visual feedback, improving perceived performance
 - Haptic feedback provides tactile confirmation without overwhelming the user
 - Control locking prevents conflicting operations and ensures clean state transitions
@@ -302,12 +393,14 @@ hue dat Watch App/
 ├── hue_datApp.swift                       # App entry point
 ├── ContentView.swift                      # Root view wrapper & lifecycle manager
 ├── Models/
-│   └── BridgeModels.swift                 # Bridge connection data models
+│   ├── BridgeModels.swift                 # Bridge connection data models
+│   └── SSEEventModels.swift               # Server-Sent Events data models for real-time updates
 ├── Managers/
 │   └── BridgeManager.swift                # Connection persistence & Hue API v2 integration
 ├── Services/
 │   ├── BridgeDiscoveryService.swift       # Network discovery
 │   ├── BridgeRegistrationService.swift    # Registration/pairing
+│   ├── HueAPIService.swift                # Actor-based API service with SSE streaming
 │   └── InsecureURLSessionDelegate.swift   # SSL certificate bypass for local bridges
 └── Views/
     ├── MainMenuView.swift                 # Primary navigation hub
@@ -317,7 +410,8 @@ hue dat Watch App/
     ├── ColorOrbsBackground.swift          # Animated gradient orb background component
     ├── ScenePickerView.swift              # Scene selection with orb preview backgrounds
     ├── SettingsView.swift                 # Settings and bridge management
-    └── BridgesListView.swift              # Bridge selection UI
+    ├── BridgesListView.swift              # Bridge selection UI
+    └── ManualBridgeEntryView.swift        # Manual bridge IP entry form
 ```
 
 ## API Integration
@@ -329,14 +423,25 @@ hue dat Watch App/
 - **Registration**: `POST https://{bridge-ip}/api` - Creates new API user with device type and client key
 
 #### Control & Status (API v2)
-The app uses Hue API v2 for all control and status operations:
+The app uses Hue API v2 for all control and status operations via `HueAPIService`:
 - **Connection Validation**: `GET https://{bridge-ip}/clip/v2/resource`
 - **Rooms**: `GET https://{bridge-ip}/clip/v2/resource/room` and `GET https://{bridge-ip}/clip/v2/resource/room/{id}`
 - **Zones**: `GET https://{bridge-ip}/clip/v2/resource/zone` and `GET https://{bridge-ip}/clip/v2/resource/zone/{id}`
-- **Grouped Lights**: `GET https://{bridge-ip}/clip/v2/resource/grouped_light/{id}` (for status)
-- **Light Control**: `PUT https://{bridge-ip}/clip/v2/resource/grouped_light/{id}` (for control)
+- **Grouped Lights**: `GET https://{bridge-ip}/clip/v2/resource/grouped_light` and `GET https://{bridge-ip}/clip/v2/resource/grouped_light/{id}` (for status)
+- **Light Control**: `PUT https://{bridge-ip}/clip/v2/resource/grouped_light/{id}` (for power and brightness control)
+- **Scenes**: `GET https://{bridge-ip}/clip/v2/resource/scene` (list all scenes) and `PUT https://{bridge-ip}/clip/v2/resource/scene/{id}` (activate scene)
 
 All v2 API requests include the `hue-application-key` header with the username obtained during registration.
+
+#### Real-Time Updates (SSE)
+The app supports Server-Sent Events for real-time light status updates:
+- **Event Stream**: `GET https://{bridge-ip}/eventstream/clip/v2` (with `Accept: text/event-stream` header)
+- **HTTP/2 Multiplexing**: SSE stream and REST API share same URLSession for efficient connection reuse
+- **Event Processing**: Parses `data:` lines as JSON arrays of SSE events
+- **Resource Types**: Receives updates for lights, grouped_lights, rooms, zones, scenes, devices, motion sensors, buttons, etc.
+- **Stream State Management**: Automatic connection handling, reconnection on errors, graceful cancellation
+- **Rate Limiting**: 1-second minimum interval between grouped light control commands to prevent bridge overload
+- **Combine Integration**: Publishes parsed events via `eventPublisher`, stream state via `streamStateSubject`
 
 ### Request Format (Registration)
 ```json

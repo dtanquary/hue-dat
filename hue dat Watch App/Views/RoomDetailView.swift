@@ -20,9 +20,7 @@ struct RoomDetailView: View {
     // Brightness control state
     @State private var isSettingBrightness = false
     @State private var brightness: Double = 0
-    @State private var lastBrightnessUpdate: Date = Date()
-    @State private var throttleTimer: Timer?
-    @State private var pendingBrightness: Double?
+    @State private var brightnessDebounceTimer: Timer?
     @State private var isAdjustingBrightness = false
     @State private var brightnessPopoverTimer: Timer?
     @State private var hasGivenInitialBrightnessHaptic = false
@@ -223,8 +221,13 @@ struct RoomDetailView: View {
                 self.hasGivenFinalBrightnessHaptic = false
             }
 
-            // Throttle actual brightness update
-            throttledSetBrightness(newValue)
+            // Debounce actual brightness update - wait until user stops adjusting
+            brightnessDebounceTimer?.invalidate()
+            brightnessDebounceTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: false) { _ in
+                Task {
+                    await setBrightness(newValue)
+                }
+            }
         }
         .navigationTitle(room.metadata.name)
         .navigationBarTitleDisplayMode(.inline)
@@ -346,14 +349,6 @@ struct RoomDetailView: View {
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
             self.hasGivenInitialPowerHaptic = false
             self.hasGivenFinalPowerHaptic = false
-        }
-    }
-
-    private func throttledSetBrightness(_ value: Double) {
-        // Throttling is now handled by BridgeManager.sendGroupedLightCommand()
-        // Simply call setBrightness - no need for view-level throttling
-        Task {
-            await setBrightness(value)
         }
     }
 

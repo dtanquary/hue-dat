@@ -107,6 +107,19 @@ struct RoomsAndZonesListView: View {
                             }
                         }
                         .disabled(isRefreshing || bridgeManager.connectedBridge == nil)
+
+                        // Last refresh timestamp
+                        if let lastRefresh = bridgeManager.lastRefreshTimestamp {
+                            HStack(spacing: labelIconSpacing) {
+                                Image(systemName: "clock")
+                                    .font(.caption2)
+                                    .foregroundStyle(.secondary)
+                                    .frame(minWidth: labelIconSpacing * 3, alignment: .leading)
+                                Text("Updated \(lastRefresh, style: .relative) ago")
+                                    .font(.caption2)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
                     }
                 }
             }
