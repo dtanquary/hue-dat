@@ -29,6 +29,7 @@ class BridgeManager: ObservableObject {
     @Published var isLoadingZones: Bool = false
     @Published var refreshError: String? = nil  // Error message for background refresh failures
     @Published var isDemoMode: Bool = false  // Demo mode flag for offline demonstration
+    @Published var isRefreshing: Bool = false  // Combined refresh state for UI feedback
 
     // Event broadcasting for connection validation
     private let connectionValidationSubject = PassthroughSubject<ConnectionValidationResult, Never>()
@@ -987,6 +988,7 @@ class BridgeManager: ObservableObject {
 
         isRefreshingRooms = true
         isLoadingRooms = true
+        isRefreshing = true  // Set combined refresh state for UI
         lastRoomsRefreshTime = Date()
 
         let delegate = InsecureURLSessionDelegate()
@@ -1009,6 +1011,7 @@ class BridgeManager: ObservableObject {
                 refreshError = "API Error: \(errorMessages)"
                 isLoadingRooms = false
                 isRefreshingRooms = false
+                updateCombinedRefreshState()  // Update combined state
                 return
             }
 
@@ -1039,6 +1042,7 @@ class BridgeManager: ObservableObject {
 
         isLoadingRooms = false
         isRefreshingRooms = false
+        updateCombinedRefreshState()  // Update combined state
     }
 
     /// Refresh a single room by fetching its latest data from the bridge.
@@ -1086,6 +1090,7 @@ class BridgeManager: ObservableObject {
 
         isRefreshingZones = true
         isLoadingZones = true
+        isRefreshing = true  // Set combined refresh state for UI
         lastZonesRefreshTime = Date()
 
         let delegate = InsecureURLSessionDelegate()
@@ -1108,6 +1113,7 @@ class BridgeManager: ObservableObject {
                 refreshError = "API Error: \(errorMessages)"
                 isLoadingZones = false
                 isRefreshingZones = false
+                updateCombinedRefreshState()  // Update combined state
                 return
             }
 
@@ -1138,6 +1144,7 @@ class BridgeManager: ObservableObject {
 
         isLoadingZones = false
         isRefreshingZones = false
+        updateCombinedRefreshState()  // Update combined state
     }
 
     /// Refresh a single zone by fetching its latest data from the bridge.
@@ -1239,6 +1246,12 @@ class BridgeManager: ObservableObject {
 
     /// Extract a displayable color from a HueLight
     /// Returns nil if light should be hidden (off and user chose to hide)
+
+    /// Update the combined isRefreshing state based on individual room/zone refresh states
+    private func updateCombinedRefreshState() {
+        isRefreshing = isRefreshingRooms || isRefreshingZones
+    }
+
     // MARK: - Background Refresh Management
 
     /// Refresh all rooms, zones, and scenes data

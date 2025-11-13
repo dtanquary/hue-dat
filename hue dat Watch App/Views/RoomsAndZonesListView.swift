@@ -9,7 +9,6 @@ import SwiftUI
 
 struct RoomsAndZonesListView: View {
     @ObservedObject var bridgeManager: BridgeManager
-    @State private var isRefreshing = false
     @State private var hasLoadedData = false
     @State private var rotationAngle: Double = 0
     @State private var showSettings = false
@@ -27,7 +26,7 @@ struct RoomsAndZonesListView: View {
 
     var body: some View {
         Group {
-            if bridgeManager.rooms.isEmpty && bridgeManager.zones.isEmpty && !isRefreshing && hasLoadedData {
+            if bridgeManager.rooms.isEmpty && bridgeManager.zones.isEmpty && !bridgeManager.isRefreshing && hasLoadedData {
                 VStack(spacing: emptyStateSpacing) {
                     Image(systemName: "square.3.layers.3d.slash")
                         .font(.largeTitle)
@@ -101,12 +100,12 @@ struct RoomsAndZonesListView: View {
                                 Text("Refresh Data")
                                     .font(.body)
                                 Spacer()
-                                if isRefreshing {
+                                if bridgeManager.isRefreshing {
                                     ProgressView()
                                 }
                             }
                         }
-                        .disabled(isRefreshing || bridgeManager.connectedBridge == nil)
+                        .disabled(bridgeManager.isRefreshing || bridgeManager.connectedBridge == nil)
 
                         // Last refresh timestamp
                         if let lastRefresh = bridgeManager.lastRefreshTimestamp {
@@ -138,7 +137,7 @@ struct RoomsAndZonesListView: View {
         .sheet(isPresented: $showSettings) {
             SettingsView(bridgeManager: bridgeManager)
         }
-        .onChange(of: isRefreshing) { _, newValue in
+        .onChange(of: bridgeManager.isRefreshing) { _, newValue in
             if newValue {
                 withAnimation(.linear(duration: 1.0).repeatForever(autoreverses: false)) {
                     rotationAngle = 360
@@ -221,9 +220,8 @@ struct RoomsAndZonesListView: View {
             hasGivenRefreshInitialHaptic = true
         }
 
-        isRefreshing = true
-
         // Refresh rooms, zones, and scenes in parallel
+        // isRefreshing state is now managed by BridgeManager
         async let roomsRefresh: Void = bridgeManager.getRooms()
         async let zonesRefresh: Void = bridgeManager.getZones()
         async let scenesRefresh: Void = bridgeManager.fetchScenes()
@@ -237,7 +235,6 @@ struct RoomsAndZonesListView: View {
             hasGivenRefreshFinalHaptic = true
         }
 
-        isRefreshing = false
         hasLoadedData = true
 
         // Reset haptic flags after a delay

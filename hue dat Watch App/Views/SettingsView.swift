@@ -41,6 +41,29 @@ struct SettingsView: View {
                                     .font(.caption.monospaced())
                                     .padding(.leading, 2)
                             }
+
+                            // Show reconnect button only when disconnected
+                            if !bridgeManager.isSSEConnected {
+                                Button {
+                                    Task {
+                                        do {
+                                            try await HueAPIService.shared.startEventStream()
+                                            print("✅ SSE stream reconnected via settings button")
+                                        } catch {
+                                            print("❌ Failed to reconnect SSE stream: \(error)")
+                                        }
+                                    }
+                                } label: {
+                                    HStack(spacing: labelIconSpacing) {
+                                        Image(systemName: "arrow.clockwise")
+                                            .font(.caption)
+                                        Text("Reconnect")
+                                            .font(.caption2)
+                                    }
+                                }
+                                .buttonStyle(.bordered)
+                                .tint(.blue)
+                            }
                             
                             Divider()
                             
