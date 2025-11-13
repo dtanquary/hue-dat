@@ -1264,8 +1264,11 @@ class BridgeManager: ObservableObject {
 
     /// Start periodic background refresh (every 60 seconds)
     func startPeriodicRefresh() {
-        // Stop any existing timer first
-        stopPeriodicRefresh()
+        // Check if timer is already running - prevent duplicate timers
+        if refreshTimer != nil {
+            print("⏭️ Periodic refresh already running, skipping duplicate start")
+            return
+        }
 
         print("⏰ Starting periodic refresh (60 second interval)")
 

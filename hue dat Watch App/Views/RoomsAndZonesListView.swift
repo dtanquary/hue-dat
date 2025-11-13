@@ -173,6 +173,10 @@ struct RoomsAndZonesListView: View {
                 await refreshData()
             }
             hasLoadedData = true
+
+            // Start periodic refresh AFTER initial load completes
+            // This prevents race condition where periodic refresh blocks initial load
+            bridgeManager.startPeriodicRefresh()
         }
         .alert("Unable to Load Rooms & Zones", isPresented: $showNetworkErrorAlert) {
             Button("Retry") {

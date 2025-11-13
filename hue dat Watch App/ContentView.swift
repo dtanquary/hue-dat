@@ -30,8 +30,8 @@ struct ContentView: View {
                 Task {
                     await bridgeManager.validateConnection()
                 }
-                // Start periodic refresh when app appears
-                bridgeManager.startPeriodicRefresh()
+                // NOTE: Periodic refresh is started by RoomsAndZonesListView after initial data load
+                // to prevent race condition with initial load
             } else {
                 // No bridge configured - stay on setup view
                 navigationPath.removeLast(navigationPath.count)
