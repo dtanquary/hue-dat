@@ -10,6 +10,7 @@ import HueDatShared
 
 struct MenuBarPanelView: View {
     @EnvironmentObject var bridgeManager: BridgeManager
+    @Binding var showAboutDialog: Bool
 
     @State private var showBridgeSetup = false
 
@@ -24,9 +25,13 @@ struct MenuBarPanelView: View {
             }
         }
         .frame(width: 320, height: 480)
+        .background(.ultraThinMaterial)
         .sheet(isPresented: $showBridgeSetup) {
             BridgeSetupView_macOS()
                 .environmentObject(bridgeManager)
+        }
+        .sheet(isPresented: $showAboutDialog) {
+            AboutView_macOS()
         }
     }
 
@@ -57,6 +62,6 @@ struct MenuBarPanelView: View {
 }
 
 #Preview {
-    MenuBarPanelView()
+    MenuBarPanelView(showAboutDialog: .constant(false))
         .environmentObject(BridgeManager())
 }

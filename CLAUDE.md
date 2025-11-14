@@ -32,6 +32,14 @@ xcodebuild -project "hue dat.xcodeproj" -scheme "hue dat macOS" -destination 'pl
 ### Testing
 The project does not currently have unit tests configured.
 
+### Build Scripts
+The macOS target includes a "Kill Existing App Instances" build phase that runs before compilation:
+- Automatically terminates any running instances of the macOS app before each build
+- Uses `killall "hue dat macOS" 2>/dev/null || true` to silently kill existing processes
+- Prevents duplicate menu bar icons during development
+- Positioned as the first build phase to run early in the build process
+- Configured in project.pbxproj as a PBXShellScriptBuildPhase
+
 ## Architecture
 
 ### Shared Package Architecture
@@ -244,18 +252,38 @@ The watchOS app uses a navigation-based architecture with the following views:
   - Callback-based architecture to pass entered bridge info to parent view
 
 #### macOS Views
-The macOS app is a menu bar application (MenuBarExtra) with a floating panel interface:
+The macOS app is a **menu bar-only application** using **AppKit with NSApplicationDelegate** for complete control over menu bar behavior:
 
 - **HueDatMacApp** (`hue dat macOS/HueDatMacApp.swift`): Main app entry point
-  - Creates menu bar extra with lightbulb icon
-  - Uses `.menuBarExtraStyle(.window)` for floating panel behavior
+  - Uses `@NSApplicationDelegateAdaptor` pattern with custom `AppDelegate` class
+  - **AppDelegate** manages all menu bar UI via AppKit's NSStatusBar
+  - Creates status bar item with lightbulb icon
+  - **NSPopover-based panel** (320×480 points) for main UI
+  - **Right-click context menu** with "About HueDat" and "Quit HueDat" options
+  - **EventMonitor integration** for reliable outside-click dismissal
+  - **App activation** (`NSApp.activate(ignoringOtherApps: true)`) ensures transient behavior works
+  - **Lifecycle monitoring** (`applicationWillResignActive`) closes popover when app loses focus
+  - **Menu bar only**: App hidden from dock and Cmd+Tab via `LSUIElement = YES` in build settings
   - Initializes shared `BridgeManager` instance
+
+- **EventMonitor** (`hue dat macOS/EventMonitor.swift`): Global event monitoring utility
+  - Monitors left and right mouse clicks anywhere on screen
+  - Used to detect clicks outside popover and close it
+  - Starts monitoring when popover opens, stops when it closes
+  - Provides reliable click-outside-to-dismiss behavior for menu bar popovers
 
 - **MenuBarPanelView** (`hue dat macOS/Views/MenuBarPanelView.swift`): Main panel container
   - Fixed size panel (320×480 points)
+  - **Ultra-thin material background** (`.ultraThinMaterial`) for frosted glass effect
   - Shows `RoomsZonesListView_macOS` when connected
   - Shows disconnected state with setup button when not connected
-  - Sheet presentation for `BridgeSetupView_macOS`
+  - Sheet presentation for `BridgeSetupView_macOS` and `AboutView_macOS`
+
+- **AboutView_macOS** (`hue dat macOS/Views/AboutView_macOS.swift`): About dialog
+  - Displays app icon, name, version, and description
+  - 400×320pt modal window
+  - Uses closure-based `onClose` callback instead of `@Environment(\.dismiss)` for proper NSWindow integration
+  - Presented via `NSWindow` with `isReleasedWhenClosed = false` to prevent premature deallocation
 
 - **BridgeSetupView_macOS** (`hue dat macOS/Views/BridgeSetupView_macOS.swift`): Bridge discovery and registration
   - Similar to watchOS `BridgesListView` but optimized for macOS layout
@@ -504,10 +532,12 @@ hue dat Watch App/                                 # watchOS Target
     └── ManualBridgeEntryView.swift               # Manual bridge IP entry form
 
 hue dat macOS/                                     # macOS Target (Menu Bar App)
-├── HueDatMacApp.swift                            # macOS app entry point (MenuBarExtra)
+├── HueDatMacApp.swift                            # macOS app entry point (NSApplicationDelegate)
+├── EventMonitor.swift                            # Global mouse event monitor for click-outside detection
 ├── DeviceIdentifierProvider_macOS.swift          # macOS device ID implementation (IOKit)
 └── Views/
-    ├── MenuBarPanelView.swift                    # Main panel container (320×480pt)
+    ├── MenuBarPanelView.swift                    # Main panel container (320×480pt) with glass effect
+    ├── AboutView_macOS.swift                     # About dialog window
     ├── BridgeSetupView_macOS.swift               # Bridge discovery & registration
     ├── RoomsZonesListView_macOS.swift            # List of rooms & zones
     ├── RoomDetailView_macOS.swift                # Individual room control

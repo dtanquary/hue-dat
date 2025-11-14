@@ -117,6 +117,7 @@
 			isa = PBXNativeTarget;
 			buildConfigurationList = 553852742EC6A63C00A20A8E /* Build configuration list for PBXNativeTarget "hue dat macOS" */;
 			buildPhases = (
+				55AB12342EC6A99900000001 /* Kill Existing App Instances */,
 				553852662EC6A63B00A20A8E /* Sources */,
 				553852672EC6A63B00A20A8E /* Frameworks */,
 				553852682EC6A63B00A20A8E /* Resources */,
@@ -263,6 +264,28 @@
 		};
 /* End PBXSourcesBuildPhase section */
 
+/* Begin PBXShellScriptBuildPhase section */
+		55AB12342EC6A99900000001 /* Kill Existing App Instances */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			name = "Kill Existing App Instances";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "# Kill any running instances of the app before launching new build\nkillall \"hue dat macOS\" 2>/dev/null || true\n";
+			showEnvVarsInLog = 0;
+		};
+/* End PBXShellScriptBuildPhase section */
+
 /* Begin PBXTargetDependency section */
 		55911FF22EB1DCEC005CED54 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
@@ -299,6 +322,7 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = "Hue Dat";
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";
+				INFOPLIST_KEY_LSUIElement = YES;
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -346,6 +370,7 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = "Hue Dat";
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";
+				INFOPLIST_KEY_LSUIElement = YES;
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
