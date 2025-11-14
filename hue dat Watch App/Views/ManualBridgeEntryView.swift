@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import HueDatShared
 
 struct ManualBridgeEntryView: View {
     @Environment(\.dismiss) var dismiss

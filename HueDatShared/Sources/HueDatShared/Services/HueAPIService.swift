@@ -1,21 +1,22 @@
 //
-//  BridgeConnectionService.swift
-//  hue dat
+//  HueAPIService.swift
+//  HueDatShared
 //
-//  Created by David Tanquary on 11/9/25.
+//  Actor-based API service for Hue bridge communication with SSE streaming
 //
 
 import Foundation
 import Combine
 
 // MARK: - API Errors
-enum HueAPIError: Error, LocalizedError {
+
+public enum HueAPIError: Error, LocalizedError {
     case invalidURL
     case invalidResponse
     case httpError(statusCode: Int)
     case decodingError(Error)
 
-    var errorDescription: String? {
+    public var errorDescription: String? {
         switch self {
         case .invalidURL:
             return "Invalid URL"
@@ -29,83 +30,16 @@ enum HueAPIError: Error, LocalizedError {
     }
 }
 
-// MARK: - API Response Models
-struct HueAPIV2Error: Decodable, Sendable {
-    let description: String
-}
-
-// Non-isolated wrapper for rooms response
-// BridgeManager.HueRoom is MainActor-isolated, so we use a custom Decodable implementation
-struct HueRoomsResponse {
-    let errors: [HueAPIV2Error]
-    let data: [BridgeManager.HueRoom]
-}
-
-// Manual Decodable conformance to avoid actor isolation issues
-extension HueRoomsResponse: Decodable {
-    enum CodingKeys: String, CodingKey {
-        case errors
-        case data
-    }
-
-    init(from decoder: Decoder) throws {
-        let container = try decoder.container(keyedBy: CodingKeys.self)
-        self.errors = try container.decode([HueAPIV2Error].self, forKey: .errors)
-        self.data = try container.decode([BridgeManager.HueRoom].self, forKey: .data)
-    }
-}
-
-// Non-isolated wrapper for zones response
-// BridgeManager.HueZone is MainActor-isolated, so we use a custom Decodable implementation
-struct HueZonesResponse {
-    let errors: [HueAPIV2Error]
-    let data: [BridgeManager.HueZone]
-}
-
-// Manual Decodable conformance to avoid actor isolation issues
-extension HueZonesResponse: Decodable {
-    enum CodingKeys: String, CodingKey {
-        case errors
-        case data
-    }
-
-    init(from decoder: Decoder) throws {
-        let container = try decoder.container(keyedBy: CodingKeys.self)
-        self.errors = try container.decode([HueAPIV2Error].self, forKey: .errors)
-        self.data = try container.decode([BridgeManager.HueZone].self, forKey: .data)
-    }
-}
-
-// Non-isolated wrapper for grouped lights response
-// BridgeManager.HueGroupedLight is MainActor-isolated, so we use a custom Decodable implementation
-struct HueGroupedLightsResponse {
-    let errors: [HueAPIV2Error]
-    let data: [BridgeManager.HueGroupedLight]
-}
-
-// Manual Decodable conformance to avoid actor isolation issues
-extension HueGroupedLightsResponse: Decodable {
-    enum CodingKeys: String, CodingKey {
-        case errors
-        case data
-    }
-
-    init(from decoder: Decoder) throws {
-        let container = try decoder.container(keyedBy: CodingKeys.self)
-        self.errors = try container.decode([HueAPIV2Error].self, forKey: .errors)
-        self.data = try container.decode([BridgeManager.HueGroupedLight].self, forKey: .data)
-    }
-}
-
 // MARK: - Stream State
-enum StreamState: Equatable {
+
+public enum StreamState: Equatable, Sendable {
     case idle
     case connecting
     case connected
     case disconnected(Error?)
     case error(String)
 
-    static func == (lhs: StreamState, rhs: StreamState) -> Bool {
+    public static func == (lhs: StreamState, rhs: StreamState) -> Bool {
         switch (lhs, rhs) {
         case (.idle, .idle),
              (.connecting, .connecting),
@@ -120,28 +54,30 @@ enum StreamState: Equatable {
     }
 }
 
-actor HueAPIService {
-    static let shared = HueAPIService()
+// MARK: - Hue API Service
 
-    let session: URLSession
+public actor HueAPIService {
+    public static let shared = HueAPIService()
+
+    public let session: URLSession
     private let sessionDelegate: InsecureURLSessionDelegate
     private var streamTask: Task<Void, Never>?
 
-    var baseURL = ""
-    var hueApplicationKey = ""
+    public var baseURL = ""
+    public var hueApplicationKey = ""
 
     // Combine publisher for stream state changes (thread-safe)
-    let streamStateSubject = PassthroughSubject<StreamState, Never>()
+    public let streamStateSubject = PassthroughSubject<StreamState, Never>()
 
     // Combine publisher for parsed SSE events (thread-safe)
-    let eventPublisher = PassthroughSubject<[SSEEvent], Never>()
+    public let eventPublisher = PassthroughSubject<[SSEEvent], Never>()
 
     // Rate limiting state
     private var lastGroupedLightUpdate: [String: Date] = [:] // Track per-light last update
     private let groupedLightRateLimit: TimeInterval = 1.0 // 1 second between updates for grouped lights
     private let individualLightRateLimit: TimeInterval = 0.1 // 10 per second for individual lights
 
-    init() {
+    public init() {
         let config = URLSessionConfiguration.default
         config.httpMaximumConnectionsPerHost = 1
 
@@ -153,8 +89,8 @@ actor HueAPIService {
         self.sessionDelegate = InsecureURLSessionDelegate()
         self.session = URLSession(configuration: config, delegate: sessionDelegate, delegateQueue: nil)
     }
-    
-    func setup(baseUrl: String, hueApplicationKey: String) {
+
+    public func setup(baseUrl: String, hueApplicationKey: String) {
         self.baseURL = baseUrl
         self.hueApplicationKey = hueApplicationKey
     }
@@ -163,7 +99,7 @@ actor HueAPIService {
 
     /// Generic REST API request method
     /// Uses the same session as SSE streaming for HTTP/2 multiplexing
-    func request<T: Decodable>(
+    public func request<T: Decodable>(
         endpoint: String,
         method: String = "GET",
         body: Data? = nil,
@@ -207,7 +143,7 @@ actor HueAPIService {
 
     /// Fetch all rooms from the bridge
     /// Returns: HueRoomsResponse containing array of rooms
-    func fetchRooms() async throws -> HueRoomsResponse {
+    public func fetchRooms() async throws -> HueRoomsResponse {
         // Fetch raw data first
         guard let url = URL(string: "https://\(baseURL)/clip/v2/resource/room") else {
             throw HueAPIError.invalidURL
@@ -231,8 +167,6 @@ actor HueAPIService {
         }
 
         // Decode outside actor context
-        // Note: This generates a Swift 6 warning because BridgeManager.HueRoom is MainActor-isolated
-        // The warning is harmless - decoding is safe in a detached task
         return try await Task.detached {
             do {
                 return try JSONDecoder().decode(HueRoomsResponse.self, from: data)
@@ -248,7 +182,7 @@ actor HueAPIService {
 
     /// Fetch all zones from the bridge
     /// Returns: HueZonesResponse containing array of zones
-    func fetchZones() async throws -> HueZonesResponse {
+    public func fetchZones() async throws -> HueZonesResponse {
         // Fetch raw data first
         guard let url = URL(string: "https://\(baseURL)/clip/v2/resource/zone") else {
             throw HueAPIError.invalidURL
@@ -272,8 +206,6 @@ actor HueAPIService {
         }
 
         // Decode outside actor context
-        // Note: This generates a Swift 6 warning because BridgeManager.HueZone is MainActor-isolated
-        // The warning is harmless - decoding is safe in a detached task
         return try await Task.detached {
             do {
                 return try JSONDecoder().decode(HueZonesResponse.self, from: data)
@@ -289,7 +221,7 @@ actor HueAPIService {
 
     /// Fetch all grouped lights from the bridge
     /// Returns: HueGroupedLightsResponse containing array of grouped lights
-    func fetchGroupedLights() async throws -> HueGroupedLightsResponse {
+    public func fetchGroupedLights() async throws -> HueGroupedLightsResponse {
         // Fetch raw data first
         guard let url = URL(string: "https://\(baseURL)/clip/v2/resource/grouped_light") else {
             throw HueAPIError.invalidURL
@@ -313,8 +245,6 @@ actor HueAPIService {
         }
 
         // Decode outside actor context
-        // Note: This generates a Swift 6 warning because BridgeManager.HueGroupedLight is MainActor-isolated
-        // The warning is harmless - decoding is safe in a detached task
         return try await Task.detached {
             do {
                 return try JSONDecoder().decode(HueGroupedLightsResponse.self, from: data)
@@ -353,7 +283,7 @@ actor HueAPIService {
     /// - Parameters:
     ///   - groupedLightId: The grouped light ID from room/zone services
     ///   - on: true to turn on, false to turn off
-    func setPower(groupedLightId: String, on: Bool) async throws {
+    public func setPower(groupedLightId: String, on: Bool) async throws {
         // Enforce rate limit
         _ = await checkGroupedLightRateLimit(groupedLightId: groupedLightId)
 
@@ -395,7 +325,7 @@ actor HueAPIService {
     /// - Parameters:
     ///   - groupedLightId: The grouped light ID from room/zone services
     ///   - brightness: Brightness percentage (0.0 to 100.0)
-    func setBrightness(groupedLightId: String, brightness: Double) async throws {
+    public func setBrightness(groupedLightId: String, brightness: Double) async throws {
         // Enforce rate limit
         _ = await checkGroupedLightRateLimit(groupedLightId: groupedLightId)
 
@@ -437,7 +367,7 @@ actor HueAPIService {
     /// - Parameters:
     ///   - groupedLightId: The grouped light ID from room/zone services
     ///   - delta: Relative brightness change (-100.0 to +100.0)
-    func adjustBrightness(groupedLightId: String, delta: Double) async throws {
+    public func adjustBrightness(groupedLightId: String, delta: Double) async throws {
         // Enforce rate limit
         _ = await checkGroupedLightRateLimit(groupedLightId: groupedLightId)
 
@@ -482,15 +412,15 @@ actor HueAPIService {
     // MARK: - Scene Methods
 
     /// Fetch all scenes from the bridge
-    /// Returns: Generic Decodable response (typically used with BridgeManager.HueScene)
-    func fetchScenes<T: Decodable>() async throws -> T {
+    /// Returns: HueScenesResponse containing array of scenes
+    public func fetchScenes() async throws -> HueScenesResponse {
         return try await request(endpoint: "/clip/v2/resource/scene", method: "GET", timeout: 10.0)
     }
 
     /// Activate a scene
     /// - Parameters:
     ///   - sceneId: The scene ID to activate
-    func activateScene(sceneId: String) async throws {
+    public func activateScene(sceneId: String) async throws {
         guard let url = URL(string: "https://\(baseURL)/clip/v2/resource/scene/\(sceneId)") else {
             throw HueAPIError.invalidURL
         }
@@ -529,7 +459,7 @@ actor HueAPIService {
 
     /// Validate connection to the bridge
     /// Returns: true if connection is valid, throws error otherwise
-    func validateConnection() async throws -> Bool {
+    public func validateConnection() async throws -> Bool {
         guard let url = URL(string: "https://\(baseURL)/clip/v2/resource") else {
             throw HueAPIError.invalidURL
         }
@@ -557,7 +487,7 @@ actor HueAPIService {
 
     // MARK: - Streaming Methods
 
-    func startEventStream() async throws {
+    public func startEventStream() async throws {
         // Cancel any existing stream
         streamTask?.cancel()
 
@@ -567,7 +497,7 @@ actor HueAPIService {
         }
     }
 
-    func stopEventStream() {
+    public func stopEventStream() {
         streamTask?.cancel()
         streamTask = nil
         streamStateSubject.send(.idle)

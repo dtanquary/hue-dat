@@ -9,7 +9,9 @@
 /* Begin PBXBuildFile section */
 		551B08942EC3DAF800018F3B /* AppIcon.icon in Resources */ = {isa = PBXBuildFile; fileRef = 551B08932EC3DAF800018F3B /* AppIcon.icon */; };
 		551B08952EC3DAF800018F3B /* AppIcon.icon in Resources */ = {isa = PBXBuildFile; fileRef = 551B08932EC3DAF800018F3B /* AppIcon.icon */; };
+		5538528D2EC6A65700A20A8E /* HueDatShared in Frameworks */ = {isa = PBXBuildFile; productRef = 5538528C2EC6A65700A20A8E /* HueDatShared */; };
 		55911FF02EB1DCEC005CED54 /* hue dat Watch App.app in Embed Watch Content */ = {isa = PBXBuildFile; fileRef = 55911FEF2EB1DCEC005CED54 /* hue dat Watch App.app */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		55FBB82C2EC695EC008B438C /* HueDatShared in Frameworks */ = {isa = PBXBuildFile; productRef = 55FBB82B2EC695EC008B438C /* HueDatShared */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -38,11 +40,19 @@
 
 /* Begin PBXFileReference section */
 		551B08932EC3DAF800018F3B /* AppIcon.icon */ = {isa = PBXFileReference; lastKnownFileType = folder.iconcomposer.icon; path = AppIcon.icon; sourceTree = "<group>"; };
+		5538526A2EC6A63B00A20A8E /* hue dat macOS.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "hue dat macOS.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		55911FE92EB1DCEC005CED54 /* hue dat.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "hue dat.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		55911FEF2EB1DCEC005CED54 /* hue dat Watch App.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "hue dat Watch App.app"; sourceTree = BUILT_PRODUCTS_DIR; };
+		55FBB8292EC6953C008B438C /* HueDatShared */ = {isa = PBXFileReference; lastKnownFileType = wrapper; path = HueDatShared; sourceTree = "<group>"; };
+		55FBB82A2EC69573008B438C /* Package.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = Package.swift; path = HueDatShared/Package.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
+		5538526B2EC6A63B00A20A8E /* hue dat macOS */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = "hue dat macOS";
+			sourceTree = "<group>";
+		};
 		55911FF32EB1DCEC005CED54 /* hue dat Watch App */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			path = "hue dat Watch App";
@@ -51,10 +61,19 @@
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
+		553852672EC6A63B00A20A8E /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				5538528D2EC6A65700A20A8E /* HueDatShared in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		55911FEC2EB1DCEC005CED54 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				55FBB82C2EC695EC008B438C /* HueDatShared in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -65,8 +84,10 @@
 			isa = PBXGroup;
 			children = (
 				55911FF32EB1DCEC005CED54 /* hue dat Watch App */,
+				5538526B2EC6A63B00A20A8E /* hue dat macOS */,
 				55911FEA2EB1DCEC005CED54 /* Products */,
 				551B08932EC3DAF800018F3B /* AppIcon.icon */,
+				55FBB8282EC6953B008B438C /* Frameworks */,
 			);
 			sourceTree = "<group>";
 		};
@@ -75,13 +96,46 @@
 			children = (
 				55911FE92EB1DCEC005CED54 /* hue dat.app */,
 				55911FEF2EB1DCEC005CED54 /* hue dat Watch App.app */,
+				5538526A2EC6A63B00A20A8E /* hue dat macOS.app */,
 			);
 			name = Products;
+			sourceTree = "<group>";
+		};
+		55FBB8282EC6953B008B438C /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				55FBB82A2EC69573008B438C /* Package.swift */,
+				55FBB8292EC6953C008B438C /* HueDatShared */,
+			);
+			name = Frameworks;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
+		553852692EC6A63B00A20A8E /* hue dat macOS */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 553852742EC6A63C00A20A8E /* Build configuration list for PBXNativeTarget "hue dat macOS" */;
+			buildPhases = (
+				553852662EC6A63B00A20A8E /* Sources */,
+				553852672EC6A63B00A20A8E /* Frameworks */,
+				553852682EC6A63B00A20A8E /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				5538526B2EC6A63B00A20A8E /* hue dat macOS */,
+			);
+			name = "hue dat macOS";
+			packageProductDependencies = (
+				5538528C2EC6A65700A20A8E /* HueDatShared */,
+			);
+			productName = "hue dat macOS";
+			productReference = 5538526A2EC6A63B00A20A8E /* hue dat macOS.app */;
+			productType = "com.apple.product-type.application";
+		};
 		55911FE82EB1DCEC005CED54 /* hue dat */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = 559120002EB1DCED005CED54 /* Build configuration list for PBXNativeTarget "hue dat" */;
@@ -118,6 +172,7 @@
 			);
 			name = "hue dat Watch App";
 			packageProductDependencies = (
+				55FBB82B2EC695EC008B438C /* HueDatShared */,
 			);
 			productName = "hue dat Watch App";
 			productReference = 55911FEF2EB1DCEC005CED54 /* hue dat Watch App.app */;
@@ -130,9 +185,12 @@
 			isa = PBXProject;
 			attributes = {
 				BuildIndependentTargetsInParallel = 1;
-				LastSwiftUpdateCheck = 2600;
+				LastSwiftUpdateCheck = 2610;
 				LastUpgradeCheck = 2600;
 				TargetAttributes = {
+					553852692EC6A63B00A20A8E = {
+						CreatedOnToolsVersion = 26.1.1;
+					};
 					55911FE82EB1DCEC005CED54 = {
 						CreatedOnToolsVersion = 26.0.1;
 					};
@@ -157,11 +215,19 @@
 			targets = (
 				55911FE82EB1DCEC005CED54 /* hue dat */,
 				55911FEE2EB1DCEC005CED54 /* hue dat Watch App */,
+				553852692EC6A63B00A20A8E /* hue dat macOS */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
+		553852682EC6A63B00A20A8E /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		55911FE72EB1DCEC005CED54 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -181,6 +247,13 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
+		553852662EC6A63B00A20A8E /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		55911FEB2EB1DCEC005CED54 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -199,6 +272,100 @@
 /* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
+		553852722EC6A63C00A20A8E /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = A3T6R9W85M;
+				ENABLE_APP_SANDBOX = YES;
+				ENABLE_HARDENED_RUNTIME = YES;
+				ENABLE_INCOMING_NETWORK_CONNECTIONS = YES;
+				ENABLE_OUTGOING_NETWORK_CONNECTIONS = YES;
+				ENABLE_PREVIEWS = YES;
+				ENABLE_RESOURCE_ACCESS_AUDIO_INPUT = NO;
+				ENABLE_RESOURCE_ACCESS_BLUETOOTH = NO;
+				ENABLE_RESOURCE_ACCESS_CALENDARS = NO;
+				ENABLE_RESOURCE_ACCESS_CAMERA = NO;
+				ENABLE_RESOURCE_ACCESS_CONTACTS = NO;
+				ENABLE_RESOURCE_ACCESS_LOCATION = NO;
+				ENABLE_RESOURCE_ACCESS_PRINTING = NO;
+				ENABLE_RESOURCE_ACCESS_USB = NO;
+				ENABLE_USER_SELECTED_FILES = readonly;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = "Hue Dat";
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 26.0;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "com.dtanquary.hue-dat-macOS";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				REGISTER_APP_GROUPS = YES;
+				SDKROOT = macosx;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		553852732EC6A63C00A20A8E /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = A3T6R9W85M;
+				ENABLE_APP_SANDBOX = YES;
+				ENABLE_HARDENED_RUNTIME = YES;
+				ENABLE_INCOMING_NETWORK_CONNECTIONS = YES;
+				ENABLE_OUTGOING_NETWORK_CONNECTIONS = YES;
+				ENABLE_PREVIEWS = YES;
+				ENABLE_RESOURCE_ACCESS_AUDIO_INPUT = NO;
+				ENABLE_RESOURCE_ACCESS_BLUETOOTH = NO;
+				ENABLE_RESOURCE_ACCESS_CALENDARS = NO;
+				ENABLE_RESOURCE_ACCESS_CAMERA = NO;
+				ENABLE_RESOURCE_ACCESS_CONTACTS = NO;
+				ENABLE_RESOURCE_ACCESS_LOCATION = NO;
+				ENABLE_RESOURCE_ACCESS_PRINTING = NO;
+				ENABLE_RESOURCE_ACCESS_USB = NO;
+				ENABLE_USER_SELECTED_FILES = readonly;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = "Hue Dat";
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 26.0;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "com.dtanquary.hue-dat-macOS";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				REGISTER_APP_GROUPS = YES;
+				SDKROOT = macosx;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
 		55911FFA2EB1DCED005CED54 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -410,7 +577,7 @@
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 5.0;
-				TARGETED_DEVICE_FAMILY = 1;
+				TARGETED_DEVICE_FAMILY = 2;
 			};
 			name = Debug;
 		};
@@ -432,7 +599,7 @@
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 5.0;
-				TARGETED_DEVICE_FAMILY = 1;
+				TARGETED_DEVICE_FAMILY = 2;
 				VALIDATE_PRODUCT = YES;
 			};
 			name = Release;
@@ -440,6 +607,15 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
+		553852742EC6A63C00A20A8E /* Build configuration list for PBXNativeTarget "hue dat macOS" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				553852722EC6A63C00A20A8E /* Debug */,
+				553852732EC6A63C00A20A8E /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
 		55911FE62EB1DCEB005CED54 /* Build configuration list for PBXProject "hue dat" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
@@ -468,6 +644,17 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		5538528C2EC6A65700A20A8E /* HueDatShared */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = HueDatShared;
+		};
+		55FBB82B2EC695EC008B438C /* HueDatShared */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = HueDatShared;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = 55911FE32EB1DCEB005CED54 /* Project object */;
 }

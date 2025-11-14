@@ -10,38 +10,38 @@ import Foundation
 import Combine
 
 // MARK: - Connection Validation Result
-enum ConnectionValidationResult {
+public enum ConnectionValidationResult {
     case success
     case failure(message: String)
 }
 
 // MARK: - Bridge Manager
 @MainActor
-class BridgeManager: ObservableObject {
-    @Published var connectedBridge: BridgeConnectionInfo?
-    @Published var showAlert: Bool = false
-    @Published var alertMessage: String? = nil
-    @Published var isConnectionValidated: Bool = false
-    @Published var rooms: [HueRoom] = []
-    @Published var zones: [HueZone] = []
-    @Published var scenes: [HueScene] = []
-    @Published var isLoadingRooms: Bool = false
-    @Published var isLoadingZones: Bool = false
-    @Published var refreshError: String? = nil  // Error message for background refresh failures
-    @Published var isDemoMode: Bool = false  // Demo mode flag for offline demonstration
-    @Published var isRefreshing: Bool = false  // Combined refresh state for UI feedback
+public class BridgeManager: ObservableObject {
+    @Published public var connectedBridge: BridgeConnectionInfo?
+    @Published public var showAlert: Bool = false
+    @Published public var alertMessage: String? = nil
+    @Published public var isConnectionValidated: Bool = false
+    @Published public var rooms: [HueRoom] = []
+    @Published public var zones: [HueZone] = []
+    @Published public var scenes: [HueScene] = []
+    @Published public var isLoadingRooms: Bool = false
+    @Published public var isLoadingZones: Bool = false
+    @Published public var refreshError: String? = nil  // Error message for background refresh failures
+    @Published public var isDemoMode: Bool = false  // Demo mode flag for offline demonstration
+    @Published public var isRefreshing: Bool = false  // Combined refresh state for UI feedback
 
     // Event broadcasting for connection validation
     private let connectionValidationSubject = PassthroughSubject<ConnectionValidationResult, Never>()
-    var connectionValidationPublisher: AnyPublisher<ConnectionValidationResult, Never> {
+    public var connectionValidationPublisher: AnyPublisher<ConnectionValidationResult, Never> {
         connectionValidationSubject.eraseToAnyPublisher()
     }
 
     // SSE event handling
     private var eventSubscription: AnyCancellable?
     private var streamStateSubscription: AnyCancellable?
-    @Published var isSSEConnected: Bool = false
-    var reconnectAttempts = 0  // Internal so ContentView can reset on successful connection
+    @Published public var isSSEConnected: Bool = false
+    public var reconnectAttempts = 0  // Public so ContentView can reset on successful connection
     private let maxReconnectAttempts = 5
 
     private let userDefaults = UserDefaults.standard
@@ -62,15 +62,15 @@ class BridgeManager: ObservableObject {
 
     // Periodic refresh
     private var refreshTimer: Timer?
-    @Published var lastRefreshTimestamp: Date?
+    @Published public var lastRefreshTimestamp: Date?
 
 
     /// Returns the current connected bridge information, or nil if none is connected.
-    var currentConnectedBridge: BridgeConnectionInfo? {
+    public var currentConnectedBridge: BridgeConnectionInfo? {
         connectedBridge
     }
     
-    init() {
+    public init() {
         loadConnectedBridge()
         loadDemoModeState()
         // Clean up old lights cache (migration)
@@ -83,7 +83,7 @@ class BridgeManager: ObservableObject {
         loadScenesFromStorage()
     }
     
-    func saveConnection(bridge: BridgeInfo, registrationResponse: BridgeRegistrationResponse) {
+    public func saveConnection(bridge: BridgeInfo, registrationResponse: BridgeRegistrationResponse) {
         let connectionInfo = BridgeConnectionInfo(bridge: bridge, registrationResponse: registrationResponse)
         
         do {
@@ -112,7 +112,7 @@ class BridgeManager: ObservableObject {
         }
     }
     
-    func disconnectBridge() {
+    public func disconnectBridge() {
         userDefaults.removeObject(forKey: connectedBridgeKey)
         userDefaults.removeObject(forKey: cachedRoomsKey)
         userDefaults.removeObject(forKey: cachedZonesKey)
@@ -137,7 +137,7 @@ class BridgeManager: ObservableObject {
     }
 
     /// Enable demo mode for offline demonstration
-    func enableDemoMode() {
+    public func enableDemoMode() {
         isDemoMode = true
         userDefaults.set(true, forKey: demoModeKey)
         userDefaults.synchronize()
@@ -145,7 +145,7 @@ class BridgeManager: ObservableObject {
     }
 
     /// Disable demo mode and return to normal operation
-    func disableDemoMode() {
+    public func disableDemoMode() {
         isDemoMode = false
         userDefaults.set(false, forKey: demoModeKey)
         userDefaults.synchronize()
@@ -309,7 +309,7 @@ class BridgeManager: ObservableObject {
     }
 
     /// Start listening to SSE events from HueAPIService
-    func startListeningToSSEEvents() {
+    public func startListeningToSSEEvents() {
         // Demo mode: Skip SSE event listening
         if isDemoMode {
             print("🎭 startListeningToSSEEvents: Demo mode - skipping SSE")
@@ -354,7 +354,7 @@ class BridgeManager: ObservableObject {
     }
 
     /// Stop listening to SSE events
-    func stopListeningToSSEEvents() {
+    public func stopListeningToSSEEvents() {
         print("🛑 Stopping SSE event listener")
         eventSubscription?.cancel()
         streamStateSubscription?.cancel()
@@ -603,6 +603,7 @@ class BridgeManager: ObservableObject {
         }
     }
 
+    /*
     // MARK: - Hue API Response Models
     private struct HueAPIV2Response: Decodable {
         let errors: [HueAPIV2Error]
@@ -622,47 +623,6 @@ class BridgeManager: ObservableObject {
     private struct HueRoomsResponse: Decodable {
         let errors: [HueAPIV2Error]
         let data: [HueRoom]
-    }
-    
-    struct HueRoom: Codable, Identifiable, Equatable, Hashable {
-        let id: String
-        let type: String
-        var metadata: RoomMetadata
-        var children: [HueRoomChild]?
-        var services: [HueRoomService]?
-        var groupedLights: [HueGroupedLight]?
-
-        struct RoomMetadata: Codable, Equatable, Hashable {
-            let name: String
-            let archetype: String
-        }
-
-        /// Child references in Hue API v2 rooms
-        /// NOTE: Children with rtype="device" contain device IDs, NOT light IDs.
-        /// To get light data: 1) Query /clip/v2/resource/device/{rid} to get device
-        /// 2) Find service with rtype="light" in device.services to get actual light ID
-        /// 3) Query /clip/v2/resource/light/{lightId} with the light ID from step 2
-        struct HueRoomChild: Codable, Equatable, Hashable {
-            let rid: String   // Resource ID (device ID when rtype="device")
-            let rtype: String // Resource type (e.g., "device", "motion", etc.)
-        }
-
-        struct HueRoomService: Codable, Equatable, Hashable {
-            let rid: String
-            let rtype: String
-        }
-
-        // Custom Equatable implementation for efficient comparison
-        static func == (lhs: HueRoom, rhs: HueRoom) -> Bool {
-            lhs.id == rhs.id &&
-            lhs.metadata == rhs.metadata &&
-            lhs.groupedLights == rhs.groupedLights
-        }
-
-        // Custom Hashable implementation
-        func hash(into hasher: inout Hasher) {
-            hasher.combine(id)
-        }
     }
     
     // MARK: - Individual Room Response Models
@@ -685,130 +645,11 @@ class BridgeManager: ObservableObject {
         let data: [HueGroupedLight]
     }
 
-    struct HueGroupedLight: Codable, Identifiable, Equatable, Hashable {
-        let id: String
-        let type: String
-        let on: GroupedLightOn?
-        let dimming: GroupedLightDimming?
-        let color_temperature: GroupedLightColorTemperature?
-        let color: GroupedLightColor?
-
-        struct GroupedLightOn: Codable, Equatable, Hashable {
-            let on: Bool
-        }
-
-        struct GroupedLightDimming: Codable, Equatable, Hashable {
-            let brightness: Double
-        }
-
-        struct GroupedLightColorTemperature: Codable, Equatable, Hashable {
-            let mirek: Int?
-            let mirek_valid: Bool?
-            let mirek_schema: GroupedLightColorTemperatureSchema?
-
-            struct GroupedLightColorTemperatureSchema: Codable, Equatable, Hashable {
-                let mirek_minimum: Int
-                let mirek_maximum: Int
-            }
-        }
-
-        struct GroupedLightColor: Codable, Equatable, Hashable {
-            let xy: GroupedLightColorXY?
-            let gamut: GroupedLightColorGamut?
-            let gamut_type: String?
-
-            struct GroupedLightColorXY: Codable, Equatable, Hashable {
-                let x: Double
-                let y: Double
-            }
-
-            struct GroupedLightColorGamut: Codable, Equatable, Hashable {
-                let red: GroupedLightColorXY
-                let green: GroupedLightColorXY
-                let blue: GroupedLightColorXY
-            }
-        }
-
-        // Custom Equatable implementation
-        static func == (lhs: HueGroupedLight, rhs: HueGroupedLight) -> Bool {
-            lhs.id == rhs.id &&
-            lhs.on?.on == rhs.on?.on &&
-            lhs.dimming?.brightness == rhs.dimming?.brightness &&
-            lhs.color_temperature?.mirek == rhs.color_temperature?.mirek &&
-            lhs.color?.xy?.x == rhs.color?.xy?.x &&
-            lhs.color?.xy?.y == rhs.color?.xy?.y
-        }
-
-        // Custom Hashable implementation
-        func hash(into hasher: inout Hasher) {
-            hasher.combine(id)
-        }
-    }
 
     // MARK: - Individual Light API Response Models
     private struct HueLightResponse: Decodable {
         let errors: [HueAPIV2Error]
         let data: [HueLight]
-    }
-
-    struct HueLight: Codable, Identifiable, Equatable, Hashable {
-        let id: String
-        let type: String
-        let metadata: LightMetadata?
-        let on: LightOn?
-        let dimming: LightDimming?
-        let color_temperature: LightColorTemperature?
-        let color: LightColor?
-
-        struct LightMetadata: Codable, Equatable, Hashable {
-            let name: String
-            let archetype: String?
-        }
-
-        struct LightOn: Codable, Equatable, Hashable {
-            let on: Bool
-        }
-
-        struct LightDimming: Codable, Equatable, Hashable {
-            let brightness: Double
-        }
-
-        struct LightColorTemperature: Codable, Equatable, Hashable {
-            let mirek: Int?
-            let mirek_valid: Bool?
-        }
-
-        struct LightColor: Codable, Equatable, Hashable {
-            let xy: LightColorXY?
-            let gamut: LightColorGamut?
-            let gamut_type: String?
-
-            struct LightColorXY: Codable, Equatable, Hashable {
-                let x: Double
-                let y: Double
-            }
-
-            struct LightColorGamut: Codable, Equatable, Hashable {
-                let red: LightColorXY
-                let green: LightColorXY
-                let blue: LightColorXY
-            }
-        }
-
-        // Custom Equatable implementation
-        static func == (lhs: HueLight, rhs: HueLight) -> Bool {
-            lhs.id == rhs.id &&
-            lhs.on?.on == rhs.on?.on &&
-            lhs.dimming?.brightness == rhs.dimming?.brightness &&
-            lhs.color_temperature?.mirek == rhs.color_temperature?.mirek &&
-            lhs.color?.xy?.x == rhs.color?.xy?.x &&
-            lhs.color?.xy?.y == rhs.color?.xy?.y
-        }
-
-        // Custom Hashable implementation
-        func hash(into hasher: inout Hasher) {
-            hasher.combine(id)
-        }
     }
     
     // MARK: - Zone API Response Models
@@ -817,66 +658,6 @@ class BridgeManager: ObservableObject {
         let data: [HueZone]
     }
     
-    struct HueZone: Codable, Identifiable, Equatable, Hashable {
-        let id: String
-        let type: String
-        var metadata: ZoneMetadata
-        var children: [HueZoneChild]?
-        var services: [HueZoneService]?
-        var groupedLights: [HueGroupedLight]?
-
-        struct ZoneMetadata: Codable, Equatable, Hashable {
-            let name: String
-            let archetype: String
-        }
-
-        /// Child references in Hue API v2 zones
-        /// NOTE: Children with rtype="device" contain device IDs, NOT light IDs.
-        /// To get light data: 1) Query /clip/v2/resource/device/{rid} to get device
-        /// 2) Find service with rtype="light" in device.services to get actual light ID
-        /// 3) Query /clip/v2/resource/light/{lightId} with the light ID from step 2
-        struct HueZoneChild: Codable, Equatable, Hashable {
-            let rid: String   // Resource ID (device ID when rtype="device")
-            let rtype: String // Resource type (e.g., "device", "motion", etc.)
-        }
-
-        struct HueZoneService: Codable, Equatable, Hashable {
-            let rid: String
-            let rtype: String
-        }
-
-        // Custom Equatable implementation for efficient comparison
-        static func == (lhs: HueZone, rhs: HueZone) -> Bool {
-            lhs.id == rhs.id &&
-            lhs.metadata == rhs.metadata &&
-            lhs.groupedLights == rhs.groupedLights
-        }
-
-        // Custom Hashable implementation
-        func hash(into hasher: inout Hasher) {
-            hasher.combine(id)
-        }
-    }
-    
-    // MARK: - Individual Zone Response Models
-    private struct HueZoneDetailResponse: Decodable {
-        let errors: [HueAPIV2Error]
-        let data: [HueZoneDetail]
-    }
-
-    private struct HueZoneDetail: Decodable {
-        let id: String
-        let type: String
-        let metadata: HueZone.ZoneMetadata
-        let children: [HueZone.HueZoneChild]?
-        let services: [HueZone.HueZoneService]?
-    }
-
-    // MARK: - Scene API Response Models
-    private struct HueScenesResponse: Decodable {
-        let errors: [HueAPIV2Error]
-        let data: [HueScene]
-    }
 
     // MARK: - Light API Response Models
     private struct HueLightsResponse: Decodable {
@@ -889,31 +670,15 @@ class BridgeManager: ObservableObject {
         let errors: [HueAPIV2Error]
         let data: [HueDevice]
     }
+     */
 
-    private struct HueDevice: Decodable {
-        let id: String
-        let type: String
-        let services: [HueDeviceService]?
-        let metadata: HueDeviceMetadata?
-
-        struct HueDeviceService: Decodable {
-            let rid: String   // Resource ID (the light ID if rtype is "light")
-            let rtype: String // Resource type (e.g., "light", "zigbee_connectivity", etc.)
-        }
-
-        struct HueDeviceMetadata: Decodable {
-            let name: String?
-            let archetype: String?
-        }
-    }
-
-    var isConnected: Bool {
+    public var isConnected: Bool {
         connectedBridge != nil
     }
 
     /// Validate that the current connection is alive/reachable.
     /// Broadcasts the result via connectionValidationPublisher.
-    func validateConnection() async {
+    public func validateConnection() async {
         // Demo mode: Skip validation and return success
         if isDemoMode {
             print("🎭 validateConnection: Demo mode - skipping validation")
@@ -952,7 +717,7 @@ class BridgeManager: ObservableObject {
     
     /// Retrieve the list of rooms from the connected bridge.
     /// Updates the rooms published property with the results.
-    func getRooms() async {
+    public func getRooms() async {
         // Demo mode: Return cached/demo data
         if isDemoMode {
             print("🎭 getRooms: Demo mode - returning demo data")
@@ -1047,14 +812,14 @@ class BridgeManager: ObservableObject {
 
     /// Refresh a single room by fetching its latest data from the bridge.
     /// Updates only the specified room in the rooms array.
-    func refreshRoom(roomId: String) async {
+    public func refreshRoom(roomId: String) async {
         // Simplified: just refresh all rooms since the API is fast
         await getRooms()
     }
 
     /// Retrieve the list of zones from the connected bridge.
     /// Updates the zones published property with the results.
-    func getZones() async {
+    public func getZones() async {
         // Demo mode: Return cached/demo data
         if isDemoMode {
             print("🎭 getZones: Demo mode - returning demo data")
@@ -1149,7 +914,7 @@ class BridgeManager: ObservableObject {
 
     /// Refresh a single zone by fetching its latest data from the bridge.
     /// Updates only the specified zone in the zones array.
-    func refreshZone(zoneId: String) async {
+    public func refreshZone(zoneId: String) async {
         // Simplified: just refresh all zones since the API is fast
         await getZones()
     }
@@ -1256,7 +1021,7 @@ class BridgeManager: ObservableObject {
 
     /// Refresh all rooms, zones, and scenes data
     /// Now uses getRooms(), getZones(), and fetchScenes() which have built-in protections
-    private func refreshAllData() async {
+    public func refreshAllData() async {
         print("🔄 Refreshing all data (rooms, zones, scenes)")
 
         // Use the protected getRooms(), getZones(), and fetchScenes() functions which have:
@@ -1276,7 +1041,7 @@ class BridgeManager: ObservableObject {
     }
 
     /// Start periodic background refresh (every 60 seconds)
-    func startPeriodicRefresh() {
+    public func startPeriodicRefresh() {
         // Check if timer is already running - prevent duplicate timers
         if refreshTimer != nil {
             print("⏭️ Periodic refresh already running, skipping duplicate start")
@@ -1301,7 +1066,7 @@ class BridgeManager: ObservableObject {
     }
 
     /// Stop periodic background refresh
-    func stopPeriodicRefresh() {
+    public func stopPeriodicRefresh() {
         refreshTimer?.invalidate()
         refreshTimer = nil
         print("⏹️ Stopped periodic refresh")
@@ -1512,7 +1277,7 @@ class BridgeManager: ObservableObject {
     // MARK: - Scene Management
 
     /// Fetch all scenes from the connected bridge
-    func fetchScenes() async {
+    public func fetchScenes() async {
         // Demo mode: Return cached/demo data
         if isDemoMode {
             print("🎭 fetchScenes: Demo mode - returning demo data")
@@ -1552,7 +1317,7 @@ class BridgeManager: ObservableObject {
     }
 
     /// Fetch scenes for a specific room
-    func fetchScenes(forRoomId roomId: String) async -> [HueScene] {
+    public func fetchScenes(forRoomId roomId: String) async -> [HueScene] {
         // Ensure we have scenes loaded
         if scenes.isEmpty {
             await fetchScenes()
@@ -1565,7 +1330,7 @@ class BridgeManager: ObservableObject {
     }
 
     /// Fetch scenes for a specific zone
-    func fetchScenes(forZoneId zoneId: String) async -> [HueScene] {
+    public func fetchScenes(forZoneId zoneId: String) async -> [HueScene] {
         // Ensure we have scenes loaded
         if scenes.isEmpty {
             await fetchScenes()
@@ -1578,7 +1343,7 @@ class BridgeManager: ObservableObject {
     }
 
     /// Activate a specific scene
-    func activateScene(_ sceneId: String) async -> Result<Void, Error> {
+    public func activateScene(_ sceneId: String) async -> Result<Void, Error> {
         // Demo mode: Just return success without network call
         if isDemoMode {
             print("🎭 activateScene: Demo mode - skipping network call")
@@ -1629,7 +1394,7 @@ class BridgeManager: ObservableObject {
     }
 
     /// Extract colors from a scene's actions
-    func extractColorsFromScene(_ scene: HueScene) -> [Color] {
+    public func extractColorsFromScene(_ scene: HueScene) -> [Color] {
         guard let actions = scene.actions else {
             print("⚠️ extractColorsFromScene: Scene '\(scene.metadata.name)' has no actions")
             return []
@@ -1657,7 +1422,7 @@ class BridgeManager: ObservableObject {
     }
 
     /// Extract average brightness from a scene's actions
-    func extractAverageBrightnessFromScene(_ scene: HueScene) -> Double? {
+    public func extractAverageBrightnessFromScene(_ scene: HueScene) -> Double? {
         guard let actions = scene.actions else {
             print("⚠️ extractAverageBrightnessFromScene: Scene '\(scene.metadata.name)' has no actions")
             return nil
@@ -1684,7 +1449,7 @@ class BridgeManager: ObservableObject {
 
     /// Update local room state optimistically after a successful control action
     /// This ensures the list view reflects changes immediately without waiting for a full refresh
-    func updateLocalRoomState(roomId: String, on: Bool? = nil, brightness: Double? = nil) {
+    public func updateLocalRoomState(roomId: String, on: Bool? = nil, brightness: Double? = nil) {
         guard let index = rooms.firstIndex(where: { $0.id == roomId }) else {
             print("⚠️ updateLocalRoomState: Room \(roomId) not found in local cache")
             return
@@ -1726,7 +1491,7 @@ class BridgeManager: ObservableObject {
 
     /// Update local zone state optimistically after a successful control action
     /// This ensures the list view reflects changes immediately without waiting for a full refresh
-    func updateLocalZoneState(zoneId: String, on: Bool? = nil, brightness: Double? = nil) {
+    public func updateLocalZoneState(zoneId: String, on: Bool? = nil, brightness: Double? = nil) {
         guard let index = zones.firstIndex(where: { $0.id == zoneId }) else {
             print("⚠️ updateLocalZoneState: Zone \(zoneId) not found in local cache")
             return
@@ -1768,7 +1533,7 @@ class BridgeManager: ObservableObject {
 
     /// Fetch the current state of a grouped light from the bridge
     /// Returns the updated grouped light data including current brightness
-    func fetchGroupedLight(groupedLightId: String) async -> HueGroupedLight? {
+    public func fetchGroupedLight(groupedLightId: String) async -> HueGroupedLight? {
         guard let bridge = currentConnectedBridge?.bridge else { return nil }
 
         let delegate = InsecureURLSessionDelegate()
@@ -1800,7 +1565,7 @@ class BridgeManager: ObservableObject {
     ///   - id: The grouped light ID
     ///   - on: Power state (true = on, false = off)
     /// - Returns: Result with success or error
-    func setGroupedLightPower(id: String, on: Bool) async -> Result<Void, Error> {
+    public func setGroupedLightPower(id: String, on: Bool) async -> Result<Void, Error> {
         // Demo mode: Just return success without network call
         if isDemoMode {
             print("🎭 setGroupedLightPower: Demo mode - skipping network call")
@@ -1824,7 +1589,7 @@ class BridgeManager: ObservableObject {
     ///   - id: The grouped light ID
     ///   - brightness: Brightness level (0.0 to 100.0)
     /// - Returns: Result with success or error
-    func setGroupedLightBrightness(id: String, brightness: Double) async -> Result<Void, Error> {
+    public func setGroupedLightBrightness(id: String, brightness: Double) async -> Result<Void, Error> {
         // Demo mode: Just return success without network call
         if isDemoMode {
             print("🎭 setGroupedLightBrightness: Demo mode - skipping network call")
@@ -1850,7 +1615,7 @@ class BridgeManager: ObservableObject {
     ///   - on: Power state (true = on, false = off)
     ///   - brightness: Brightness level (0.0 to 100.0)
     /// - Returns: Result with success or error
-    func setGroupedLightPowerAndBrightness(id: String, on: Bool, brightness: Double) async -> Result<Void, Error> {
+    public func setGroupedLightPowerAndBrightness(id: String, on: Bool, brightness: Double) async -> Result<Void, Error> {
         // Demo mode: Just return success without network call
         if isDemoMode {
             print("🎭 setGroupedLightPowerAndBrightness: Demo mode - skipping network call")
@@ -1884,7 +1649,7 @@ class BridgeManager: ObservableObject {
     /// ```json
     /// {"on": {"on": false}}
     /// ```
-    func turnOffAllLights() async -> Result<Void, Error> {
+    public func turnOffAllLights() async -> Result<Void, Error> {
         // Demo mode: Update local state only
         if isDemoMode {
             print("🎭 turnOffAllLights: Demo mode - updating local state only")

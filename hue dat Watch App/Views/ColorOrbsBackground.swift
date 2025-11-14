@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import HueDatShared
 
 struct ColorOrbsBackground: View {
     let brightness: Double  // 0-100

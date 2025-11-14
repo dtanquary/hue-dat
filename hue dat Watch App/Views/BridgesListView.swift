@@ -7,80 +7,24 @@
 
 import SwiftUI
 import Combine
+import HueDatShared
 
 struct BridgesListView: View {
     let bridges: [BridgeInfo]
     let bridgeManager: BridgeManager
     @Environment(\.dismiss) private var dismiss
-    @StateObject private var registrationService = BridgeRegistrationService()
+    @StateObject private var registrationService = BridgeRegistrationService(deviceIdentifierProvider: WatchOSDeviceIdentifierProvider())
     
     var body: some View {
         NavigationStack {
-            List(bridges) { bridge in
-                Button {
-                    Task {
-                        await registrationService.registerWithBridge(bridge)
-                    }
-                } label: {
-                    HStack {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(bridge.displayName)
-                                .font(.headline)
-                                .accessibilityLabel("Bridge: \(bridge.displayName)")
-                            
-                            Text(bridge.displayAddress)
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                                .accessibilityLabel("IP address: \(bridge.displayAddress)")
-                        }
-                        
-                        Spacer()
-                        
-                        if registrationService.isRegistering(bridge: bridge) {
-                            ProgressView()
-                                .scaleEffect(0.8)
-                        } else if registrationService.isRegistered(bridge: bridge) {
-                            Image(systemName: "checkmark.circle.fill")
-                                .foregroundStyle(.green)
-                        } else {
-                            Image(systemName: "chevron.right")
-                                .foregroundStyle(.quaternary)
-                                .font(.caption)
-                        }
-                    }
-                }
-                .buttonStyle(.plain)
-                .disabled(registrationService.hasActiveRegistration && !registrationService.isRegistering(bridge: bridge))
-                .accessibilityLabel("Register with bridge \(bridge.displayName)")
-            }
-            .navigationTitle("Bridges")
-            .navigationBarTitleDisplayMode(.automatic)
+            bridgesList
+                .navigationTitle("Bridges")
+                .navigationBarTitleDisplayMode(.automatic)
         }
         .toolbar {
-            ToolbarItem(placement: .topBarLeading) {
-                Button {
-                    /*showSettings = true*/
-                } label: {
-                    Image(systemName: "gear")
-                }
-            }
-
-            ToolbarItem(placement: .topBarTrailing) {
-                Button {
-                    /*
-                    Task {
-                        await refreshData()
-                    }
-                     */
-                } label: {
-                    Image(systemName: "arrow.clockwise.circle.fill")
-                }
-            }
+            toolbarContent
         }
-        .alert("Error", isPresented: Binding(
-            get: { registrationService.error != nil },
-            set: { if !$0 { registrationService.error = nil } }
-        )) {
+        .alert("Error", isPresented: errorBinding) {
             Button("OK") {
                 registrationService.error = nil
             }
@@ -89,10 +33,7 @@ struct BridgesListView: View {
                 Text(error.localizedDescription)
             }
         }
-        .alert("Success", isPresented: Binding(
-            get: { registrationService.successfulBridge != nil },
-            set: { _ in }
-        )) {
+        .alert("Success", isPresented: successBinding) {
             Button("OK") {
                 registrationService.clearSuccess()
                 dismiss()
@@ -102,7 +43,6 @@ struct BridgesListView: View {
                 Text("Connected to \(bridge.displayName)")
             }
         }
-        // Save connection immediately when registration succeeds
         .onChange(of: registrationService.successfulBridge) { _, newBridge in
             if let bridge = newBridge,
                let response = registrationService.registrationResponse {
@@ -124,5 +64,99 @@ struct BridgesListView: View {
         } message: {
             Text("Press the link button on your bridge, then tap Done.")
         }
+    }
+    
+    // MARK: - Subviews
+    
+    private var bridgesList: some View {
+        List(bridges) { bridge in
+            bridgeRow(for: bridge)
+        }
+    }
+    
+    private func bridgeRow(for bridge: BridgeInfo) -> some View {
+        Button {
+            Task {
+                await registrationService.registerWithBridge(bridge)
+            }
+        } label: {
+            bridgeRowLabel(for: bridge)
+        }
+        .buttonStyle(.plain)
+        .disabled(registrationService.hasActiveRegistration && !registrationService.isRegistering(bridge: bridge))
+        .accessibilityLabel("Register with bridge \(bridge.displayName)")
+    }
+    
+    private func bridgeRowLabel(for bridge: BridgeInfo) -> some View {
+        HStack {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(bridge.displayName)
+                    .font(.headline)
+                    .accessibilityLabel("Bridge: \(bridge.displayName)")
+                
+                Text(bridge.displayAddress)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .accessibilityLabel("IP address: \(bridge.displayAddress)")
+            }
+            
+            Spacer()
+            
+            bridgeStatusIcon(for: bridge)
+        }
+    }
+    
+    @ViewBuilder
+    private func bridgeStatusIcon(for bridge: BridgeInfo) -> some View {
+        if registrationService.isRegistering(bridge: bridge) {
+            ProgressView()
+                .scaleEffect(0.8)
+        } else if registrationService.isRegistered(bridge: bridge) {
+            Image(systemName: "checkmark.circle.fill")
+                .foregroundStyle(.green)
+        } else {
+            Image(systemName: "chevron.right")
+                .foregroundStyle(.quaternary)
+                .font(.caption)
+        }
+    }
+    
+    @ToolbarContentBuilder
+    private var toolbarContent: some ToolbarContent {
+        ToolbarItem(placement: .topBarLeading) {
+            Button {
+                /*showSettings = true*/
+            } label: {
+                Image(systemName: "gear")
+            }
+        }
+        
+        ToolbarItem(placement: .topBarTrailing) {
+            Button {
+                /*
+                Task {
+                    await refreshData()
+                }
+                 */
+            } label: {
+                Image(systemName: "arrow.clockwise.circle.fill")
+            }
+        }
+    }
+    
+    // MARK: - Bindings
+    
+    private var errorBinding: Binding<Bool> {
+        Binding(
+            get: { registrationService.error != nil },
+            set: { if !$0 { registrationService.error = nil } }
+        )
+    }
+    
+    private var successBinding: Binding<Bool> {
+        Binding(
+            get: { registrationService.successfulBridge != nil },
+            set: { _ in }
+        )
     }
 }

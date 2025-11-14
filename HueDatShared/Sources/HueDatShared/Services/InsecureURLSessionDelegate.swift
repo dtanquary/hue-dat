@@ -1,6 +1,6 @@
 //
 //  InsecureURLSessionDelegate.swift
-//  hue dat Watch App
+//  HueDatShared
 //
 //  Created by David Tanquary on 10/29/25.
 //
@@ -8,17 +8,21 @@
 import Foundation
 
 // MARK: - Insecure URL Session Delegate
-class InsecureURLSessionDelegate: NSObject, URLSessionDelegate, URLSessionTaskDelegate {
+public class InsecureURLSessionDelegate: NSObject, URLSessionDelegate, URLSessionTaskDelegate {
+
+    public override init() {
+        super.init()
+    }
 
     // Session-level challenge handler (for backward compatibility with data(for:) and other methods)
-    func urlSession(_ session: URLSession,
+    public func urlSession(_ session: URLSession,
                    didReceive challenge: URLAuthenticationChallenge,
                    completionHandler: @escaping (URLSession.AuthChallengeDisposition, URLCredential?) -> Void) {
         handleChallenge(challenge, completionHandler: completionHandler)
     }
 
     // Task-level challenge handler (required for bytes(for:) and async streaming methods)
-    func urlSession(_ session: URLSession,
+    public func urlSession(_ session: URLSession,
                    task: URLSessionTask,
                    didReceive challenge: URLAuthenticationChallenge,
                    completionHandler: @escaping (URLSession.AuthChallengeDisposition, URLCredential?) -> Void) {

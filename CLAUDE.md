@@ -4,7 +4,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-This is a native watchOS application for controlling Philips Hue lights directly from Apple Watch, without requiring an iPhone companion app. The app discovers Hue bridges on the local network and registers with them to enable light control.
+This is a multi-platform application for controlling Philips Hue lights with native apps for watchOS and macOS. The apps share core functionality through the **HueDatShared** Swift package, which contains all models, services, and business logic.
+
+**Platforms:**
+- **watchOS**: Standalone Apple Watch app with Digital Crown support, haptic feedback, and optimized UI for small screens
+- **macOS**: Menu bar app with floating panel interface for quick access to light controls
+
+Both platforms use the same underlying architecture for bridge discovery, registration, and control, ensuring consistent behavior across devices.
 
 ## Build and Development Commands
 
@@ -13,11 +19,14 @@ This is a native watchOS application for controlling Philips Hue lights directly
 # Open in Xcode (spaces in path require escaping)
 open "hue dat.xcodeproj"
 
-# Build for watchOS Simulator (adjust simulator name as needed)
+# Build watchOS target for Simulator (adjust simulator name as needed)
 xcodebuild -project "hue dat.xcodeproj" -scheme "hue dat Watch App" -destination 'platform=watchOS Simulator,name=Apple Watch Series 11 (46mm)' build
 
-# Build for device
+# Build watchOS target for device
 xcodebuild -project "hue dat.xcodeproj" -scheme "hue dat Watch App" -destination 'generic/platform=watchOS' build
+
+# Build macOS target
+xcodebuild -project "hue dat.xcodeproj" -scheme "hue dat macOS" -destination 'platform=macOS' build
 ```
 
 ### Testing
@@ -25,21 +34,40 @@ The project does not currently have unit tests configured.
 
 ## Architecture
 
-### Service Layer Architecture
-The app uses a clean service-oriented architecture with four main services:
+### Shared Package Architecture
+The project uses a **Swift Package** (HueDatShared) to share common code between watchOS and macOS targets. This package contains all models, services, and business logic, while platform-specific UI and device APIs remain in their respective targets.
 
-1. **BridgeDiscoveryService** (`Services/BridgeDiscoveryService.swift`): Handles network discovery of Hue bridges
+**HueDatShared Package** (`HueDatShared/`):
+- Platform targets: macOS 14.0+, watchOS 10.0+
+- Contains: Models, Services, Managers
+- Platform abstraction via protocols (e.g., `DeviceIdentifierProvider`)
+
+### Platform Abstraction Layer
+The shared code uses protocols to abstract platform-specific functionality:
+
+**DeviceIdentifierProvider Protocol** (`HueDatShared/Services/DeviceIdentifierProvider.swift`):
+- Provides unique device identifier for bridge registration
+- **watchOS Implementation** (`hue dat Watch App/DeviceIdentifierProvider_watchOS.swift`): Uses `WKInterfaceDevice.current().identifierForVendor`
+- **macOS Implementation** (`hue dat macOS/DeviceIdentifierProvider_macOS.swift`): Uses IOKit hardware UUID with UserDefaults fallback
+
+This pattern allows the shared `BridgeRegistrationService` to work on both platforms without conditional compilation.
+
+### Service Layer Architecture
+The app uses a clean service-oriented architecture with four main services (all in HueDatShared):
+
+1. **BridgeDiscoveryService** (`HueDatShared/Services/BridgeDiscoveryService.swift`): Handles network discovery of Hue bridges
    - Primary method: Discovery endpoint API (`https://discovery.meethue.com`)
    - Commented-out mDNS discovery via Network framework (Bonjour `_hue._tcp`)
    - Implements 15-minute caching strategy for discovery API results
    - Returns `[BridgeInfo]` models
 
-2. **BridgeRegistrationService** (`Services/BridgeRegistrationService.swift`): Manages the bridge registration/pairing flow
+2. **BridgeRegistrationService** (`HueDatShared/Services/BridgeRegistrationService.swift`): Manages the bridge registration/pairing flow
    - Implements the "press link button" workflow required by Hue API
-   - Uses `InsecureURLSessionDelegate` (from `Services/InsecureURLSessionDelegate.swift`) to bypass SSL certificate validation
+   - Uses platform-specific `DeviceIdentifierProvider` for unique device IDs
+   - Uses `InsecureURLSessionDelegate` (from `HueDatShared/Services/InsecureURLSessionDelegate.swift`) to bypass SSL certificate validation
    - Returns `BridgeRegistrationResponse` containing username and client key
 
-3. **HueAPIService** (`Services/HueAPIService.swift`): Actor-based API service for all Hue bridge communication
+3. **HueAPIService** (`HueDatShared/Services/HueAPIService.swift`): Actor-based API service for all Hue bridge communication
    - **Thread-safe actor implementation** with shared singleton instance
    - **HTTP/2 Multiplexing**: Single URLSession for both REST API and SSE streaming
    - **REST API Methods**: Generic request handler, fetchRooms, fetchZones, fetchGroupedLights
@@ -53,7 +81,7 @@ The app uses a clean service-oriented architecture with four main services:
    - Uses `InsecureURLSessionDelegate` for SSL certificate bypass
    - Configured with infinite timeouts for SSE streaming, 10-second timeouts for REST calls
 
-4. **BridgeManager** (`Managers/BridgeManager.swift`): Persists and manages the active bridge connection
+4. **BridgeManager** (`HueDatShared/Managers/BridgeManager.swift`): Persists and manages the active bridge connection
    - Stores `BridgeConnectionInfo` in UserDefaults
    - Caches `rooms` and `zones` separately in UserDefaults for offline access and faster app startup
    - Tracks the currently connected bridge across app sessions
@@ -64,21 +92,24 @@ The app uses a clean service-oriented architecture with four main services:
    - Includes comprehensive data models for `HueRoom`, `HueZone`, `HueGroupedLight`, and `HueLight`
    - **Automatic Periodic Refresh**: 60-second timer-based background refresh of rooms, zones, grouped lights, and scenes
    - **Last Refresh Timestamp**: `@Published var lastRefreshTimestamp: Date?` tracks when data was last updated
-   - **Manual Refresh**: User-triggered refresh via toolbar button in `RoomsAndZonesListView`
+   - **Manual Refresh**: User-triggered refresh via toolbar button in list views
    - **Smart Updates**: Only updates changed items in arrays to prevent UI flicker
-   - **Targeted Refresh**: `refreshSingleRoom()` and `refreshSingleZone()` for fast UI updates after control actions
+   - **Targeted Refresh**: `refreshRoom(roomId:)` and `refreshZone(zoneId:)` for fast UI updates after control actions
    - **Equatable Models**: All data models conform to Equatable/Hashable for efficient SwiftUI diffing
+   - **Demo Mode**: Offline demonstration mode using cached data (enabled via `enableDemoMode()`, disabled via `disableDemoMode()`)
 
 ### Data Models
 
-**Bridge Connection Models** (`Models/BridgeModels.swift`):
+All data models are located in HueDatShared and shared between platforms.
+
+**Bridge Connection Models** (`HueDatShared/Models/BridgeModels.swift`):
 - **BridgeInfo**: Basic bridge network information (ID, IP, port, optional serviceName)
 - **BridgeConnectionInfo**: Complete connection state including credentials and connection date
 - **BridgeRegistrationResponse**: API response from successful registration
 - **BridgeRegistrationError**: Custom error types for registration failures
 - **HueBridgeError** & **HueBridgeErrorResponse**: Error response structures
 
-**Server-Sent Events Models** (`Models/SSEEventModels.swift`):
+**Server-Sent Events Models** (`HueDatShared/Models/SSEEventModels.swift`):
 - **SSEEvent**: Top-level wrapper for SSE events from Hue API v2 with creationtime, data array, id, and type
 - **SSEEventType**: Enum for event types (update, add, delete, error)
 - **SSEResourceType**: Enum for resource types (light, grouped_light, room, zone, scene, device, motion, button, etc.)
@@ -87,7 +118,7 @@ The app uses a clean service-oriented architecture with four main services:
 - **Processing Helpers**: `shouldProcessUpdate` property filters relevant events, `debugDescription` for logging
 - **Array Extensions**: `allEventData`, `relevantUpdates`, `eventCountByType` for batch processing
 
-**Hue API v2 Models** (nested in `BridgeManager`):
+**Hue API v2 Models** (`HueDatShared/Models/HueDataModels.swift`):
 - **HueRoom**: Room data including metadata (name, archetype), children, services, grouped lights, and individual lights. Conforms to `Equatable` and `Hashable`.
 - **HueZone**: Zone data with same structure as HueRoom. Conforms to `Equatable` and `Hashable`.
 - **HueGroupedLight**: Aggregated light status including on/off, brightness, color temperature, and XY color. Conforms to `Equatable` and `Hashable`.
@@ -114,7 +145,11 @@ The Hue API v2 uses a three-layer hierarchy for connecting rooms/zones to lights
 - `lightCache` is keyed by actual light IDs and used for bulk operations
 
 ### View Layer
-The app uses a navigation-based architecture with the following views:
+
+The project has separate view hierarchies for watchOS and macOS, both using the shared `BridgeManager` from HueDatShared.
+
+#### watchOS Views
+The watchOS app uses a navigation-based architecture with the following views:
 
 - **ContentView**: Root view wrapper that manages lifecycle events
   - Handles connection validation on app launch and when scene becomes active
@@ -208,6 +243,46 @@ The app uses a navigation-based architecture with the following views:
   - Glass effect button styling matching app design
   - Callback-based architecture to pass entered bridge info to parent view
 
+#### macOS Views
+The macOS app is a menu bar application (MenuBarExtra) with a floating panel interface:
+
+- **HueDatMacApp** (`hue dat macOS/HueDatMacApp.swift`): Main app entry point
+  - Creates menu bar extra with lightbulb icon
+  - Uses `.menuBarExtraStyle(.window)` for floating panel behavior
+  - Initializes shared `BridgeManager` instance
+
+- **MenuBarPanelView** (`hue dat macOS/Views/MenuBarPanelView.swift`): Main panel container
+  - Fixed size panel (320×480 points)
+  - Shows `RoomsZonesListView_macOS` when connected
+  - Shows disconnected state with setup button when not connected
+  - Sheet presentation for `BridgeSetupView_macOS`
+
+- **BridgeSetupView_macOS** (`hue dat macOS/Views/BridgeSetupView_macOS.swift`): Bridge discovery and registration
+  - Similar to watchOS `BridgesListView` but optimized for macOS layout
+  - Shows discovered bridges and manual entry option
+  - Handles registration flow with link button alert
+
+- **RoomsZonesListView_macOS** (`hue dat macOS/Views/RoomsZonesListView_macOS.swift`): Room and zone list
+  - macOS-optimized layout with larger touch targets
+  - Shows rooms and zones with status indicators
+  - Navigation to detail views and settings
+  - Refresh button with last update timestamp
+
+- **RoomDetailView_macOS** (`hue dat macOS/Views/RoomDetailView_macOS.swift`): Individual room control
+  - macOS-adapted interface with mouse/trackpad support
+  - Power toggle and brightness slider
+  - Scene picker integration
+  - Calls `bridgeManager.refreshRoom(roomId:)` after scene activation
+
+- **ZoneDetailView_macOS** (`hue dat macOS/Views/ZoneDetailView_macOS.swift`): Individual zone control
+  - Identical functionality to `RoomDetailView_macOS` but for zones
+  - Calls `bridgeManager.refreshZone(zoneId:)` after scene activation
+
+- **SettingsView_macOS** (`hue dat macOS/Views/SettingsView_macOS.swift`): Settings and bridge management
+  - Bridge connection details
+  - Disconnect option
+  - macOS-specific UI styling
+
 Views use `@StateObject` for service ownership and `@ObservedObject`/`@Published` for reactive updates.
 
 ### State Management
@@ -220,14 +295,22 @@ Views use `@StateObject` for service ownership and `@ObservedObject`/`@Published
 ## Important Implementation Details
 
 ### Device Identification
-The app uses `WKInterfaceDevice.current().identifierForVendor` to generate a unique identifier for each Apple Watch (`BridgeRegistrationService.swift:85`). This ensures:
-- Each watch gets its own registration on the bridge
-- The identifier persists across app reinstalls
-- Multiple watches can register to the same bridge without conflicts
+The app uses platform-specific implementations of the `DeviceIdentifierProvider` protocol to generate unique identifiers for bridge registration:
+
+**watchOS** (`hue dat Watch App/DeviceIdentifierProvider_watchOS.swift`):
+- Uses `WKInterfaceDevice.current().identifierForVendor`
+- Identifier persists across app reinstalls
 - Device registrations appear as `hue_dat_watch_app#A1B2C3D4` (first 8 chars of UUID)
 
+**macOS** (`hue dat macOS/DeviceIdentifierProvider_macOS.swift`):
+- Primary: Uses IOKit hardware UUID (IOPlatformUUID)
+- Fallback: UserDefaults-cached UUID if hardware UUID unavailable
+- Ensures each Mac gets its own registration on the bridge
+
+This abstraction allows multiple devices (watches, Macs) to register to the same bridge without conflicts.
+
 ### SSL Certificate Handling
-The app uses `InsecureURLSessionDelegate` (`Services/InsecureURLSessionDelegate.swift`) to accept self-signed certificates from local Hue bridges. This delegate is used by all services that communicate with the bridge (BridgeRegistrationService, HueAPIService). This is necessary because bridges use HTTPS with self-signed certs. Do not remove this unless implementing proper certificate pinning.
+The app uses `InsecureURLSessionDelegate` (`HueDatShared/Services/InsecureURLSessionDelegate.swift`) to accept self-signed certificates from local Hue bridges. This delegate is used by all services that communicate with the bridge (BridgeRegistrationService, HueAPIService). This is necessary because bridges use HTTPS with self-signed certs. Do not remove this unless implementing proper certificate pinning.
 
 ### Error Handling
 The app implements comprehensive error handling across multiple layers:
@@ -317,12 +400,12 @@ The app uses an **automatic periodic refresh** strategy with manual override opt
 - Preserves existing data during partial refreshes to prevent UI flicker
 - Minimizes SwiftUI re-renders by only updating changed items
 
-**Targeted Refresh (Available but not auto-triggered):**
-- `refreshSingleRoom(roomId:)`: Fast refresh of just one room (3-4 API calls)
-- `refreshSingleZone(zoneId:)`: Fast refresh of just one zone (3-4 API calls)
-- Methods exist but are NOT called after control actions
-- Can be manually invoked if needed in future
-- Uses same smart update logic to only modify the specific room/zone in the array
+**Targeted Refresh:**
+- `refreshRoom(roomId:)`: Refresh a single room (currently implemented as full refresh via `getRooms()`)
+- `refreshZone(zoneId:)`: Refresh a single zone (currently implemented as full refresh via `getZones()`)
+- Called by macOS detail views after scene activation
+- Uses same smart update logic and debouncing as full refresh
+- Public methods available for both watchOS and macOS targets
 
 ### Digital Crown Support & Debouncing
 Both `RoomDetailView` and `ZoneDetailView` implement Digital Crown support for brightness control with debouncing and haptic feedback:
@@ -389,29 +472,47 @@ Both `RoomDetailView` and `ZoneDetailView` implement Digital Crown support for b
 ## File Organization
 
 ```
-hue dat Watch App/
-├── hue_datApp.swift                       # App entry point
-├── ContentView.swift                      # Root view wrapper & lifecycle manager
-├── Models/
-│   ├── BridgeModels.swift                 # Bridge connection data models
-│   └── SSEEventModels.swift               # Server-Sent Events data models for real-time updates
-├── Managers/
-│   └── BridgeManager.swift                # Connection persistence & Hue API v2 integration
-├── Services/
-│   ├── BridgeDiscoveryService.swift       # Network discovery
-│   ├── BridgeRegistrationService.swift    # Registration/pairing
-│   ├── HueAPIService.swift                # Actor-based API service with SSE streaming
-│   └── InsecureURLSessionDelegate.swift   # SSL certificate bypass for local bridges
+HueDatShared/                                      # Shared Swift Package
+├── Package.swift                                  # Package manifest (macOS 14+, watchOS 10+)
+└── Sources/HueDatShared/
+    ├── Models/
+    │   ├── BridgeModels.swift                    # Bridge connection data models
+    │   ├── SSEEventModels.swift                  # Server-Sent Events data models
+    │   └── HueDataModels.swift                   # Hue API v2 data models (Room, Zone, Light, Scene)
+    ├── Services/
+    │   ├── DeviceIdentifierProvider.swift        # Protocol for platform-specific device IDs
+    │   ├── BridgeDiscoveryService.swift          # Network discovery
+    │   ├── BridgeRegistrationService.swift       # Registration/pairing
+    │   ├── HueAPIService.swift                   # Actor-based API service with SSE streaming
+    │   └── InsecureURLSessionDelegate.swift      # SSL certificate bypass
+    └── Managers/
+        └── BridgeManager.swift                    # Connection persistence & Hue API v2 integration
+
+hue dat Watch App/                                 # watchOS Target
+├── hue_datApp.swift                              # watchOS app entry point
+├── ContentView.swift                             # Root view wrapper & lifecycle manager
+├── DeviceIdentifierProvider_watchOS.swift        # watchOS device ID implementation (WKInterfaceDevice)
 └── Views/
-    ├── MainMenuView.swift                 # Primary navigation hub
-    ├── RoomsAndZonesListView.swift        # List of all rooms & zones with status dots
-    ├── RoomDetailView.swift               # Individual room control with haptics & orb
-    ├── ZoneDetailView.swift               # Individual zone control with haptics & orb
-    ├── ColorOrbsBackground.swift          # Animated gradient orb background component
-    ├── ScenePickerView.swift              # Scene selection with orb preview backgrounds
-    ├── SettingsView.swift                 # Settings and bridge management
-    ├── BridgesListView.swift              # Bridge selection UI
-    └── ManualBridgeEntryView.swift        # Manual bridge IP entry form
+    ├── MainMenuView.swift                        # Primary navigation hub
+    ├── RoomsAndZonesListView.swift               # List of all rooms & zones with status dots
+    ├── RoomDetailView.swift                      # Individual room control with haptics & orb
+    ├── ZoneDetailView.swift                      # Individual zone control with haptics & orb
+    ├── ColorOrbsBackground.swift                 # Animated gradient orb background component
+    ├── ScenePickerView.swift                     # Scene selection with orb preview backgrounds
+    ├── SettingsView.swift                        # Settings and bridge management
+    ├── BridgesListView.swift                     # Bridge selection UI
+    └── ManualBridgeEntryView.swift               # Manual bridge IP entry form
+
+hue dat macOS/                                     # macOS Target (Menu Bar App)
+├── HueDatMacApp.swift                            # macOS app entry point (MenuBarExtra)
+├── DeviceIdentifierProvider_macOS.swift          # macOS device ID implementation (IOKit)
+└── Views/
+    ├── MenuBarPanelView.swift                    # Main panel container (320×480pt)
+    ├── BridgeSetupView_macOS.swift               # Bridge discovery & registration
+    ├── RoomsZonesListView_macOS.swift            # List of rooms & zones
+    ├── RoomDetailView_macOS.swift                # Individual room control
+    ├── ZoneDetailView_macOS.swift                # Individual zone control
+    └── SettingsView_macOS.swift                  # Settings and bridge management
 ```
 
 ## API Integration

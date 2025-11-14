@@ -7,6 +7,7 @@
 
 import SwiftUI
 import Combine
+import HueDatShared
 
 struct ContentView: View {
     @StateObject private var bridgeManager = BridgeManager()

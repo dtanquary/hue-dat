@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import HueDatShared
 
 struct SettingsView: View {
     @ObservedObject var bridgeManager: BridgeManager

@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import HueDatShared
 
 struct RoomsAndZonesListView: View {
     @ObservedObject var bridgeManager: BridgeManager
@@ -281,7 +282,7 @@ struct RoomsAndZonesListView: View {
 
 // MARK: - Room Row View
 struct RoomRowView: View {
-    let room: BridgeManager.HueRoom
+    let room: HueRoom
 
     // Dynamic Type scaled metrics
     @ScaledMetric(relativeTo: .headline) private var rowSpacing: CGFloat = 12
@@ -358,7 +359,7 @@ struct RoomRowView: View {
 
 // MARK: - Zone Row View
 struct ZoneRowView: View {
-    let zone: BridgeManager.HueZone
+    let zone: HueZone
 
     // Dynamic Type scaled metrics
     @ScaledMetric(relativeTo: .headline) private var rowSpacing: CGFloat = 12

@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import HueDatShared
 
 struct RoomDetailView: View {
     let roomId: String
@@ -44,7 +45,7 @@ struct RoomDetailView: View {
     @State private var isApplyingScene: Bool = false  // Guard to prevent onChange from firing during scene activation
 
     // Computed property to get live room data
-    private var room: BridgeManager.HueRoom? {
+    private var room: HueRoom? {
         bridgeManager.rooms.first(where: { $0.id == roomId })
     }
 
@@ -83,7 +84,7 @@ struct RoomDetailView: View {
     }
 
     @ViewBuilder
-    private func roomContent(for room: BridgeManager.HueRoom) -> some View {
+    private func roomContent(for room: HueRoom) -> some View {
         GeometryReader { outerGeometry in
             ZStack {
                 // Layer 1: Brightness-controlled orange/grey orb background

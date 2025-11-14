@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import HueDatShared
 
 @main
 struct hue_dat_Watch_AppApp: App {

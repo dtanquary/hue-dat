@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import HueDatShared
 
 struct ZoneDetailView: View {
     let zoneId: String
@@ -43,7 +44,7 @@ struct ZoneDetailView: View {
     @State private var isApplyingScene: Bool = false  // Guard to prevent onChange from firing during scene activation
 
     // Computed property to get live zone data
-    private var zone: BridgeManager.HueZone? {
+    private var zone: HueZone? {
         bridgeManager.zones.first(where: { $0.id == zoneId })
     }
 
@@ -89,7 +90,7 @@ struct ZoneDetailView: View {
     }
 
     @ViewBuilder
-    private func zoneContent(for zone: BridgeManager.HueZone) -> some View {
+    private func zoneContent(for zone: HueZone) -> some View {
         GeometryReader { outerGeometry in
             ZStack {
                 // Layer 1: Brightness-controlled orange/grey orb background

@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import HueDatShared
 
 struct ScenePickerView: View {
     let scenes: [HueScene]
