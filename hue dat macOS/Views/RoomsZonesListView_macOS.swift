@@ -15,6 +15,10 @@ struct RoomsZonesListView_macOS: View {
     let onZoneSelected: (HueZone) -> Void
     let onSettingsSelected: () -> Void
 
+    @State private var isTurningOffAll = false
+    @State private var showError = false
+    @State private var errorMessage = ""
+
     var body: some View {
         VStack(spacing: 0) {
             // Header with title and buttons
@@ -34,6 +38,27 @@ struct RoomsZonesListView_macOS: View {
                 // SSE status indicator
                 SSEStatusIndicator()
                     .environmentObject(bridgeManager)
+
+                Button(action: {
+                    Task {
+                        isTurningOffAll = true
+                        let result = await bridgeManager.turnOffAllLights()
+                        isTurningOffAll = false
+
+                        switch result {
+                        case .success:
+                            break // Success - no alert needed
+                        case .failure(let error):
+                            errorMessage = "Failed to turn off all lights: \(error.localizedDescription)"
+                            showError = true
+                        }
+                    }
+                }) {
+                    Image(systemName: "moon.fill")
+                }
+                .buttonStyle(.borderless)
+                .disabled(bridgeManager.isRefreshing || isTurningOffAll)
+                .help("Turn Off All Lights")
 
                 Button(action: {
                     Task {
@@ -71,6 +96,13 @@ struct RoomsZonesListView_macOS: View {
             if bridgeManager.rooms.isEmpty && bridgeManager.zones.isEmpty {
                 await bridgeManager.refreshAllData()
             }
+        }
+        .alert("Error", isPresented: $showError) {
+            Button("OK") {
+                showError = false
+            }
+        } message: {
+            Text(errorMessage)
         }
     }
 

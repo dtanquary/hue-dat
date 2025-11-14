@@ -16,10 +16,11 @@ struct RoomDetailView_macOS: View {
 
     @State private var isOn: Bool = false
     @State private var brightness: Double = 0.0
-    @State private var isScenesExpanded = false
+    @State private var isScenesExpanded = true
     @State private var showError = false
     @State private var errorMessage = ""
     @State private var hoveredSceneId: String?
+    @State private var isApplyingScene = false
 
     // Optimistic state for immediate UI feedback
     @State private var optimisticIsOn: Bool?
@@ -153,6 +154,16 @@ struct RoomDetailView_macOS: View {
         .onAppear {
             loadRoomState()
         }
+        .onChange(of: groupedLight?.dimming?.brightness) { newBrightness in
+            if let newBrightness = newBrightness {
+                brightness = newBrightness
+            }
+        }
+        .onChange(of: groupedLight?.on?.on) { newIsOn in
+            if let newIsOn = newIsOn {
+                isOn = newIsOn
+            }
+        }
         .alert("Error", isPresented: $showError) {
             Button("OK") {
                 showError = false
@@ -195,6 +206,9 @@ struct RoomDetailView_macOS: View {
     private func setBrightness(_ newValue: Double) {
         guard let lightId = groupedLightId else { return }
 
+        // Don't trigger API call when applying scene brightness
+        guard !isApplyingScene else { return }
+
         // Optimistic update
         optimisticBrightness = newValue
 
@@ -224,13 +238,41 @@ struct RoomDetailView_macOS: View {
     }
 
     private func activateScene(_ scene: HueScene) {
+        // Extract scene brightness for optimistic update
+        let sceneBrightness = bridgeManager.extractAverageBrightnessFromScene(scene)
+
+        // Optimistic updates - immediate UI feedback
+        optimisticIsOn = true
+        if let sceneBrightness = sceneBrightness {
+            optimisticBrightness = sceneBrightness
+        }
+
         Task {
             do {
                 try await HueAPIService.shared.activateScene(sceneId: scene.id)
-                // Refresh room state
-                await bridgeManager.refreshRoom(roomId: room.id)
-            } catch {
+
+                // Update actual state after successful activation
                 await MainActor.run {
+                    isOn = true
+                    if let sceneBrightness = sceneBrightness {
+                        // Set flag to prevent onChange from triggering API call
+                        isApplyingScene = true
+                        brightness = sceneBrightness
+
+                        // Reset flag after brief delay
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                            isApplyingScene = false
+                        }
+                    }
+                    // Clear optimistic state
+                    optimisticIsOn = nil
+                    optimisticBrightness = nil
+                }
+            } catch {
+                // Rollback optimistic updates on error
+                await MainActor.run {
+                    optimisticIsOn = nil
+                    optimisticBrightness = nil
                     errorMessage = "Failed to activate scene: \(error.localizedDescription)"
                     showError = true
                 }
