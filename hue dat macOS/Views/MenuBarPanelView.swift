@@ -13,12 +13,72 @@ struct MenuBarPanelView: View {
     @Binding var showAboutDialog: Bool
 
     @State private var showBridgeSetup = false
+    @State private var selectedRoom: HueRoom?
+    @State private var selectedZone: HueZone?
+    @State private var showingSettings = false
 
     var body: some View {
-        VStack(spacing: 0) {
-            if bridgeManager.isConnected {
-                // Connected state - show rooms and zones
-                RoomsZonesListView_macOS()
+        ZStack {
+            if let room = selectedRoom {
+                // Room detail view
+                RoomDetailView_macOS(
+                    room: room,
+                    onBack: {
+                        withAnimation(.easeInOut(duration: 0.2)) {
+                            selectedRoom = nil
+                        }
+                    }
+                )
+                .transition(.asymmetric(
+                    insertion: .move(edge: .trailing),
+                    removal: .move(edge: .leading)
+                ))
+            } else if let zone = selectedZone {
+                // Zone detail view
+                ZoneDetailView_macOS(
+                    zone: zone,
+                    onBack: {
+                        withAnimation(.easeInOut(duration: 0.2)) {
+                            selectedZone = nil
+                        }
+                    }
+                )
+                .transition(.asymmetric(
+                    insertion: .move(edge: .trailing),
+                    removal: .move(edge: .leading)
+                ))
+            } else if showingSettings {
+                // Settings view
+                SettingsView_macOS(
+                    onBack: {
+                        withAnimation(.easeInOut(duration: 0.2)) {
+                            showingSettings = false
+                        }
+                    }
+                )
+                .transition(.asymmetric(
+                    insertion: .move(edge: .trailing),
+                    removal: .move(edge: .leading)
+                ))
+            } else if bridgeManager.isConnected {
+                // Connected state - show rooms and zones list
+                RoomsZonesListView_macOS(
+                    onRoomSelected: { room in
+                        withAnimation(.easeInOut(duration: 0.2)) {
+                            selectedRoom = room
+                        }
+                    },
+                    onZoneSelected: { zone in
+                        withAnimation(.easeInOut(duration: 0.2)) {
+                            selectedZone = zone
+                        }
+                    },
+                    onSettingsSelected: {
+                        withAnimation(.easeInOut(duration: 0.2)) {
+                            showingSettings = true
+                        }
+                    }
+                )
             } else {
                 // Not connected - show setup
                 disconnectedView
@@ -33,6 +93,8 @@ struct MenuBarPanelView: View {
         .sheet(isPresented: $showAboutDialog) {
             AboutView_macOS()
         }
+        // Note: SSE lifecycle is now managed by AppDelegate for persistent background connection
+        // The panel only needs to show connection status, not manage the stream
     }
 
     private var disconnectedView: some View {

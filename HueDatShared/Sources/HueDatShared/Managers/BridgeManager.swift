@@ -316,7 +316,17 @@ public class BridgeManager: ObservableObject {
             return
         }
 
+        // Prevent duplicate subscriptions
+        if eventSubscription != nil && streamStateSubscription != nil {
+            print("⚠️ SSE event listeners already running - skipping duplicate start")
+            return
+        }
+
         print("📡 Starting SSE event listener")
+
+        // Cancel any existing subscriptions first to prevent memory leaks
+        eventSubscription?.cancel()
+        streamStateSubscription?.cancel()
 
         // Use Task to access actor-isolated properties
         Task {
@@ -360,6 +370,8 @@ public class BridgeManager: ObservableObject {
         streamStateSubscription?.cancel()
         eventSubscription = nil
         streamStateSubscription = nil
+        isSSEConnected = false
+        reconnectAttempts = 0  // Reset reconnection counter
     }
 
     /// Process incoming SSE events and update local state
@@ -473,12 +485,24 @@ public class BridgeManager: ObservableObject {
 
     /// Handle auto-reconnection with exponential backoff
     private func handleReconnection() async {
+        // Don't attempt reconnection if we're in demo mode or not connected to a bridge
+        if isDemoMode || connectedBridge == nil {
+            print("⚠️ Skipping SSE reconnection - no active bridge connection")
+            return
+        }
+
         reconnectAttempts += 1
-        let delay = min(pow(2.0, Double(reconnectAttempts - 1)), 16.0) // 1s, 2s, 4s, 8s, 16s max
+        let delay = min(pow(2.0, Double(reconnectAttempts - 1)), 32.0) // 1s, 2s, 4s, 8s, 16s, 32s max
 
         print("🔄 SSE disconnected. Reconnecting in \(Int(delay))s (attempt \(reconnectAttempts)/\(maxReconnectAttempts))")
 
         try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
+
+        // Check again before reconnecting (bridge might have been disconnected during sleep)
+        guard connectedBridge != nil else {
+            print("⚠️ Bridge disconnected during reconnection delay - aborting")
+            return
+        }
 
         // Restart the SSE stream
         do {
@@ -489,6 +513,7 @@ public class BridgeManager: ObservableObject {
             }
         } catch {
             print("❌ Failed to reconnect SSE stream: \(error)")
+            // Don't retry here - the stream state subscription will trigger another reconnection attempt
         }
     }
 

@@ -9,6 +9,7 @@ import SwiftUI
 import HueDatShared
 import AppKit
 import Cocoa
+import Combine
 
 @main
 struct HueDatMacApp: App {
@@ -19,30 +20,6 @@ struct HueDatMacApp: App {
         Settings {
             EmptyView()
         }
-    }
-}
-
-class GlassPopoverViewController: NSViewController {
-
-    override func loadView() {
-        let visualEffectView = NSVisualEffectView()
-        visualEffectView.translatesAutoresizingMaskIntoConstraints = false
-        visualEffectView.material = .popover // Or .hud, .popover, etc. for different effects
-        visualEffectView.blendingMode = .behindWindow // Ensures proper blending
-        visualEffectView.state = .active // Ensure the effect is always active
-
-        // Set the visualEffectView as the primary view for the controller
-        self.view = visualEffectView
-
-        // Add your actual popover content as subviews to visualEffectView
-        let label = NSTextField(labelWithString: "Hello from the Glass Popover!")
-        label.translatesAutoresizingMaskIntoConstraints = false
-        visualEffectView.addSubview(label)
-
-        NSLayoutConstraint.activate([
-            label.centerXAnchor.constraint(equalTo: visualEffectView.centerXAnchor),
-            label.centerYAnchor.constraint(equalTo: visualEffectView.centerYAnchor)
-        ])
     }
 }
 
@@ -70,18 +47,20 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         // Create popover for main panel
         setupPopover()
+
+        // Start SSE stream in background if bridge is connected
+        Task {
+            await initializeSSEConnection()
+        }
+
+        // Observe connection state changes to manage SSE lifecycle
+        observeConnectionChanges()
     }
 
     func setupPopover() {
         let popover = NSPopover()
-        popover.contentViewController = GlassPopoverViewController()
         popover.contentSize = NSSize(width: 320, height: 480)
         popover.behavior = .transient
-
-        let contentView = MenuBarPanelView(showAboutDialog: .constant(false))
-            .environmentObject(bridgeManager)
-
-        popover.contentViewController = NSHostingController(rootView: contentView)
         self.popover = popover
     }
 
@@ -111,6 +90,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     func showPopover() {
         guard let popover = popover, let button = statusItem?.button else { return }
 
+        // Recreate content view controller for fresh material rendering
+        let contentView = MenuBarPanelView(showAboutDialog: .constant(false))
+            .environmentObject(bridgeManager)
+        popover.contentViewController = NSHostingController(rootView: contentView)
+
         // Critical: Activate app to ensure transient behavior works
         NSApp.activate(ignoringOtherApps: true)
 
@@ -131,6 +115,15 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     // MARK: - App State Monitoring
+
+    func applicationWillTerminate(_ notification: Notification) {
+        print("🛑 App terminating - cleaning up SSE stream")
+        Task {
+            await stopSSEStream()
+        }
+        connectionObserver?.cancel()
+        connectionObserver = nil
+    }
 
     func applicationWillResignActive(_ notification: Notification) {
         // Close popover when app loses focus for additional reliability
@@ -154,22 +147,27 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             keyEquivalent: "q"
         ))
 
-        statusItem?.menu = menu
-        statusItem?.button?.performClick(nil)
-        statusItem?.menu = nil
+        statusItem?.popUpMenu(menu)
     }
 
     @objc func showAboutDialog() {
         // Close existing about window if open
         aboutWindow?.close()
+        
+        let visualEffectView = NSVisualEffectView()
+        visualEffectView.blendingMode = .behindWindow // Blends with content behind the window
+        visualEffectView.state = .active // Ensures the effect is active
+        visualEffectView.material = .sidebar // Example material: sidebar material
+
 
         let window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 400, height: 320),
-            styleMask: [.titled, .closable],
+            styleMask: [.titled, .closable, .fullSizeContentView],
             backing: .buffered,
             defer: false
         )
-        window.title = "About HueDat"
+        window.title = ""
+        window.titlebarAppearsTransparent = true
         window.isReleasedWhenClosed = false
 
         let contentView = AboutView_macOS(onClose: { [weak self] in
@@ -177,11 +175,121 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             self?.aboutWindow = nil
         })
 
-        window.contentView = NSHostingView(rootView: contentView)
+        let mainView = NSHostingView(rootView: contentView)
+        mainView.translatesAutoresizingMaskIntoConstraints = false
+
+        window.contentView = visualEffectView
+        visualEffectView.addSubview(mainView)
+
+        // Use Auto Layout to properly constrain the SwiftUI view
+        NSLayoutConstraint.activate([
+            mainView.topAnchor.constraint(equalTo: visualEffectView.topAnchor),
+            mainView.bottomAnchor.constraint(equalTo: visualEffectView.bottomAnchor),
+            mainView.leadingAnchor.constraint(equalTo: visualEffectView.leadingAnchor),
+            mainView.trailingAnchor.constraint(equalTo: visualEffectView.trailingAnchor)
+        ])
+
         window.center()
         window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
 
         self.aboutWindow = window
+    }
+
+    // MARK: - SSE Lifecycle Management
+
+    private var connectionObserver: AnyCancellable?
+    private var isSSEStreamActive = false
+
+    private func initializeSSEConnection() async {
+        guard bridgeManager.isConnected else {
+            print("ℹ️ No bridge connected - skipping SSE initialization")
+            return
+        }
+
+        print("🔍 Initializing SSE connection on app launch...")
+
+        // Validate connection to ensure HueAPIService is configured
+        await bridgeManager.validateConnection()
+
+        guard bridgeManager.isConnectionValidated else {
+            print("⚠️ Connection validation failed - not starting SSE")
+            return
+        }
+
+        await startSSEStream()
+    }
+
+    private func observeConnectionChanges() {
+        connectionObserver = bridgeManager.$connectedBridge
+            .sink { [weak self] bridge in
+                guard let self = self else { return }
+                if bridge != nil {
+                    Task {
+                        await self.handleConnectionEstablished()
+                    }
+                } else {
+                    Task {
+                        await self.handleConnectionLost()
+                    }
+                }
+            }
+    }
+
+    private func handleConnectionEstablished() async {
+        print("🔗 Bridge connected - starting SSE stream...")
+        await bridgeManager.validateConnection()
+
+        guard bridgeManager.isConnectionValidated else {
+            print("⚠️ Connection validation failed")
+            return
+        }
+
+        await startSSEStream()
+    }
+
+    private func handleConnectionLost() async {
+        print("🔌 Bridge disconnected - stopping SSE stream...")
+        await stopSSEStream()
+    }
+
+    private func startSSEStream() async {
+        // Prevent duplicate SSE streams
+        if isSSEStreamActive {
+            print("⚠️ SSE stream already active - skipping duplicate start")
+            return
+        }
+
+        print("🟢 Starting background SSE stream and event listeners")
+
+        // Start listening to SSE events in BridgeManager
+        bridgeManager.startListeningToSSEEvents()
+
+        // Start the actual SSE stream
+        do {
+            try await HueAPIService.shared.startEventStream()
+            isSSEStreamActive = true
+            print("✅ Background SSE stream started successfully")
+        } catch {
+            print("❌ Failed to start SSE stream: \(error.localizedDescription)")
+            isSSEStreamActive = false
+        }
+    }
+
+    private func stopSSEStream() async {
+        guard isSSEStreamActive else {
+            print("ℹ️ SSE stream not active - nothing to stop")
+            return
+        }
+
+        print("🔴 Stopping background SSE stream and event listeners")
+
+        // Stop listening to SSE events
+        bridgeManager.stopListeningToSSEEvents()
+
+        // Stop the SSE stream
+        await HueAPIService.shared.stopEventStream()
+        isSSEStreamActive = false
+        print("✅ Background SSE stream stopped")
     }
 }

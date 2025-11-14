@@ -10,15 +10,16 @@ import HueDatShared
 
 struct RoomDetailView_macOS: View {
     let room: HueRoom
+    let onBack: () -> Void
 
     @EnvironmentObject var bridgeManager: BridgeManager
-    @Environment(\.dismiss) private var dismiss
 
     @State private var isOn: Bool = false
     @State private var brightness: Double = 0.0
-    @State private var selectedSceneId: String?
+    @State private var isScenesExpanded = false
     @State private var showError = false
     @State private var errorMessage = ""
+    @State private var hoveredSceneId: String?
 
     // Optimistic state for immediate UI feedback
     @State private var optimisticIsOn: Bool?
@@ -42,22 +43,33 @@ struct RoomDetailView_macOS: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            // Header
+            // Header with back button
             HStack {
-                Image(systemName: iconForArchetype(room.metadata.archetype))
-                    .font(.title2)
-                    .foregroundColor(.accentColor)
-
-                Text(room.metadata.name)
-                    .font(.title2)
-                    .fontWeight(.semibold)
+                Button(action: onBack) {
+                    HStack(spacing: 4) {
+                        Image(systemName: "chevron.left")
+                            .font(.body.weight(.medium))
+                        Text("Back")
+                    }
+                }
+                .buttonStyle(.plain)
 
                 Spacer()
 
-                Button("Done") {
-                    dismiss()
+                HStack(spacing: 8) {
+                    Image(systemName: iconForArchetype(room.metadata.archetype))
+                        .foregroundColor(.accentColor)
+                    Text(room.metadata.name)
+                        .font(.headline)
                 }
-                .keyboardShortcut(.defaultAction)
+
+                Spacer()
+
+                // Invisible spacer to center title
+                Button("") { }
+                    .buttonStyle(.plain)
+                    .opacity(0)
+                    .disabled(true)
             }
             .padding()
 
@@ -104,44 +116,40 @@ struct RoomDetailView_macOS: View {
                         .disabled(!displayIsOn)
                     }
 
-                    // Scenes
-                    if !bridgeManager.scenes.filter({ $0.group.rid == room.id }).isEmpty {
-                        Divider()
+                // Scenes
+                if !bridgeManager.scenes.filter({ $0.group.rid == room.id }).isEmpty {
+                    Divider()
 
-                        VStack(alignment: .leading, spacing: 12) {
-                            Text("Scenes")
-                                .font(.headline)
-
-                            ForEach(bridgeManager.scenes.filter({ $0.group.rid == room.id })) { scene in
-                                Button(action: {
-                                    activateScene(scene)
-                                }) {
-                                    HStack {
-                                        Text(scene.metadata.name)
-                                            .font(.body)
-
-                                        Spacer()
-
-                                        if scene.status?.active == "active" {
-                                            Image(systemName: "checkmark.circle.fill")
-                                                .foregroundColor(.accentColor)
-                                        }
-                                    }
-                                    .contentShape(Rectangle())
+                    DisclosureGroup(
+                        isExpanded: $isScenesExpanded,
+                        content: {
+                            VStack(spacing: 8) {
+                                ForEach(bridgeManager.scenes.filter({ $0.group.rid == room.id })) { scene in
+                                    sceneButton(for: scene)
                                 }
-                                .buttonStyle(.plain)
-                                .padding(.vertical, 6)
-                                .padding(.horizontal, 12)
-                                .background(scene.status?.active == "active" ? Color.accentColor.opacity(0.1) : Color.clear)
-                                .cornerRadius(6)
+                            }
+                            .padding(.top, 8)
+                        },
+                        label: {
+                            HStack {
+                                Text("Scenes")
+                                    .font(.headline)
+                                Spacer()
+                                Text("\(bridgeManager.scenes.filter({ $0.group.rid == room.id }).count)")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                                    .padding(.horizontal, 8)
+                                    .padding(.vertical, 4)
+                                    .background(Color.secondary.opacity(0.15))
+                                    .clipShape(Capsule())
                             }
                         }
-                    }
+                    )
+                }
                 }
                 .padding()
             }
         }
-        .frame(width: 400, height: 500)
         .onAppear {
             loadRoomState()
         }
@@ -228,6 +236,65 @@ struct RoomDetailView_macOS: View {
                 }
             }
         }
+    }
+
+    @ViewBuilder
+    private func sceneButton(for scene: HueScene) -> some View {
+        let isActive = scene.status?.active == "active"
+        let isHovered = hoveredSceneId == scene.id
+
+        Button(action: {
+            activateScene(scene)
+        }) {
+            HStack {
+                Text(scene.metadata.name)
+                    .font(.body)
+                    .foregroundColor(.primary)
+
+                Spacer()
+
+                if isActive {
+                    Image(systemName: "checkmark.circle.fill")
+                        .foregroundColor(.accentColor)
+                }
+            }
+            .padding(.vertical, 10)
+            .padding(.horizontal, 14)
+            .background(sceneButtonBackground)
+            .background(sceneButtonBackgroundView(isActive: isActive, isHovered: isHovered))
+            .overlay(sceneButtonOverlay(isActive: isActive))
+            .cornerRadius(8)
+            .scaleEffect(isHovered ? 1.02 : 1.0)
+            .animation(.easeInOut(duration: 0.15), value: hoveredSceneId)
+        }
+        .buttonStyle(.plain)
+        .onHover { isHovered in
+            hoveredSceneId = isHovered ? scene.id : nil
+        }
+    }
+
+    private var sceneButtonBackground: some ShapeStyle {
+        .ultraThinMaterial
+    }
+
+    @ViewBuilder
+    private func sceneButtonBackgroundView(isActive: Bool, isHovered: Bool) -> some View {
+        if isActive {
+            Color.accentColor.opacity(0.15)
+        } else if isHovered {
+            Color.primary.opacity(0.08)
+        } else {
+            Color.clear
+        }
+    }
+
+    @ViewBuilder
+    private func sceneButtonOverlay(isActive: Bool) -> some View {
+        RoundedRectangle(cornerRadius: 8)
+            .stroke(
+                isActive ? Color.accentColor.opacity(0.3) : Color.clear,
+                lineWidth: 1.5
+            )
     }
 
     private func iconForArchetype(_ archetype: String) -> String {

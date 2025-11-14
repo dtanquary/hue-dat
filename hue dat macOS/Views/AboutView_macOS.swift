@@ -14,10 +14,20 @@ struct AboutView_macOS: View {
     var body: some View {
         VStack(spacing: 20) {
             // App icon
-            Image(systemName: "lightbulb.fill")
-                .font(.system(size: 60))
-                .foregroundStyle(.yellow, .orange)
-                .symbolRenderingMode(.palette)
+            Group {
+                if let nsImage = NSImage(named: "AppIcon") {
+                    Image(nsImage: nsImage)
+                        .resizable()
+                        .aspectRatio(contentMode: .fit)
+                        .frame(width: 80, height: 80)
+                } else {
+                    // Fallback to SF Symbol if icon not found
+                    Image(systemName: "lightbulb.fill")
+                        .font(.system(size: 60))
+                        .foregroundStyle(.yellow, .orange)
+                        .symbolRenderingMode(.palette)
+                }
+            }
 
             // App name and version
             VStack(spacing: 4) {

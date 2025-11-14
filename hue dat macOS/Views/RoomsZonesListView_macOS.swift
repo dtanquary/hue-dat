@@ -11,9 +11,9 @@ import HueDatShared
 struct RoomsZonesListView_macOS: View {
     @EnvironmentObject var bridgeManager: BridgeManager
 
-    @State private var selectedRoomId: String?
-    @State private var selectedZoneId: String?
-    @State private var showSettings = false
+    let onRoomSelected: (HueRoom) -> Void
+    let onZoneSelected: (HueZone) -> Void
+    let onSettingsSelected: () -> Void
 
     var body: some View {
         VStack(spacing: 0) {
@@ -31,6 +31,10 @@ struct RoomsZonesListView_macOS: View {
                         .foregroundColor(.secondary)
                 }
 
+                // SSE status indicator
+                SSEStatusIndicator()
+                    .environmentObject(bridgeManager)
+
                 Button(action: {
                     Task {
                         await bridgeManager.refreshAllData()
@@ -42,9 +46,7 @@ struct RoomsZonesListView_macOS: View {
                 .disabled(bridgeManager.isRefreshing)
                 .help("Refresh")
 
-                Button(action: {
-                    showSettings = true
-                }) {
+                Button(action: onSettingsSelected) {
                     Image(systemName: "gear")
                 }
                 .buttonStyle(.borderless)
@@ -64,26 +66,11 @@ struct RoomsZonesListView_macOS: View {
             }
         }
         .task {
-            // Load data when view appears
+            // Load data only when empty (first launch or after disconnect)
+            // Manual refresh button available for subsequent updates
             if bridgeManager.rooms.isEmpty && bridgeManager.zones.isEmpty {
                 await bridgeManager.refreshAllData()
             }
-        }
-        .sheet(item: $selectedRoomId) { roomId in
-            if let room = bridgeManager.rooms.first(where: { $0.id == roomId }) {
-                RoomDetailView_macOS(room: room)
-                    .environmentObject(bridgeManager)
-            }
-        }
-        .sheet(item: $selectedZoneId) { zoneId in
-            if let zone = bridgeManager.zones.first(where: { $0.id == zoneId }) {
-                ZoneDetailView_macOS(zone: zone)
-                    .environmentObject(bridgeManager)
-            }
-        }
-        .sheet(isPresented: $showSettings) {
-            SettingsView_macOS()
-                .environmentObject(bridgeManager)
         }
     }
 
@@ -128,7 +115,7 @@ struct RoomsZonesListView_macOS: View {
                         RoomRowView(room: room)
                             .contentShape(Rectangle())
                             .onTapGesture {
-                                selectedRoomId = room.id
+                                onRoomSelected(room)
                             }
                     }
                 }
@@ -142,7 +129,7 @@ struct RoomsZonesListView_macOS: View {
                         ZoneRowView(zone: zone)
                             .contentShape(Rectangle())
                             .onTapGesture {
-                                selectedZoneId = zone.id
+                                onZoneSelected(zone)
                             }
                     }
                 }
@@ -182,7 +169,7 @@ struct RoomRowView: View {
             // Icon
             Image(systemName: iconForArchetype(room.metadata.archetype))
                 .font(.title3)
-                .foregroundColor(.accentColor)
+                .foregroundStyle(isOn ? .yellow : .secondary)
                 .frame(width: 24)
 
             // Name and status
@@ -248,7 +235,7 @@ struct ZoneRowView: View {
             // Icon
             Image(systemName: "square.grid.2x2")
                 .font(.title3)
-                .foregroundColor(.accentColor)
+                .foregroundStyle(isOn ? .yellow : .secondary)
                 .frame(width: 24)
 
             // Name and status
@@ -278,12 +265,11 @@ struct ZoneRowView: View {
     }
 }
 
-// Helper for sheet presentation
-extension String: @retroactive Identifiable {
-    public var id: String { self }
-}
-
 #Preview {
-    RoomsZonesListView_macOS()
-        .environmentObject(BridgeManager())
+    RoomsZonesListView_macOS(
+        onRoomSelected: { _ in },
+        onZoneSelected: { _ in },
+        onSettingsSelected: {}
+    )
+    .environmentObject(BridgeManager())
 }

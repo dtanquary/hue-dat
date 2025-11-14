@@ -9,25 +9,37 @@ import SwiftUI
 import HueDatShared
 
 struct SettingsView_macOS: View {
+    let onBack: () -> Void
+
     @EnvironmentObject var bridgeManager: BridgeManager
-    @Environment(\.dismiss) private var dismiss
 
     @State private var showDisconnectAlert = false
 
     var body: some View {
         VStack(spacing: 0) {
-            // Header
+            // Header with back button
             HStack {
-                Text("Settings")
-                    .font(.title2)
-                    .fontWeight(.semibold)
+                Button(action: onBack) {
+                    HStack(spacing: 4) {
+                        Image(systemName: "chevron.left")
+                            .font(.body.weight(.medium))
+                        Text("Back")
+                    }
+                }
+                .buttonStyle(.plain)
 
                 Spacer()
 
-                Button("Done") {
-                    dismiss()
-                }
-                .keyboardShortcut(.defaultAction)
+                Text("Settings")
+                    .font(.headline)
+
+                Spacer()
+
+                // Invisible spacer to center title
+                Button("") { }
+                    .buttonStyle(.plain)
+                    .opacity(0)
+                    .disabled(true)
             }
             .padding()
 
@@ -115,14 +127,13 @@ struct SettingsView_macOS: View {
                 .padding()
             }
         }
-        .frame(width: 500, height: 600)
         .alert("Disconnect Bridge", isPresented: $showDisconnectAlert) {
             Button("Cancel", role: .cancel) {
                 showDisconnectAlert = false
             }
             Button("Disconnect", role: .destructive) {
                 bridgeManager.disconnectBridge()
-                dismiss()
+                onBack()
             }
         } message: {
             Text("Are you sure you want to disconnect from this bridge? You'll need to pair again to reconnect.")
@@ -161,6 +172,6 @@ struct SettingsView_macOS: View {
 }
 
 #Preview {
-    SettingsView_macOS()
+    SettingsView_macOS(onBack: {})
         .environmentObject(BridgeManager())
 }
