@@ -101,6 +101,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // Show popover
         popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
 
+        // Explicitly ensure popover window gets keyboard focus
+        if let popoverWindow = popover.contentViewController?.view.window {
+            popoverWindow.makeKey()
+        }
+
         // Start event monitor to catch outside clicks
         eventMonitor = EventMonitor { [weak self] in
             self?.closePopover()
