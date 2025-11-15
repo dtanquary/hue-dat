@@ -151,17 +151,22 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc func showAboutDialog() {
-        // Close existing about window if open
-        aboutWindow?.close()
-        
-        let visualEffectView = NSVisualEffectView()
-        visualEffectView.blendingMode = .behindWindow // Blends with content behind the window
-        visualEffectView.state = .active // Ensures the effect is active
-        visualEffectView.material = .sidebar // Example material: sidebar material
+        // If window already exists and is visible, just bring it to front
+        if let existingWindow = aboutWindow, existingWindow.isVisible {
+            existingWindow.makeKeyAndOrderFront(nil)
+            NSApp.activate(ignoringOtherApps: true)
+            return
+        }
 
+        // Clean up any existing window properly
+        if let existingWindow = aboutWindow {
+            existingWindow.contentView = nil
+            existingWindow.close()
+            aboutWindow = nil
+        }
 
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 400, height: 320),
+            contentRect: NSRect(x: 0, y: 0, width: 420, height: 480),
             styleMask: [.titled, .closable, .fullSizeContentView],
             backing: .buffered,
             defer: false
@@ -169,25 +174,18 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         window.title = ""
         window.titlebarAppearsTransparent = true
         window.isReleasedWhenClosed = false
+        window.isMovableByWindowBackground = true
 
         let contentView = AboutView_macOS(onClose: { [weak self] in
-            self?.aboutWindow?.close()
-            self?.aboutWindow = nil
+            guard let self = self else { return }
+            if let window = self.aboutWindow {
+                window.contentView = nil
+                window.close()
+            }
+            self.aboutWindow = nil
         })
 
-        let mainView = NSHostingView(rootView: contentView)
-        mainView.translatesAutoresizingMaskIntoConstraints = false
-
-        window.contentView = visualEffectView
-        visualEffectView.addSubview(mainView)
-
-        // Use Auto Layout to properly constrain the SwiftUI view
-        NSLayoutConstraint.activate([
-            mainView.topAnchor.constraint(equalTo: visualEffectView.topAnchor),
-            mainView.bottomAnchor.constraint(equalTo: visualEffectView.bottomAnchor),
-            mainView.leadingAnchor.constraint(equalTo: visualEffectView.leadingAnchor),
-            mainView.trailingAnchor.constraint(equalTo: visualEffectView.trailingAnchor)
-        ])
+        window.contentView = NSHostingController(rootView: contentView).view
 
         window.center()
         window.makeKeyAndOrderFront(nil)

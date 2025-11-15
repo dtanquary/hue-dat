@@ -25,9 +25,23 @@ public struct HueRoom: Codable, Identifiable, Equatable, Hashable, Sendable {
     public var services: [HueRoomService]?
     public var groupedLights: [HueGroupedLight]?
 
+    public init(id: String, type: String, metadata: RoomMetadata, children: [HueRoomChild]? = nil, services: [HueRoomService]? = nil, groupedLights: [HueGroupedLight]? = nil) {
+        self.id = id
+        self.type = type
+        self.metadata = metadata
+        self.children = children
+        self.services = services
+        self.groupedLights = groupedLights
+    }
+
     public struct RoomMetadata: Codable, Equatable, Hashable, Sendable {
         public let name: String
         public let archetype: String
+
+        public init(name: String, archetype: String) {
+            self.name = name
+            self.archetype = archetype
+        }
     }
 
     /// Child references in Hue API v2 rooms
@@ -69,9 +83,23 @@ public struct HueZone: Codable, Identifiable, Equatable, Hashable, Sendable {
     public var services: [HueZoneService]?
     public var groupedLights: [HueGroupedLight]?
 
+    public init(id: String, type: String, metadata: ZoneMetadata, children: [HueZoneChild]? = nil, services: [HueZoneService]? = nil, groupedLights: [HueGroupedLight]? = nil) {
+        self.id = id
+        self.type = type
+        self.metadata = metadata
+        self.children = children
+        self.services = services
+        self.groupedLights = groupedLights
+    }
+
     public struct ZoneMetadata: Codable, Equatable, Hashable, Sendable {
         public let name: String
         public let archetype: String
+
+        public init(name: String, archetype: String) {
+            self.name = name
+            self.archetype = archetype
+        }
     }
 
     /// Child references in Hue API v2 zones
@@ -113,12 +141,29 @@ public struct HueGroupedLight: Codable, Identifiable, Equatable, Hashable, Senda
     public let color_temperature: GroupedLightColorTemperature?
     public let color: GroupedLightColor?
 
+    public init(id: String, type: String, on: GroupedLightOn? = nil, dimming: GroupedLightDimming? = nil, color_temperature: GroupedLightColorTemperature? = nil, color: GroupedLightColor? = nil) {
+        self.id = id
+        self.type = type
+        self.on = on
+        self.dimming = dimming
+        self.color_temperature = color_temperature
+        self.color = color
+    }
+
     public struct GroupedLightOn: Codable, Equatable, Hashable, Sendable {
         public let on: Bool
+
+        public init(on: Bool) {
+            self.on = on
+        }
     }
 
     public struct GroupedLightDimming: Codable, Equatable, Hashable, Sendable {
         public let brightness: Double
+
+        public init(brightness: Double) {
+            self.brightness = brightness
+        }
     }
 
     public struct GroupedLightColorTemperature: Codable, Equatable, Hashable, Sendable {

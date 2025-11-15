@@ -16,10 +16,10 @@ struct SSEStatusIndicator: View {
 
     var body: some View {
         HStack(spacing: 4) {
-            Circle()
-                .fill(colorForState)
+            Image(systemName: "antenna.radiowaves.left.and.right")
+                .foregroundStyle(colorForState)
                 .frame(width: 8, height: 8)
-
+            
             if streamState == .connecting {
                 ProgressView()
                     .scaleEffect(0.5)
@@ -47,6 +47,12 @@ struct SSEStatusIndicator: View {
     private func subscribeToStreamState() {
         // Subscribe to stream state changes from HueAPIService
         Task {
+            // Guard against preview/test mode where bridge might not be connected
+            guard bridgeManager.connectedBridge != nil else {
+                print("⚠️ SSE Status Indicator: No connected bridge, skipping subscription")
+                return
+            }
+
             let service = HueAPIService.shared
             let streamSubject = await service.streamStateSubject
 
@@ -95,4 +101,5 @@ struct SSEStatusIndicator: View {
 
 #Preview {
     SSEStatusIndicator()
+        .environmentObject(BridgeManager())
 }

@@ -9,7 +9,7 @@ import SwiftUI
 import HueDatShared
 
 struct ZoneDetailView_macOS: View {
-    let zone: HueZone
+    let zoneId: String
     let onBack: () -> Void
 
     @EnvironmentObject var bridgeManager: BridgeManager
@@ -26,12 +26,16 @@ struct ZoneDetailView_macOS: View {
     @State private var optimisticIsOn: Bool?
     @State private var optimisticBrightness: Double?
 
+    private var zone: HueZone? {
+        bridgeManager.zones.first(where: { $0.id == zoneId })
+    }
+
     private var groupedLight: HueGroupedLight? {
-        zone.groupedLights?.first
+        zone?.groupedLights?.first
     }
 
     private var groupedLightId: String? {
-        zone.services?.first(where: { $0.rtype == "grouped_light" })?.rid
+        zone?.services?.first(where: { $0.rtype == "grouped_light" })?.rid
     }
 
     private var displayIsOn: Bool {
@@ -60,7 +64,7 @@ struct ZoneDetailView_macOS: View {
                 HStack(spacing: 8) {
                     Image(systemName: "square.grid.2x2")
                         .foregroundColor(.accentColor)
-                    Text(zone.metadata.name)
+                    Text(zone?.metadata.name ?? "Unknown Zone")
                         .font(.headline)
                 }
 
@@ -118,14 +122,14 @@ struct ZoneDetailView_macOS: View {
                     }
 
                 // Scenes
-                if !bridgeManager.scenes.filter({ $0.group.rid == zone.id }).isEmpty {
+                if !bridgeManager.scenes.filter({ $0.group.rid == zoneId }).isEmpty {
                     Divider()
 
                     DisclosureGroup(
                         isExpanded: $isScenesExpanded,
                         content: {
                             VStack(spacing: 8) {
-                                ForEach(bridgeManager.scenes.filter({ $0.group.rid == zone.id })) { scene in
+                                ForEach(bridgeManager.scenes.filter({ $0.group.rid == zoneId })) { scene in
                                     sceneButton(for: scene)
                                 }
                             }
@@ -136,7 +140,7 @@ struct ZoneDetailView_macOS: View {
                                 Text("Scenes")
                                     .font(.headline)
                                 Spacer()
-                                Text("\(bridgeManager.scenes.filter({ $0.group.rid == zone.id }).count)")
+                                Text("\(bridgeManager.scenes.filter({ $0.group.rid == zoneId }).count)")
                                     .font(.caption)
                                     .foregroundColor(.secondary)
                                     .padding(.horizontal, 8)

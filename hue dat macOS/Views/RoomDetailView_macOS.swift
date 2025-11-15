@@ -9,7 +9,7 @@ import SwiftUI
 import HueDatShared
 
 struct RoomDetailView_macOS: View {
-    let room: HueRoom
+    let roomId: String
     let onBack: () -> Void
 
     @EnvironmentObject var bridgeManager: BridgeManager
@@ -26,12 +26,16 @@ struct RoomDetailView_macOS: View {
     @State private var optimisticIsOn: Bool?
     @State private var optimisticBrightness: Double?
 
+    private var room: HueRoom? {
+        bridgeManager.rooms.first(where: { $0.id == roomId })
+    }
+
     private var groupedLight: HueGroupedLight? {
-        room.groupedLights?.first
+        room?.groupedLights?.first
     }
 
     private var groupedLightId: String? {
-        room.services?.first(where: { $0.rtype == "grouped_light" })?.rid
+        room?.services?.first(where: { $0.rtype == "grouped_light" })?.rid
     }
 
     private var displayIsOn: Bool {
@@ -58,9 +62,9 @@ struct RoomDetailView_macOS: View {
                 Spacer()
 
                 HStack(spacing: 8) {
-                    Image(systemName: iconForArchetype(room.metadata.archetype))
+                    Image(systemName: iconForArchetype(room?.metadata.archetype ?? ""))
                         .foregroundColor(.accentColor)
-                    Text(room.metadata.name)
+                    Text(room?.metadata.name ?? "Unknown Room")
                         .font(.headline)
                 }
 
@@ -118,14 +122,14 @@ struct RoomDetailView_macOS: View {
                     }
 
                 // Scenes
-                if !bridgeManager.scenes.filter({ $0.group.rid == room.id }).isEmpty {
+                if !bridgeManager.scenes.filter({ $0.group.rid == roomId }).isEmpty {
                     Divider()
 
                     DisclosureGroup(
                         isExpanded: $isScenesExpanded,
                         content: {
                             VStack(spacing: 8) {
-                                ForEach(bridgeManager.scenes.filter({ $0.group.rid == room.id })) { scene in
+                                ForEach(bridgeManager.scenes.filter({ $0.group.rid == roomId })) { scene in
                                     sceneButton(for: scene)
                                 }
                             }
@@ -136,7 +140,7 @@ struct RoomDetailView_macOS: View {
                                 Text("Scenes")
                                     .font(.headline)
                                 Spacer()
-                                Text("\(bridgeManager.scenes.filter({ $0.group.rid == room.id }).count)")
+                                Text("\(bridgeManager.scenes.filter({ $0.group.rid == roomId }).count)")
                                     .font(.caption)
                                     .foregroundColor(.secondary)
                                     .padding(.horizontal, 8)

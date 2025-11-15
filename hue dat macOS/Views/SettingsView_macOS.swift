@@ -92,37 +92,6 @@ struct SettingsView_macOS: View {
                                 .cornerRadius(8)
                         }
                     }
-
-                    Divider()
-
-                    // App Information Section
-                    VStack(alignment: .leading, spacing: 12) {
-                        Text("App Information")
-                            .font(.headline)
-
-                        VStack(spacing: 8) {
-                            settingRow(label: "Version", value: appVersion)
-                            settingRow(label: "Build", value: appBuild)
-                        }
-                        .padding()
-                        .background(Color.primary.opacity(0.05))
-                        .cornerRadius(8)
-                    }
-
-                    Divider()
-
-                    // About Section
-                    VStack(alignment: .leading, spacing: 12) {
-                        Text("About")
-                            .font(.headline)
-
-                        Text("HueDat is a native macOS and watchOS app for controlling Philips Hue lights. Control your lights directly from your menu bar without requiring the official Hue app.")
-                            .font(.body)
-                            .foregroundColor(.secondary)
-                            .padding()
-                            .background(Color.primary.opacity(0.05))
-                            .cornerRadius(8)
-                    }
                 }
                 .padding()
             }
@@ -160,14 +129,6 @@ struct SettingsView_macOS: View {
         formatter.dateStyle = .medium
         formatter.timeStyle = .short
         return formatter.string(from: date)
-    }
-
-    private var appVersion: String {
-        Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "Unknown"
-    }
-
-    private var appBuild: String {
-        Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "Unknown"
     }
 }
 

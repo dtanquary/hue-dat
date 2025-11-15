@@ -13,19 +13,19 @@ struct MenuBarPanelView: View {
     @Binding var showAboutDialog: Bool
 
     @State private var showBridgeSetup = false
-    @State private var selectedRoom: HueRoom?
-    @State private var selectedZone: HueZone?
+    @State private var selectedRoomId: String?
+    @State private var selectedZoneId: String?
     @State private var showingSettings = false
 
     var body: some View {
         ZStack {
-            if let room = selectedRoom {
+            if let roomId = selectedRoomId {
                 // Room detail view
                 RoomDetailView_macOS(
-                    room: room,
+                    roomId: roomId,
                     onBack: {
                         withAnimation(.easeInOut(duration: 0.2)) {
-                            selectedRoom = nil
+                            selectedRoomId = nil
                         }
                     }
                 )
@@ -33,13 +33,13 @@ struct MenuBarPanelView: View {
                     insertion: .move(edge: .trailing),
                     removal: .move(edge: .leading)
                 ))
-            } else if let zone = selectedZone {
+            } else if let zoneId = selectedZoneId {
                 // Zone detail view
                 ZoneDetailView_macOS(
-                    zone: zone,
+                    zoneId: zoneId,
                     onBack: {
                         withAnimation(.easeInOut(duration: 0.2)) {
-                            selectedZone = nil
+                            selectedZoneId = nil
                         }
                     }
                 )
@@ -65,12 +65,12 @@ struct MenuBarPanelView: View {
                 RoomsZonesListView_macOS(
                     onRoomSelected: { room in
                         withAnimation(.easeInOut(duration: 0.2)) {
-                            selectedRoom = room
+                            selectedRoomId = room.id
                         }
                     },
                     onZoneSelected: { zone in
                         withAnimation(.easeInOut(duration: 0.2)) {
-                            selectedZone = zone
+                            selectedZoneId = zone.id
                         }
                     },
                     onSettingsSelected: {

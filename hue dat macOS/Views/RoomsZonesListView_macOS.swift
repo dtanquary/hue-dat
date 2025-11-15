@@ -19,6 +19,11 @@ struct RoomsZonesListView_macOS: View {
     @State private var showError = false
     @State private var errorMessage = ""
 
+    // Hover states for header buttons
+    @State private var isTurnOffHovered = false
+    @State private var isRefreshHovered = false
+    @State private var isSettingsHovered = false
+
     var body: some View {
         VStack(spacing: 0) {
             // Header with title and buttons
@@ -29,15 +34,18 @@ struct RoomsZonesListView_macOS: View {
 
                 Spacer()
 
+                /*
                 if let timestamp = bridgeManager.lastRefreshTimestamp {
                     Text(timestamp, style: .relative)
                         .font(.caption)
                         .foregroundColor(.secondary)
                 }
+                 */
 
                 // SSE status indicator
                 SSEStatusIndicator()
                     .environmentObject(bridgeManager)
+                    .padding(6)
 
                 Button(action: {
                     Task {
@@ -55,10 +63,17 @@ struct RoomsZonesListView_macOS: View {
                     }
                 }) {
                     Image(systemName: "moon.fill")
+                        .padding(6)
+                        .background(
+                            RoundedRectangle(cornerRadius: 6)
+                                .fill(Color.primary.opacity(isTurnOffHovered ? 0.1 : 0))
+                        )
                 }
                 .buttonStyle(.borderless)
                 .disabled(bridgeManager.isRefreshing || isTurningOffAll)
                 .help("Turn Off All Lights")
+                .onHover { isTurnOffHovered = $0 }
+                .animation(.easeInOut(duration: 0.15), value: isTurnOffHovered)
 
                 Button(action: {
                     Task {
@@ -66,16 +81,31 @@ struct RoomsZonesListView_macOS: View {
                     }
                 }) {
                     Image(systemName: "arrow.clockwise")
+                        .symbolEffect(.rotate, isActive: bridgeManager.isRefreshing)
+                        .padding(6)
+                        .background(
+                            RoundedRectangle(cornerRadius: 6)
+                                .fill(Color.primary.opacity(isRefreshHovered ? 0.1 : 0))
+                        )
                 }
                 .buttonStyle(.borderless)
                 .disabled(bridgeManager.isRefreshing)
                 .help("Refresh")
+                .onHover { isRefreshHovered = $0 }
+                .animation(.easeInOut(duration: 0.15), value: isRefreshHovered)
 
                 Button(action: onSettingsSelected) {
                     Image(systemName: "gear")
+                        .padding(6)
+                        .background(
+                            RoundedRectangle(cornerRadius: 6)
+                                .fill(Color.primary.opacity(isSettingsHovered ? 0.1 : 0))
+                        )
                 }
                 .buttonStyle(.borderless)
                 .help("Settings")
+                .onHover { isSettingsHovered = $0 }
+                .animation(.easeInOut(duration: 0.15), value: isSettingsHovered)
             }
             .padding()
 
@@ -183,6 +213,7 @@ struct RoomsZonesListView_macOS: View {
 
 struct RoomRowView: View {
     let room: HueRoom
+    @State private var isHovered: Bool = false
 
     private var groupedLight: HueGroupedLight? {
         room.groupedLights?.first
@@ -226,8 +257,10 @@ struct RoomRowView: View {
         }
         .padding(.vertical, 8)
         .padding(.horizontal, 12)
-        .background(Color.primary.opacity(0.05))
+        .background(Color.primary.opacity(isHovered ? 0.10 : 0.05))
         .cornerRadius(8)
+        .animation(.easeInOut(duration: 0.15), value: isHovered)
+        .onHover { isHovered = $0 }
     }
 
     private func iconForArchetype(_ archetype: String) -> String {
@@ -249,6 +282,7 @@ struct RoomRowView: View {
 
 struct ZoneRowView: View {
     let zone: HueZone
+    @State private var isHovered: Bool = false
 
     private var groupedLight: HueGroupedLight? {
         zone.groupedLights?.first
@@ -292,16 +326,65 @@ struct ZoneRowView: View {
         }
         .padding(.vertical, 8)
         .padding(.horizontal, 12)
-        .background(Color.primary.opacity(0.05))
+        .background(Color.primary.opacity(isHovered ? 0.10 : 0.05))
         .cornerRadius(8)
+        .animation(.easeInOut(duration: 0.15), value: isHovered)
+        .onHover { isHovered = $0 }
     }
 }
 
-#Preview {
+#Preview("With Sample Data") {
+    @Previewable @StateObject var manager: BridgeManager = {
+        let mgr = BridgeManager()
+
+        // Add some sample data to prevent loading state
+        let sampleRoom = HueRoom(
+            id: "preview-room-1",
+            type: "room",
+            metadata: HueRoom.RoomMetadata(name: "Living Room", archetype: "living_room"),
+            children: [],
+            services: [],
+            groupedLights: [
+                HueGroupedLight(
+                    id: "preview-light-1",
+                    type: "grouped_light",
+                    on: HueGroupedLight.GroupedLightOn(on: true),
+                    dimming: HueGroupedLight.GroupedLightDimming(brightness: 75.0),
+                    color_temperature: nil,
+                    color: nil
+                )
+            ]
+        )
+
+        let sampleZone = HueZone(
+            id: "preview-zone-1",
+            type: "zone",
+            metadata: HueZone.ZoneMetadata(name: "Downstairs", archetype: "home"),
+            children: [],
+            services: [],
+            groupedLights: [
+                HueGroupedLight(
+                    id: "preview-light-2",
+                    type: "grouped_light",
+                    on: HueGroupedLight.GroupedLightOn(on: false),
+                    dimming: HueGroupedLight.GroupedLightDimming(brightness: 0.0),
+                    color_temperature: nil,
+                    color: nil
+                )
+            ]
+        )
+
+        mgr.rooms = [sampleRoom]
+        mgr.zones = [sampleZone]
+
+        return mgr
+    }()
+
     RoomsZonesListView_macOS(
         onRoomSelected: { _ in },
         onZoneSelected: { _ in },
         onSettingsSelected: {}
     )
-    .environmentObject(BridgeManager())
+    .environmentObject(manager)
+    .frame(width: 320, height: 480)
 }
