@@ -374,6 +374,40 @@ public class BridgeManager: ObservableObject {
         reconnectAttempts = 0  // Reset reconnection counter
     }
 
+    /// Manually reconnect SSE stream (for user-initiated reconnection)
+    public func reconnectSSE() async {
+        // Only reconnect if we have a connected bridge
+        guard isConnected else {
+            print("⚠️ Cannot reconnect SSE - no bridge connected")
+            return
+        }
+
+        // Don't reconnect if already connected
+        if isSSEConnected {
+            print("ℹ️ SSE already connected - skipping reconnection")
+            return
+        }
+
+        print("🔄 Manually reconnecting SSE stream...")
+
+        // Stop existing connection if any
+        stopListeningToSSEEvents()
+
+        // Reset reconnection counter for fresh attempts
+        reconnectAttempts = 0
+
+        // Start fresh connection
+        startListeningToSSEEvents()
+
+        // Trigger the actual stream start
+        do {
+            try await HueAPIService.shared.startEventStream()
+            print("✅ SSE stream reconnected successfully")
+        } catch {
+            print("❌ Failed to reconnect SSE stream: \(error.localizedDescription)")
+        }
+    }
+
     /// Process incoming SSE events and update local state
     private func processSSEEvents(_ events: [SSEEvent]) async {
         let relevantUpdates = events.relevantUpdates
@@ -1063,6 +1097,22 @@ public class BridgeManager: ObservableObject {
         // Update timestamp after successful refresh
         lastRefreshTimestamp = Date()
         print("✅ Refresh completed at \(lastRefreshTimestamp!)")
+
+        // Check SSE connection status and attempt reconnection if needed
+        if !isSSEConnected && isConnected {
+            print("🔌 SSE not connected after refresh - attempting reconnection")
+            startListeningToSSEEvents()
+
+            // Trigger the actual stream start
+            Task {
+                do {
+                    try await HueAPIService.shared.startEventStream()
+                    print("✅ SSE stream restarted successfully")
+                } catch {
+                    print("❌ Failed to restart SSE stream: \(error.localizedDescription)")
+                }
+            }
+        }
     }
 
     /// Start periodic background refresh (every 60 seconds)

@@ -24,7 +24,7 @@ struct AboutView_macOS: View {
                             .frame(width: 160, height: 160)
                     } else {
                         // Fallback to SF Symbol if icon not found
-                        Image(systemName: "lightbulb.fill")
+                        Image(systemName: "lightbulb.led.fill")
                             .font(.system(size: 120))
                             .foregroundStyle(.yellow, .orange)
                             .symbolRenderingMode(.palette)

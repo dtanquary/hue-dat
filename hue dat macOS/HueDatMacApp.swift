@@ -31,6 +31,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     var aboutWindow: NSWindow?
     var eventMonitor: EventMonitor?
 
+    // UserDefaults key for tracking popover open timestamps
+    private let lastPopoverOpenKey = "LastPopoverOpenTimestamp"
+
     func applicationDidFinishLaunching(_ notification: Notification) {
         // Initialize bridge manager on main thread
         bridgeManager = BridgeManager()
@@ -39,7 +42,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
 
         if let button = statusItem?.button {
-            button.image = NSImage(systemSymbolName: "lightbulb.fill", accessibilityDescription: "HueDat")
+            button.image = NSImage(systemSymbolName: "lightbulb.led.fill", accessibilityDescription: "HueDat")
             button.action = #selector(handleStatusItemClick(_:))
             button.target = self
             button.sendAction(on: [.leftMouseUp, .rightMouseUp])
@@ -51,6 +54,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // Start SSE stream in background if bridge is connected
         Task {
             await initializeSSEConnection()
+
+            // Load data in background after SSE starts
+            if bridgeManager.isConnected {
+                await bridgeManager.refreshAllData()
+            }
         }
 
         // Observe connection state changes to manage SSE lifecycle
@@ -111,12 +119,46 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             self?.closePopover()
         }
         eventMonitor?.start()
+
+        // Check timestamp and trigger auto-refresh if needed
+        checkAndRefreshIfNeeded()
     }
 
     func closePopover() {
         popover?.performClose(nil)
         eventMonitor?.stop()
         eventMonitor = nil
+    }
+
+    private func checkAndRefreshIfNeeded() {
+        let now = Date()
+        let twoHoursInSeconds: TimeInterval = 2 * 60 * 60
+
+        // Get last popover open timestamp
+        let lastTimestamp = UserDefaults.standard.object(forKey: lastPopoverOpenKey) as? Date
+
+        // Check if we need to refresh (no previous timestamp or > 2 hours)
+        let shouldRefresh: Bool
+        if let lastTimestamp = lastTimestamp {
+            let timeSinceLastOpen = now.timeIntervalSince(lastTimestamp)
+            shouldRefresh = timeSinceLastOpen > twoHoursInSeconds
+            print("⏱️ Time since last popover open: \(Int(timeSinceLastOpen / 60)) minutes")
+        } else {
+            shouldRefresh = true
+            print("⏱️ No previous popover open timestamp - triggering refresh")
+        }
+
+        // Update timestamp
+        UserDefaults.standard.set(now, forKey: lastPopoverOpenKey)
+        UserDefaults.standard.synchronize()
+
+        // Trigger refresh if needed
+        if shouldRefresh {
+            print("🔄 Auto-refreshing data (last open > 2 hours ago)")
+            Task {
+                await bridgeManager.refreshAllData()
+            }
+        }
     }
 
     // MARK: - App State Monitoring

@@ -13,17 +13,26 @@ struct SSEStatusIndicator: View {
     @EnvironmentObject var bridgeManager: BridgeManager
     @State private var streamState: StreamState = .idle
     @State private var cancellable: AnyCancellable?
+    @State private var isHovering: Bool = false
 
     var body: some View {
-        HStack(spacing: 4) {
-            Image(systemName: "antenna.radiowaves.left.and.right")
-                .foregroundStyle(colorForState)
-                .frame(width: 8, height: 8)
-            
-            if streamState == .connecting {
-                ProgressView()
-                    .scaleEffect(0.5)
-                    .frame(width: 12, height: 12)
+        Group {
+            if isClickable {
+                Button(action: handleReconnectClick) {
+                    indicatorContent
+                }
+                .buttonStyle(.plain)
+                .opacity(isHovering ? 0.7 : 1.0)
+                .onHover { hovering in
+                    isHovering = hovering
+                    if hovering {
+                        NSCursor.pointingHand.push()
+                    } else {
+                        NSCursor.pop()
+                    }
+                }
+            } else {
+                indicatorContent
             }
         }
         .help(tooltipForState)
@@ -41,6 +50,36 @@ struct SSEStatusIndicator: View {
         .onDisappear {
             cancellable?.cancel()
             cancellable = nil
+        }
+    }
+
+    private var indicatorContent: some View {
+        HStack(spacing: 4) {
+            Image(systemName: "antenna.radiowaves.left.and.right")
+                .foregroundStyle(colorForState)
+                .frame(width: 8, height: 8)
+
+            if streamState == .connecting {
+                ProgressView()
+                    .scaleEffect(0.5)
+                    .frame(width: 12, height: 12)
+            }
+        }
+    }
+
+    private var isClickable: Bool {
+        switch streamState {
+        case .disconnected, .error, .idle:
+            return true
+        case .connected, .connecting:
+            return false
+        }
+    }
+
+    private func handleReconnectClick() {
+        print("🔄 User clicked SSE status indicator - attempting reconnection")
+        Task {
+            await bridgeManager.reconnectSSE()
         }
     }
 
@@ -88,13 +127,13 @@ struct SSEStatusIndicator: View {
             return "Connecting to live updates..."
         case .disconnected(let error):
             if let error = error {
-                return "Disconnected: \(error.localizedDescription)"
+                return "Disconnected: \(error.localizedDescription)\nClick to reconnect"
             }
-            return "Disconnected from live updates"
+            return "Disconnected from live updates\nClick to reconnect"
         case .error(let message):
-            return "Error: \(message)"
+            return "Error: \(message)\nClick to reconnect"
         case .idle:
-            return "Live updates not active"
+            return "Live updates not active\nClick to connect"
         }
     }
 }

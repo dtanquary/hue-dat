@@ -28,7 +28,7 @@ struct RoomsZonesListView_macOS: View {
         VStack(spacing: 0) {
             // Header with title and buttons
             HStack {
-                Text("Rooms & Zones")
+                Text("")
                     .font(.title3)
                     .fontWeight(.semibold)
 
@@ -251,14 +251,21 @@ struct RoomRowView: View {
             Spacer()
 
             // Status indicator
-            Circle()
-                .fill(isOn ? Color.green : Color.gray.opacity(0.5))
-                .frame(width: 8, height: 8)
+            HStack(spacing: 4) {
+                Circle()
+                    .fill(isOn ? Color.green : Color.secondary)
+                    .frame(width: 6, height: 6)
+                Text(isOn ? "On" : "Off")
+                    .font(.caption)
+                    .foregroundStyle(isOn ? .primary : .secondary)
+            }
         }
         .padding(.vertical, 8)
         .padding(.horizontal, 12)
-        .background(Color.primary.opacity(isHovered ? 0.10 : 0.05))
-        .cornerRadius(8)
+        .background(
+            RoundedRectangle(cornerRadius: 8)
+                .fill(Color.primary.opacity(isHovered ? 0.10 : 0.05))
+        )
         .animation(.easeInOut(duration: 0.15), value: isHovered)
         .onHover { isHovered = $0 }
     }
@@ -273,7 +280,7 @@ struct RoomRowView: View {
         case "dining": return "fork.knife"
         case "hallway": return "figure.walk"
         case "garage": return "car"
-        default: return "lightbulb"
+        default: return "lightbulb.led.fill"
         }
     }
 }
@@ -320,14 +327,21 @@ struct ZoneRowView: View {
             Spacer()
 
             // Status indicator
-            Circle()
-                .fill(isOn ? Color.green : Color.gray.opacity(0.5))
-                .frame(width: 8, height: 8)
+            HStack(spacing: 4) {
+                Circle()
+                    .fill(isOn ? Color.green : Color.secondary)
+                    .frame(width: 6, height: 6)
+                Text(isOn ? "On" : "Off")
+                    .font(.caption)
+                    .foregroundStyle(isOn ? .primary : .secondary)
+            }
         }
         .padding(.vertical, 8)
         .padding(.horizontal, 12)
-        .background(Color.primary.opacity(isHovered ? 0.10 : 0.05))
-        .cornerRadius(8)
+        .background(
+            RoundedRectangle(cornerRadius: 8)
+                .fill(Color.primary.opacity(isHovered ? 0.10 : 0.05))
+        )
         .animation(.easeInOut(duration: 0.15), value: isHovered)
         .onHover { isHovered = $0 }
     }

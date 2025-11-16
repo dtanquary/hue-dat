@@ -26,20 +26,13 @@ struct SettingsView_macOS: View {
                         Text("Back")
                     }
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.accessoryBar)
+                .glassEffect()
 
                 Spacer()
 
                 Text("Settings")
                     .font(.headline)
-
-                Spacer()
-
-                // Invisible spacer to center title
-                Button("") { }
-                    .buttonStyle(.plain)
-                    .opacity(0)
-                    .disabled(true)
             }
             .padding()
 
@@ -70,13 +63,14 @@ struct SettingsView_macOS: View {
                                 showDisconnectAlert = true
                             }) {
                                 HStack {
-                                    Image(systemName: "link.badge.minus")
                                     Text("Disconnect Bridge")
+                                        .padding(6)
                                 }
                                 .frame(maxWidth: .infinity)
                             }
                             .buttonStyle(.bordered)
                             .tint(.red)
+                            .glassEffect()
                         }
                     } else {
                         VStack(alignment: .leading, spacing: 12) {

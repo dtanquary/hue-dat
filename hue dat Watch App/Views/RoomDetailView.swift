@@ -12,6 +12,9 @@ struct RoomDetailView: View {
     let roomId: String
     @ObservedObject var bridgeManager: BridgeManager
 
+    // Tunable parameter for crown brightness adjustment sensitivity
+    private let crownBrightnessDeltaMultiplier: Double = 1.0
+
     // Power toggle state
     @State private var displayIsOn = false
     @State private var isTogglingPower = false
@@ -21,7 +24,7 @@ struct RoomDetailView: View {
     // Brightness control state
     @State private var isSettingBrightness = false
     @State private var brightness: Double = 0
-    @State private var brightnessDebounceTimer: Timer?
+    @State private var brightnessThrottleTimer: Timer?
     @State private var isAdjustingBrightness = false
     @State private var brightnessPopoverTimer: Timer?
     @State private var hasGivenInitialBrightnessHaptic = false
@@ -29,6 +32,11 @@ struct RoomDetailView: View {
     @State private var brightnessHapticResetTimer: Timer?
     @State private var hasCompletedInitialLoad = false
     @FocusState private var isBrightnessFocused: Bool
+
+    // Throttle state for crown adjustment
+    @State private var lastBrightnessValue: Double = 0
+    @State private var accumulatedDelta: Double = 0
+    @State private var canSendBrightnessUpdate: Bool = true
 
     // Brightness optimistic state for instant UI updates
     @State private var optimisticBrightness: Double?
@@ -118,6 +126,12 @@ struct RoomDetailView: View {
                     .buttonStyle(.plain)
                     .handGestureShortcut(.primaryAction, isEnabled: !isTogglingPower)
                     .allowsHitTesting(!isTogglingPower)
+                    .onLongPressGesture(minimumDuration: 1.0) {
+                        guard !isTogglingPower else { return }
+                        Task {
+                            await turnOff()
+                        }
+                    }
                     Spacer()
                 }
                 .zIndex(50)
@@ -181,13 +195,26 @@ struct RoomDetailView: View {
         .digitalCrownRotation($brightness, from: 0, through: 100, by: 1, sensitivity: .low)
         .onChange(of: brightness) { oldValue, newValue in
             // Don't react to programmatic changes during initial load
-            guard hasCompletedInitialLoad else { return }
+            guard hasCompletedInitialLoad else {
+                lastBrightnessValue = newValue
+                return
+            }
 
             // Don't allow brightness adjustment while power is being toggled
             guard !isTogglingPower else { return }
 
             // Don't trigger API call when applying scene brightness
-            guard !isApplyingScene else { return }
+            guard !isApplyingScene else {
+                lastBrightnessValue = newValue
+                return
+            }
+
+            // Calculate delta from previous value
+            let delta = newValue - lastBrightnessValue
+            lastBrightnessValue = newValue
+
+            // Accumulate the delta
+            accumulatedDelta += delta
 
             // If starting a new adjustment session (after previous session completed),
             // reset the final haptic flag so the user gets feedback for this new session
@@ -222,13 +249,39 @@ struct RoomDetailView: View {
                 self.hasGivenFinalBrightnessHaptic = false
             }
 
-            // Debounce actual brightness update - wait until user stops adjusting
-            brightnessDebounceTimer?.invalidate()
-            brightnessDebounceTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: false) { _ in
+            // Throttle brightness updates - send immediately if gate is open, otherwise accumulate
+            if canSendBrightnessUpdate {
+                // Send the API call immediately
+                let deltaToSend = accumulatedDelta
+                accumulatedDelta = 0  // Reset accumulator
+                canSendBrightnessUpdate = false  // Close the gate
+
                 Task {
-                    await setBrightness(newValue)
+                    await adjustBrightnessWithThrottle(delta: deltaToSend)
+                }
+
+                // Open the gate after throttle period
+                brightnessThrottleTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: false) { _ in
+                    self.canSendBrightnessUpdate = true
+
+                    // If there's accumulated delta, send it now
+                    if self.accumulatedDelta != 0 {
+                        let deltaToSend = self.accumulatedDelta
+                        self.accumulatedDelta = 0
+                        self.canSendBrightnessUpdate = false
+
+                        Task {
+                            await self.adjustBrightnessWithThrottle(delta: deltaToSend)
+                        }
+
+                        // Schedule another timer to re-open the gate
+                        self.brightnessThrottleTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: false) { _ in
+                            self.canSendBrightnessUpdate = true
+                        }
+                    }
                 }
             }
+            // If gate is closed, delta is already accumulated above, just wait for timer
         }
         .navigationTitle(room.metadata.name)
         .navigationBarTitleDisplayMode(.inline)
@@ -240,6 +293,7 @@ struct RoomDetailView: View {
 
                 if let lightBrightness = lights.compactMap({ $0.dimming?.brightness }).average() {
                     brightness = lightBrightness
+                    lastBrightnessValue = lightBrightness  // Initialize for delta tracking
 
                     // Show brightness popup on initial load (without haptic feedback)
                     withAnimation(.easeInOut(duration: 0.2)) {
@@ -350,6 +404,104 @@ struct RoomDetailView: View {
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
             self.hasGivenInitialPowerHaptic = false
             self.hasGivenFinalPowerHaptic = false
+        }
+    }
+
+    private func turnOff() async {
+        print("🔘 turnOff() called via long press - isTogglingPower: \(isTogglingPower), isSettingBrightness: \(isSettingBrightness)")
+
+        // Don't allow turning off while brightness is being set
+        guard !isSettingBrightness else {
+            print("❌ turnOff blocked: brightness is being set")
+            return
+        }
+
+        guard let currentRoom = room,
+              let groupedLight = currentRoom.groupedLights?.first else {
+            print("❌ turnOff blocked: room=\(room != nil), groupedLights=\(room?.groupedLights != nil), count=\(room?.groupedLights?.count ?? 0)")
+            return
+        }
+
+        print("✅ turnOff proceeding with groupedLight.id=\(groupedLight.id)")
+
+        // Give initial haptic feedback
+        if !hasGivenInitialPowerHaptic {
+            WKInterfaceDevice.current().play(.start)
+            hasGivenInitialPowerHaptic = true
+        }
+
+        // Set UI to OFF immediately (optimistic update)
+        displayIsOn = false
+        isTogglingPower = true
+
+        // Clear scene colors since user is manually controlling the lights
+        optimisticSceneColors = nil
+
+        // Send API request to turn off
+        do {
+            try await HueAPIService.shared.setPower(groupedLightId: groupedLight.id, on: false)
+            print("✅ Power off succeeded")
+
+            // Update local state
+            bridgeManager.updateLocalRoomState(roomId: roomId, on: false)
+
+            // Give success haptic
+            if !hasGivenFinalPowerHaptic {
+                WKInterfaceDevice.current().play(.success)
+                hasGivenFinalPowerHaptic = true
+            }
+        } catch {
+            // Network failure - revert UI state if it was on before
+            print("❌ Power off failed: \(error.localizedDescription)")
+            // Check if light was actually on before we tried to turn it off
+            if let lights = room?.groupedLights, !lights.isEmpty {
+                displayIsOn = lights.contains { $0.on?.on == true }
+            }
+            WKInterfaceDevice.current().play(.failure)
+        }
+
+        // Unlock UI
+        isTogglingPower = false
+
+        // Reset haptic flags after a delay
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+            self.hasGivenInitialPowerHaptic = false
+            self.hasGivenFinalPowerHaptic = false
+        }
+    }
+
+    private func adjustBrightnessWithThrottle(delta: Double) async {
+        guard let currentRoom = room,
+              let groupedLight = currentRoom.groupedLights?.first else { return }
+
+        isSettingBrightness = true
+        defer { isSettingBrightness = false }
+
+        // Clear scene colors since user is manually controlling the lights
+        optimisticSceneColors = nil
+
+        // Apply the multiplier to the delta
+        let scaledDelta = delta * crownBrightnessDeltaMultiplier
+
+        // Send the relative brightness adjustment
+        do {
+            try await HueAPIService.shared.adjustBrightness(groupedLightId: groupedLight.id, delta: scaledDelta)
+            print("✅ Brightness adjusted by delta: \(scaledDelta)")
+
+            // Success haptic - only give once per adjustment session
+            if !hasGivenFinalBrightnessHaptic {
+                WKInterfaceDevice.current().play(.success)
+                hasGivenFinalBrightnessHaptic = true
+            }
+
+            // Note: We don't update local state here because:
+            // 1. SSE will provide the real brightness value
+            // 2. The UI brightness value is already updated optimistically via the crown binding
+            // 3. Relative adjustments don't give us an absolute value to store
+
+        } catch {
+            print("❌ Brightness adjustment failed: \(error.localizedDescription)")
+            WKInterfaceDevice.current().play(.failure)
         }
     }
 

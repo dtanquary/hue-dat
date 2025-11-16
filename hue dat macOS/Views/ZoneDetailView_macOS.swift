@@ -80,62 +80,60 @@ struct ZoneDetailView_macOS: View {
 
             Divider()
 
-            ScrollView {
-                VStack(spacing: 24) {
-                    // Power toggle
+            // Fixed controls section (power + brightness)
+            VStack(spacing: 24) {
+                // Power toggle
+                HStack {
+                    Text("Power")
+                        .font(.headline)
+
+                    Spacer()
+
+                    Toggle("", isOn: Binding(
+                        get: { displayIsOn },
+                        set: { newValue in
+                            togglePower(newValue)
+                        }
+                    ))
+                    .toggleStyle(.switch)
+                }
+
+                // Brightness slider
+                VStack(alignment: .leading, spacing: 8) {
                     HStack {
-                        Text("Power")
+                        Text("Brightness")
                             .font(.headline)
 
                         Spacer()
 
-                        Toggle("", isOn: Binding(
-                            get: { displayIsOn },
-                            set: { newValue in
-                                togglePower(newValue)
-                            }
-                        ))
-                        .toggleStyle(.switch)
+                        Text("\(Int(displayBrightness))%")
+                            .font(.body)
+                            .foregroundColor(.secondary)
+                            .monospacedDigit()
                     }
 
-                    // Brightness slider
-                    VStack(alignment: .leading, spacing: 8) {
-                        HStack {
-                            Text("Brightness")
-                                .font(.headline)
-
-                            Spacer()
-
-                            Text("\(Int(displayBrightness))%")
-                                .font(.body)
-                                .foregroundColor(.secondary)
-                                .monospacedDigit()
+                    Slider(value: Binding(
+                        get: { displayBrightness },
+                        set: { newValue in
+                            setBrightness(newValue)
                         }
+                    ), in: 0...100)
+                    .disabled(!displayIsOn)
+                }
+            }
+            .padding()
 
-                        Slider(value: Binding(
-                            get: { displayBrightness },
-                            set: { newValue in
-                                setBrightness(newValue)
-                            }
-                        ), in: 0...100, step: 1)
-                        .disabled(!displayIsOn)
-                    }
+            // Divider before scenes section
+            if !bridgeManager.scenes.filter({ $0.group.rid == zoneId }).isEmpty {
+                Divider()
+            }
 
-                // Scenes
-                if !bridgeManager.scenes.filter({ $0.group.rid == zoneId }).isEmpty {
-                    Divider()
-
-                    DisclosureGroup(
-                        isExpanded: $isScenesExpanded,
-                        content: {
-                            VStack(spacing: 8) {
-                                ForEach(bridgeManager.scenes.filter({ $0.group.rid == zoneId })) { scene in
-                                    sceneButton(for: scene)
-                                }
-                            }
-                            .padding(.top, 8)
-                        },
-                        label: {
+            // Scrollable scenes section
+            ScrollView {
+                VStack(spacing: 0) {
+                    if !bridgeManager.scenes.filter({ $0.group.rid == zoneId }).isEmpty {
+                        VStack(alignment: .leading, spacing: 12) {
+                            // Header
                             HStack {
                                 Text("Scenes")
                                     .font(.headline)
@@ -148,9 +146,18 @@ struct ZoneDetailView_macOS: View {
                                     .background(Color.secondary.opacity(0.15))
                                     .clipShape(Capsule())
                             }
+
+                            // Grid of scene cards
+                            LazyVGrid(columns: [
+                                GridItem(.flexible(), spacing: 12),
+                                GridItem(.flexible(), spacing: 12)
+                            ], spacing: 12) {
+                                ForEach(bridgeManager.scenes.filter({ $0.group.rid == zoneId })) { scene in
+                                    sceneCard(for: scene)
+                                }
+                            }
                         }
-                    )
-                }
+                    }
                 }
                 .padding()
             }
@@ -285,62 +292,71 @@ struct ZoneDetailView_macOS: View {
     }
 
     @ViewBuilder
-    private func sceneButton(for scene: HueScene) -> some View {
+    private func sceneCard(for scene: HueScene) -> some View {
         let isActive = scene.status?.active == "active"
         let isHovered = hoveredSceneId == scene.id
+        let colors = bridgeManager.extractColorsFromScene(scene)
 
         Button(action: {
             activateScene(scene)
         }) {
-            HStack {
-                Text(scene.metadata.name)
-                    .font(.body)
-                    .foregroundColor(.primary)
+            ZStack(alignment: .bottom) {
+                // Background with color stripes or default material
+                if !colors.isEmpty {
+                    HStack(spacing: 0) {
+                        ForEach(0..<colors.count, id: \.self) { index in
+                            colors[index]
+                        }
+                    }
+                } else {
+                    Color.gray.opacity(0.3)
+                }
 
-                Spacer()
+                // Scene name overlay at bottom
+                HStack {
+                    Text(scene.metadata.name)
+                        .font(.caption)
+                        .fontWeight(.medium)
+                        .foregroundColor(.white)
+                        .lineLimit(2)
+                        .multilineTextAlignment(.center)
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 6)
+                .padding(.horizontal, 8)
+                .background(.ultraThinMaterial.opacity(0.9))
 
+                // Checkmark for active scene (top-right)
                 if isActive {
-                    Image(systemName: "checkmark.circle.fill")
-                        .foregroundColor(.accentColor)
+                    VStack {
+                        HStack {
+                            Spacer()
+                            Image(systemName: "checkmark.circle.fill")
+                                .foregroundColor(.white)
+                                .font(.body)
+                                .shadow(color: .black.opacity(0.3), radius: 2)
+                                .padding(8)
+                        }
+                        Spacer()
+                    }
                 }
             }
-            .padding(.vertical, 10)
-            .padding(.horizontal, 14)
-            .background(sceneButtonBackground)
-            .background(sceneButtonBackgroundView(isActive: isActive, isHovered: isHovered))
-            .overlay(sceneButtonOverlay(isActive: isActive))
-            .cornerRadius(8)
+            .aspectRatio(1.0, contentMode: .fit)
+            .clipShape(RoundedRectangle(cornerRadius: 8))
+            .overlay(
+                RoundedRectangle(cornerRadius: 8)
+                    .stroke(
+                        isActive ? Color.white.opacity(0.8) : Color.clear,
+                        lineWidth: 2.5
+                    )
+            )
             .scaleEffect(isHovered ? 1.02 : 1.0)
-            .animation(.easeInOut(duration: 0.15), value: hoveredSceneId)
+            .animation(.easeInOut(duration: 0.15), value: isHovered)
         }
         .buttonStyle(.plain)
         .onHover { isHovered in
             hoveredSceneId = isHovered ? scene.id : nil
         }
-    }
-
-    private var sceneButtonBackground: some ShapeStyle {
-        .ultraThinMaterial
-    }
-
-    @ViewBuilder
-    private func sceneButtonBackgroundView(isActive: Bool, isHovered: Bool) -> some View {
-        if isActive {
-            Color.accentColor.opacity(0.15)
-        } else if isHovered {
-            Color.primary.opacity(0.08)
-        } else {
-            Color.clear
-        }
-    }
-
-    @ViewBuilder
-    private func sceneButtonOverlay(isActive: Bool) -> some View {
-        RoundedRectangle(cornerRadius: 8)
-            .stroke(
-                isActive ? Color.accentColor.opacity(0.3) : Color.clear,
-                lineWidth: 1.5
-            )
     }
 }
 

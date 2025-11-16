@@ -352,7 +352,7 @@ struct RoomRowView: View {
         case "garden": return "leaf"
         case "gym": return "figure.run"
         case "recreation": return "gamecontroller"
-        default: return "square.split.bottomrightquarter"
+        default: return "lightbulb.led.fill"
         }
     }
 }
@@ -382,7 +382,7 @@ struct ZoneRowView: View {
 
     var body: some View {
         HStack(spacing: rowSpacing) {
-            Image(systemName: "square.3.layers.3d")
+            Image(systemName: "square.grid.2x2")
                 .font(.headline)
                 .foregroundStyle(lightStatus.isOn ? .yellow : .secondary)
 
