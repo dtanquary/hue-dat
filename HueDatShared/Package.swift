@@ -6,7 +6,7 @@ import PackageDescription
 let package = Package(
     name: "HueDatShared",
     platforms: [
-        .macOS(.v14),
+        .macOS("15.0"),
         .watchOS(.v10)
     ],
     products: [

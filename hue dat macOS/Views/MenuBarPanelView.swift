@@ -10,7 +10,6 @@ import HueDatShared
 
 struct MenuBarPanelView: View {
     @EnvironmentObject var bridgeManager: BridgeManager
-    @Binding var showAboutDialog: Bool
 
     @State private var showBridgeSetup = false
     @State private var selectedRoomId: String?
@@ -90,9 +89,7 @@ struct MenuBarPanelView: View {
             BridgeSetupView_macOS()
                 .environmentObject(bridgeManager)
         }
-        .sheet(isPresented: $showAboutDialog) {
-            AboutView_macOS()
-        }
+        // Note: About dialog is shown via NSWindow in AppDelegate (accessed from context menu)
         // Note: SSE lifecycle is now managed by AppDelegate for persistent background connection
         // The panel only needs to show connection status, not manage the stream
     }
@@ -124,6 +121,6 @@ struct MenuBarPanelView: View {
 }
 
 #Preview {
-    MenuBarPanelView(showAboutDialog: .constant(false))
+    MenuBarPanelView()
         .environmentObject(BridgeManager())
 }

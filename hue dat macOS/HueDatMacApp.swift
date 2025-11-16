@@ -99,7 +99,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         guard let popover = popover, let button = statusItem?.button else { return }
 
         // Recreate content view controller for fresh material rendering
-        let contentView = MenuBarPanelView(showAboutDialog: .constant(false))
+        let contentView = MenuBarPanelView()
             .environmentObject(bridgeManager)
         popover.contentViewController = NSHostingController(rootView: contentView)
 
@@ -220,8 +220,19 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         )
         window.title = ""
         window.titlebarAppearsTransparent = true
+        window.titlebarSeparatorStyle = .none
         window.isReleasedWhenClosed = false
         window.isMovableByWindowBackground = true
+        window.backgroundColor = .clear  // Transparent background for glass effect
+        window.isOpaque = false  // Allow transparency
+        
+        window.standardWindowButton(.closeButton)?.isHidden = true
+
+        // Hide the miniaturize (minimize) button
+        window.standardWindowButton(.miniaturizeButton)?.isHidden = true
+
+        // Hide the zoom button
+        window.standardWindowButton(.zoomButton)?.isHidden = true
 
         let contentView = AboutView_macOS(onClose: { [weak self] in
             guard let self = self else { return }
@@ -233,6 +244,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         })
 
         window.contentView = NSHostingController(rootView: contentView).view
+
+        // Set rounded corners on the window
+        if let contentView = window.contentView {
+            contentView.wantsLayer = true
+            contentView.layer?.cornerRadius = 24
+            contentView.layer?.masksToBounds = true
+        }
 
         window.center()
         window.makeKeyAndOrderFront(nil)
