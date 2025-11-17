@@ -26,6 +26,11 @@ struct ZoneDetailView_macOS: View {
     @State private var optimisticIsOn: Bool?
     @State private var optimisticBrightness: Double?
 
+    // Drag gesture state for brightness bar
+    @State private var isDraggingBrightness = false
+    @State private var dragStartY: CGFloat? = nil
+    @State private var dragStartBrightness: Double = 0.0
+
     private var zone: HueZone? {
         bridgeManager.zones.first(where: { $0.id == zoneId })
     }
@@ -57,7 +62,7 @@ struct ZoneDetailView_macOS: View {
                         Text("Back")
                     }
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.borderless)
 
                 Spacer()
 
@@ -75,53 +80,136 @@ struct ZoneDetailView_macOS: View {
                     .buttonStyle(.plain)
                     .opacity(0)
                     .disabled(true)
+                    .allowsHitTesting(false)
             }
             .padding()
+            .zIndex(999)  // Ensure header is always on top for hit testing
 
             Divider()
 
-            // Fixed controls section (power + brightness)
-            VStack(spacing: 24) {
-                // Power toggle
-                HStack {
-                    Text("Power")
-                        .font(.headline)
+            // Layered controls section with ColorOrbsBackground
+            ZStack {
+                // Layer 0: ColorOrbsBackground
+                ColorOrbsBackground_macOS(
+                    brightness: displayBrightness,
+                    isOn: displayIsOn
+                )
+                .frame(height: 280)
+                .allowsHitTesting(false)  // Don't block header clicks
 
+                // Layer 1: Centered power toggle button
+                VStack {
                     Spacer()
 
-                    Toggle("", isOn: Binding(
-                        get: { displayIsOn },
-                        set: { newValue in
-                            togglePower(newValue)
-                        }
-                    ))
-                    .toggleStyle(.switch)
+                    Button(action: {
+                        togglePower(!displayIsOn)
+                    }) {
+                        Image(systemName: displayIsOn ? "power.circle.fill" : "power.circle")
+                            .font(.system(size: 48))
+                            .foregroundColor(displayIsOn ? .white : .gray)
+                            .shadow(color: .black.opacity(0.3), radius: 4)
+                    }
+                    .buttonStyle(.plain)
+
+                    Spacer()
                 }
 
-                // Brightness slider
-                VStack(alignment: .leading, spacing: 8) {
-                    HStack {
-                        Text("Brightness")
-                            .font(.headline)
+                // Layer 2: Brightness drag bar on right side
+                HStack {
+                    Spacer()
 
+                    VStack(spacing: 8) {
+                        Spacer()
+
+                        // Brightness bar track
+                        ZStack(alignment: .bottom) {
+                            // Background track
+                            RoundedRectangle(cornerRadius: 20)
+                                .fill(Color.white.opacity(0.2))
+                                .frame(width: 40, height: 200)
+
+                            // Fill based on brightness
+                            RoundedRectangle(cornerRadius: 20)
+                                .fill(Color.white.opacity(0.8))
+                                .frame(width: 40, height: 200 * (displayBrightness / 100.0))
+                        }
+                        .gesture(
+                            DragGesture(minimumDistance: 0)
+                                .onChanged { value in
+                                    if dragStartY == nil {
+                                        dragStartY = value.startLocation.y
+                                        dragStartBrightness = displayBrightness
+                                    }
+
+                                    guard let startY = dragStartY else { return }
+
+                                    // Calculate brightness based on vertical drag
+                                    // Inverted: dragging up increases brightness
+                                    let dragDistance = startY - value.location.y
+                                    let brightnessChange = (dragDistance / 200.0) * 100.0
+                                    let newBrightness = max(1.0, min(100.0, dragStartBrightness + brightnessChange))
+
+                                    setBrightness(newBrightness)
+                                }
+                                .onEnded { _ in
+                                    dragStartY = nil
+                                    dragStartBrightness = 0.0
+                                }
+                        )
+
+                        Spacer()
+                    }
+                    .padding(.trailing, 16)
+                }
+
+                // Layer 3: Brightness percentage overlay
+                VStack {
+                    HStack {
                         Spacer()
 
                         Text("\(Int(displayBrightness))%")
-                            .font(.body)
-                            .foregroundColor(.secondary)
-                            .monospacedDigit()
-                    }
+                            .font(.headline)
+                            .foregroundColor(.white)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 6)
+                            .background(Color.black.opacity(0.6))
+                            .clipShape(Capsule())
+                            .shadow(color: .black.opacity(0.3), radius: 4)
 
-                    Slider(value: Binding(
-                        get: { displayBrightness },
-                        set: { newValue in
-                            setBrightness(newValue)
-                        }
-                    ), in: 0...100)
-                    .disabled(!displayIsOn)
+                        Spacer()
+                    }
+                    .padding(.top, 16)
+
+                    Spacer()
+                }
+
+                // Layer 4: Horizontal slider at bottom
+                VStack {
+                    Spacer()
+
+                    HStack(spacing: 12) {
+                        Image(systemName: "sun.min")
+                            .foregroundColor(.white.opacity(0.8))
+                            .font(.body)
+
+                        Slider(value: Binding(
+                            get: { displayBrightness },
+                            set: { newValue in
+                                setBrightness(newValue)
+                            }
+                        ), in: 0...100)
+                        .disabled(!displayIsOn)
+                        .tint(.white)
+
+                        Image(systemName: "sun.max.fill")
+                            .foregroundColor(.white.opacity(0.8))
+                            .font(.body)
+                    }
+                    .padding(.horizontal, 24)
+                    .padding(.bottom, 16)
                 }
             }
-            .padding()
+            .frame(height: 280)
 
             // Divider before scenes section
             if !bridgeManager.scenes.filter({ $0.group.rid == zoneId }).isEmpty {

@@ -65,7 +65,7 @@ struct RoomsZonesListView_macOS: View {
                     Image(systemName: "moon.fill")
                         .padding(6)
                         .background(
-                            RoundedRectangle(cornerRadius: 6)
+                            RoundedRectangle(cornerRadius: 36)
                                 .fill(Color.primary.opacity(isTurnOffHovered ? 0.1 : 0))
                         )
                 }
@@ -84,7 +84,7 @@ struct RoomsZonesListView_macOS: View {
                         .symbolEffect(.rotate, isActive: bridgeManager.isRefreshing)
                         .padding(6)
                         .background(
-                            RoundedRectangle(cornerRadius: 6)
+                            RoundedRectangle(cornerRadius: 36)
                                 .fill(Color.primary.opacity(isRefreshHovered ? 0.1 : 0))
                         )
                 }
@@ -98,7 +98,7 @@ struct RoomsZonesListView_macOS: View {
                     Image(systemName: "gear")
                         .padding(6)
                         .background(
-                            RoundedRectangle(cornerRadius: 6)
+                            RoundedRectangle(cornerRadius: 36)
                                 .fill(Color.primary.opacity(isSettingsHovered ? 0.1 : 0))
                         )
                 }
@@ -213,6 +213,7 @@ struct RoomsZonesListView_macOS: View {
 
 struct RoomRowView: View {
     let room: HueRoom
+    @EnvironmentObject var bridgeManager: BridgeManager
     @State private var isHovered: Bool = false
 
     private var groupedLight: HueGroupedLight? {
@@ -263,8 +264,24 @@ struct RoomRowView: View {
         .padding(.vertical, 8)
         .padding(.horizontal, 12)
         .background(
-            RoundedRectangle(cornerRadius: 8)
-                .fill(Color.primary.opacity(isHovered ? 0.10 : 0.05))
+            ZStack {
+                // Brightness progress bar background
+                GeometryReader { geometry in
+                    HStack(spacing: 0) {
+                        Rectangle()
+                            .fill(Color.orange.opacity(0.15))
+                            .frame(width: geometry.size.width * (brightness ?? 0) / 100.0)
+
+                        Spacer(minLength: 0)
+                    }
+                }
+                .animation(.easeInOut(duration: 0.3), value: brightness)
+
+                // Hover overlay
+                RoundedRectangle(cornerRadius: 8)
+                    .fill(Color.primary.opacity(isHovered ? 0.10 : 0.05))
+            }
+            .clipShape(RoundedRectangle(cornerRadius: 8))
         )
         .animation(.easeInOut(duration: 0.15), value: isHovered)
         .onHover { isHovered = $0 }
@@ -289,6 +306,7 @@ struct RoomRowView: View {
 
 struct ZoneRowView: View {
     let zone: HueZone
+    @EnvironmentObject var bridgeManager: BridgeManager
     @State private var isHovered: Bool = false
 
     private var groupedLight: HueGroupedLight? {
@@ -339,8 +357,24 @@ struct ZoneRowView: View {
         .padding(.vertical, 8)
         .padding(.horizontal, 12)
         .background(
-            RoundedRectangle(cornerRadius: 8)
-                .fill(Color.primary.opacity(isHovered ? 0.10 : 0.05))
+            ZStack {
+                // Brightness progress bar background
+                GeometryReader { geometry in
+                    HStack(spacing: 0) {
+                        Rectangle()
+                            .fill(Color.orange.opacity(0.15))
+                            .frame(width: geometry.size.width * (brightness ?? 0) / 100.0)
+
+                        Spacer(minLength: 0)
+                    }
+                }
+                .animation(.easeInOut(duration: 0.3), value: brightness)
+
+                // Hover overlay
+                RoundedRectangle(cornerRadius: 8)
+                    .fill(Color.primary.opacity(isHovered ? 0.10 : 0.05))
+            }
+            .clipShape(RoundedRectangle(cornerRadius: 8))
         )
         .animation(.easeInOut(duration: 0.15), value: isHovered)
         .onHover { isHovered = $0 }

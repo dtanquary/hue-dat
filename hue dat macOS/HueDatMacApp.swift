@@ -16,10 +16,76 @@ struct HueDatMacApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
 
     var body: some Scene {
-        // Empty scene - all UI handled by AppDelegate
+        // MARK: - SwiftUI Window Alternative (for testing vs NSPopover)
+        // This window can be used instead of NSPopover by uncommenting the line
+        // in AppDelegate's togglePopover() method
+        Window("HueDat Panel", id: "main-panel") {
+            if let windowManager = appDelegate.windowManager {
+                WindowControllerView(windowManager: windowManager)
+                    .frame(width: 0, height: 0)  // Invisible helper
+
+                MenuBarPanelView()
+                    .environmentObject(appDelegate.bridgeManager)
+                    .frame(width: 320, height: 480)
+                    .onAppear {
+                        print("🖼️ [MenuBarPanelView] onAppear - window content appeared")
+                        print("🔍 [MenuBarPanelView] Available windows: \(NSApp.windows.map { "\($0.title) (level: \($0.level.rawValue))" })")
+
+                        // Configure window after it's created
+                        if let window = NSApp.windows.first(where: { $0.title == "HueDat Panel" }) {
+                            print("✅ [MenuBarPanelView] Found window: '\(window.title)'")
+                            window.level = .floating
+                            window.styleMask = [.borderless, .fullSizeContentView]
+                            window.isOpaque = false
+                            window.backgroundColor = .clear
+                            window.hasShadow = true
+                            window.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
+
+                            // Set position
+                            print("📍 [MenuBarPanelView] Setting window position to: \(windowManager.windowPosition)")
+                            window.setFrameOrigin(windowManager.windowPosition)
+                        } else {
+                            print("❌ [MenuBarPanelView] Could not find window with title 'HueDat Panel'")
+                        }
+                    }
+            }
+        }
+        .windowStyle(.hiddenTitleBar)
+        .windowResizability(.contentSize)
+        .defaultSize(width: 320, height: 480)
+        .defaultPosition(.topLeading)
+
+        // Empty Settings scene - all UI handled by AppDelegate or Window above
         Settings {
             EmptyView()
         }
+    }
+}
+
+// MARK: - Window Controller Helper View
+/// Invisible helper view that captures SwiftUI environment actions
+/// and makes them available to WindowManager
+struct WindowControllerView: View {
+    @Environment(\.openWindow) private var openWindow
+    @Environment(\.dismissWindow) private var dismissWindow
+    let windowManager: WindowManager
+
+    var body: some View {
+        Color.clear
+            .frame(width: 0, height: 0)
+            .onAppear {
+                print("🎬 [WindowControllerView] onAppear - capturing environment actions")
+                // Capture environment actions in WindowManager
+                windowManager.openWindowAction = { id in
+                    print("📱 [WindowControllerView] openWindow closure called with id: \(id)")
+                    openWindow(id: id)
+                }
+                windowManager.closeWindowAction = { id in
+                    print("📱 [WindowControllerView] dismissWindow closure called with id: \(id)")
+                    dismissWindow(id: id)
+                }
+                print("✅ [WindowControllerView] Environment actions captured successfully")
+            }
     }
 }
 
@@ -31,12 +97,18 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     var aboutWindow: NSWindow?
     var eventMonitor: EventMonitor?
 
+    // MARK: - SwiftUI Window Alternative Properties
+    var windowManager: WindowManager?
+
     // UserDefaults key for tracking popover open timestamps
     private let lastPopoverOpenKey = "LastPopoverOpenTimestamp"
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         // Initialize bridge manager on main thread
         bridgeManager = BridgeManager()
+
+        // Initialize window manager for SwiftUI Window alternative
+        windowManager = WindowManager()
 
         // Create status bar item
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
@@ -86,6 +158,32 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func togglePopover() {
+        // ╔═══════════════════════════════════════════════════════════════════════╗
+        // ║  TESTING: NSPopover vs SwiftUI Window                                 ║
+        // ╠═══════════════════════════════════════════════════════════════════════╣
+        // ║  To test SwiftUI Window instead of NSPopover:                         ║
+        // ║  1. Comment out the NSPopover code block below (lines 138-144)        ║
+        // ║  2. Uncomment the SwiftUI Window line (line 147)                      ║
+        // ║                                                                        ║
+        // ║  TRADEOFFS:                                                            ║
+        // ║  NSPopover (current):                                                  ║
+        // ║    ✅ Automatic positioning anchored to menu bar button               ║
+        // ║    ✅ Built-in arrow indicator pointing to menu bar                   ║
+        // ║    ✅ Auto-dismiss (.transient behavior) is robust                    ║
+        // ║    ✅ Purpose-built for menu bar applications                         ║
+        // ║                                                                        ║
+        // ║  SwiftUI Window (alternative):                                         ║
+        // ║    ✅ Modern SwiftUI APIs                                             ║
+        // ║    ✅ Consistent with Apple's latest design direction                 ║
+        // ║    ❌ Manual positioning calculation required                         ║
+        // ║    ❌ No arrow indicator (plain rectangle)                            ║
+        // ║    ❌ Custom dismiss logic needed                                     ║
+        // ║    ❌ More complex window lifecycle management                        ║
+        // ║                                                                        ║
+        // ║  NOTE: You still need AppKit for NSStatusItem either way!             ║
+        // ╚═══════════════════════════════════════════════════════════════════════╝
+
+        // CURRENT: NSPopover implementation
         if let popover = popover {
             if popover.isShown {
                 closePopover()
@@ -93,6 +191,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 showPopover()
             }
         }
+
+        // ALTERNATIVE: Uncomment this line to test SwiftUI Window instead
+        // toggleSwiftUIWindow()
     }
 
     func showPopover() {
@@ -106,6 +207,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // Critical: Activate app to ensure transient behavior works
         NSApp.activate(ignoringOtherApps: true)
 
+        
         // Show popover
         popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
 
@@ -128,6 +230,51 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         popover?.performClose(nil)
         eventMonitor?.stop()
         eventMonitor = nil
+    }
+
+    // MARK: - SwiftUI Window Alternative Methods
+
+    /// Toggle SwiftUI Window (alternative to NSPopover)
+    /// This method can be called instead of showPopover()/closePopover()
+    func toggleSwiftUIWindow() {
+        print("🎯 [AppDelegate] toggleSwiftUIWindow called")
+        guard let windowManager = windowManager,
+              let button = statusItem?.button else {
+            print("⚠️ [AppDelegate] Missing windowManager or button")
+            return
+        }
+
+        print("📊 [AppDelegate] Current state - isWindowVisible: \(windowManager.isWindowVisible)")
+
+        if windowManager.isWindowVisible {
+            print("🔽 [AppDelegate] Window is visible, closing...")
+            // Close window
+            windowManager.hideWindow()
+            eventMonitor?.stop()
+            eventMonitor = nil
+        } else {
+            print("🔼 [AppDelegate] Window is hidden, opening...")
+            // Calculate position and open window
+            let position = windowManager.calculatePosition(from: button)
+            print("📍 [AppDelegate] Calculated position: \(position)")
+
+            // Activate app (required for proper focus behavior)
+            NSApp.activate(ignoringOtherApps: true)
+            print("⚡️ [AppDelegate] App activated")
+
+            // Show window at calculated position
+            windowManager.showWindow(at: position)
+
+            // Start event monitor for click-outside detection
+            eventMonitor = EventMonitor { [weak self] in
+                self?.toggleSwiftUIWindow()
+            }
+            eventMonitor?.start()
+            print("👀 [AppDelegate] Event monitor started")
+
+            // Check timestamp and trigger auto-refresh if needed
+            checkAndRefreshIfNeeded()
+        }
     }
 
     private func checkAndRefreshIfNeeded() {
@@ -223,16 +370,14 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         window.titlebarSeparatorStyle = .none
         window.isReleasedWhenClosed = false
         window.isMovableByWindowBackground = true
-        window.backgroundColor = .clear  // Transparent background for glass effect
+        // window.backgroundColor = .clear  // Transparent background for glass effect
         window.isOpaque = false  // Allow transparency
         
-        window.standardWindowButton(.closeButton)?.isHidden = true
-
-        // Hide the miniaturize (minimize) button
-        window.standardWindowButton(.miniaturizeButton)?.isHidden = true
-
-        // Hide the zoom button
-        window.standardWindowButton(.zoomButton)?.isHidden = true
+//        window.standardWindowButton(.closeButton)?.isHidden = true
+//        // Hide the miniaturize (minimize) button
+//        window.standardWindowButton(.miniaturizeButton)?.isHidden = true
+//        // Hide the zoom button
+//        window.standardWindowButton(.zoomButton)?.isHidden = true
 
         let contentView = AboutView_macOS(onClose: { [weak self] in
             guard let self = self else { return }

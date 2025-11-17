@@ -56,26 +56,26 @@ struct AboutView_macOS: View {
                         .font(.body)
                         .foregroundColor(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
-                        .padding(.bottom, 20)
+//                        .padding(.bottom, 20)
                     
-                    Button(action: {
-                        onClose?()
-                    }) {
-                        HStack {
-                            Text("Ok")
-                                .padding(6)
-                        }
-                        .frame(maxWidth: .infinity)
-                    }
-                    .buttonStyle(.bordered)
-                    .glassEffect()
+//                    Button(action: {
+//                        onClose?()
+//                    }) {
+//                        HStack {
+//                            Text("Ok")
+//                                .padding(6)
+//                        }
+//                        .frame(maxWidth: .infinity)
+//                    }
+//                    .buttonStyle(.bordered)
+//                    .glassEffect()
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
         .padding(30)
         .frame(width: 500)
-        .glassBackground()  // Use NSGlassEffectView with variant 0-19
+        //.glassBackground()  // Use NSGlassEffectView with variant 0-19
     }
 
     // App version from bundle info
