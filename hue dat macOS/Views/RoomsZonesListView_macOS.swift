@@ -77,7 +77,7 @@ struct RoomsZonesListView_macOS: View {
 
                 Button(action: {
                     Task {
-                        await bridgeManager.refreshAllData()
+                        await bridgeManager.refreshAllData(forceRefresh: true)
                     }
                 }) {
                     Image(systemName: "arrow.clockwise")
@@ -158,7 +158,7 @@ struct RoomsZonesListView_macOS: View {
 
             Button("Refresh") {
                 Task {
-                    await bridgeManager.refreshAllData()
+                    await bridgeManager.refreshAllData(forceRefresh: true)
                 }
             }
             .buttonStyle(.borderedProminent)

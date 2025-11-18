@@ -776,7 +776,8 @@ public class BridgeManager: ObservableObject {
     
     /// Retrieve the list of rooms from the connected bridge.
     /// Updates the rooms published property with the results.
-    public func getRooms() async {
+    /// - Parameter forceRefresh: If true, bypasses debounce timer (for manual user-initiated refreshes)
+    public func getRooms(forceRefresh: Bool = false) async {
         // Demo mode: Return cached/demo data
         if isDemoMode {
             print("🎭 getRooms: Demo mode - returning demo data")
@@ -792,13 +793,21 @@ public class BridgeManager: ObservableObject {
             return
         }
 
-        // PROTECTION 2: Debouncing - skip if refreshed recently
-        if let lastRefresh = lastRoomsRefreshTime,
-           Date().timeIntervalSince(lastRefresh) < refreshDebounceInterval {
-            let timeRemaining = refreshDebounceInterval - Date().timeIntervalSince(lastRefresh)
-            print("⏭️ getRooms: Debounced - last refresh was \(Int(Date().timeIntervalSince(lastRefresh)))s ago, waiting \(Int(timeRemaining))s")
-            return
+        // PROTECTION 2: Debouncing - skip if refreshed recently (unless forced)
+        if !forceRefresh {
+            if let lastRefresh = lastRoomsRefreshTime,
+               Date().timeIntervalSince(lastRefresh) < refreshDebounceInterval {
+                let timeRemaining = refreshDebounceInterval - Date().timeIntervalSince(lastRefresh)
+                print("⏭️ getRooms: Debounced - last refresh was \(Int(Date().timeIntervalSince(lastRefresh)))s ago, waiting \(Int(timeRemaining))s")
+                return
+            }
+        } else {
+            print("🔓 getRooms: Force refresh - bypassing debounce")
         }
+
+        // Set loading state immediately
+        isLoadingRooms = true
+        isRefreshing = true
 
         guard let bridge = currentConnectedBridge?.bridge else {
             print("❌ getRooms: No connected bridge available")
@@ -806,13 +815,13 @@ public class BridgeManager: ObservableObject {
             if rooms.isEmpty {
                 rooms = []
             }
+            // Always reset loading flags
             isLoadingRooms = false
+            updateCombinedRefreshState()
             return
         }
 
         isRefreshingRooms = true
-        isLoadingRooms = true
-        isRefreshing = true  // Set combined refresh state for UI
         lastRoomsRefreshTime = Date()
 
         let delegate = InsecureURLSessionDelegate()
@@ -878,7 +887,8 @@ public class BridgeManager: ObservableObject {
 
     /// Retrieve the list of zones from the connected bridge.
     /// Updates the zones published property with the results.
-    public func getZones() async {
+    /// - Parameter forceRefresh: If true, bypasses debounce timer (for manual user-initiated refreshes)
+    public func getZones(forceRefresh: Bool = false) async {
         // Demo mode: Return cached/demo data
         if isDemoMode {
             print("🎭 getZones: Demo mode - returning demo data")
@@ -894,13 +904,21 @@ public class BridgeManager: ObservableObject {
             return
         }
 
-        // PROTECTION 2: Debouncing - skip if refreshed recently
-        if let lastRefresh = lastZonesRefreshTime,
-           Date().timeIntervalSince(lastRefresh) < refreshDebounceInterval {
-            let timeRemaining = refreshDebounceInterval - Date().timeIntervalSince(lastRefresh)
-            print("⏭️ getZones: Debounced - last refresh was \(Int(Date().timeIntervalSince(lastRefresh)))s ago, waiting \(Int(timeRemaining))s")
-            return
+        // PROTECTION 2: Debouncing - skip if refreshed recently (unless forced)
+        if !forceRefresh {
+            if let lastRefresh = lastZonesRefreshTime,
+               Date().timeIntervalSince(lastRefresh) < refreshDebounceInterval {
+                let timeRemaining = refreshDebounceInterval - Date().timeIntervalSince(lastRefresh)
+                print("⏭️ getZones: Debounced - last refresh was \(Int(Date().timeIntervalSince(lastRefresh)))s ago, waiting \(Int(timeRemaining))s")
+                return
+            }
+        } else {
+            print("🔓 getZones: Force refresh - bypassing debounce")
         }
+
+        // Set loading state immediately
+        isLoadingZones = true
+        isRefreshing = true
 
         guard let bridge = currentConnectedBridge?.bridge else {
             print("❌ getZones: No connected bridge available")
@@ -908,13 +926,13 @@ public class BridgeManager: ObservableObject {
             if zones.isEmpty {
                 zones = []
             }
+            // Always reset loading flags
             isLoadingZones = false
+            updateCombinedRefreshState()
             return
         }
 
         isRefreshingZones = true
-        isLoadingZones = true
-        isRefreshing = true  // Set combined refresh state for UI
         lastZonesRefreshTime = Date()
 
         let delegate = InsecureURLSessionDelegate()
@@ -1080,15 +1098,16 @@ public class BridgeManager: ObservableObject {
 
     /// Refresh all rooms, zones, and scenes data
     /// Now uses getRooms(), getZones(), and fetchScenes() which have built-in protections
-    public func refreshAllData() async {
-        print("🔄 Refreshing all data (rooms, zones, scenes)")
+    /// - Parameter forceRefresh: If true, bypasses debounce timer (for manual user-initiated refreshes)
+    public func refreshAllData(forceRefresh: Bool = false) async {
+        print("🔄 Refreshing all data (rooms, zones, scenes) \(forceRefresh ? "[FORCED]" : "")")
 
         // Use the protected getRooms(), getZones(), and fetchScenes() functions which have:
         // - Concurrent call protection
-        // - Debouncing
+        // - Debouncing (unless forceRefresh is true)
         // - Data preservation on error
-        async let roomsRefresh: Void = getRooms()
-        async let zonesRefresh: Void = getZones()
+        async let roomsRefresh: Void = getRooms(forceRefresh: forceRefresh)
+        async let zonesRefresh: Void = getZones(forceRefresh: forceRefresh)
         async let scenesRefresh: Void = fetchScenes()
 
         // Wait for all three to complete
@@ -1346,7 +1365,7 @@ public class BridgeManager: ObservableObject {
     /// Manual refresh trigger - can be called from UI when control actions occur
     func triggerManualRefresh() async {
         print("🔄 Manual refresh triggered")
-        await refreshAllData()
+        await refreshAllData(forceRefresh: true)
     }
 
     // MARK: - Scene Management

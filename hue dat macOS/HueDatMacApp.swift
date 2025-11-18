@@ -103,6 +103,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     // UserDefaults key for tracking popover open timestamps
     private let lastPopoverOpenKey = "LastPopoverOpenTimestamp"
 
+    // Wake from sleep tracking
+    private var lastWakeTimestamp: Date?
+    private let minimumDelayAfterWake: TimeInterval = 3.0  // 3 seconds
+
     func applicationDidFinishLaunching(_ notification: Notification) {
         // Initialize bridge manager on main thread
         bridgeManager = BridgeManager()
@@ -135,6 +139,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         // Observe connection state changes to manage SSE lifecycle
         observeConnectionChanges()
+
+        // Observe wake from sleep notifications
+        observeWakeNotifications()
     }
 
     func setupPopover() {
@@ -281,6 +288,22 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         let now = Date()
         let twoHoursInSeconds: TimeInterval = 2 * 60 * 60
 
+        // Check if we just woke from sleep - add delay before allowing refresh
+        if let lastWake = lastWakeTimestamp {
+            let timeSinceWake = now.timeIntervalSince(lastWake)
+            if timeSinceWake < minimumDelayAfterWake {
+                print("⏱️ Just woke from sleep \(String(format: "%.1f", timeSinceWake))s ago - delaying auto-refresh")
+
+                // Schedule refresh after delay
+                let remainingDelay = minimumDelayAfterWake - timeSinceWake
+                Task {
+                    try? await Task.sleep(nanoseconds: UInt64(remainingDelay * 1_000_000_000))
+                    await performConnectionValidationAndRefresh()
+                }
+                return
+            }
+        }
+
         // Get last popover open timestamp
         let lastTimestamp = UserDefaults.standard.object(forKey: lastPopoverOpenKey) as? Date
 
@@ -299,12 +322,60 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         UserDefaults.standard.set(now, forKey: lastPopoverOpenKey)
         UserDefaults.standard.synchronize()
 
-        // Trigger refresh if needed
+        // Trigger refresh if needed (with validation)
         if shouldRefresh {
             print("🔄 Auto-refreshing data (last open > 2 hours ago)")
             Task {
-                await bridgeManager.refreshAllData()
+                await performConnectionValidationAndRefresh()
             }
+        }
+    }
+
+    /// Validate connection before performing auto-refresh
+    /// This ensures the network is ready and the bridge is reachable
+    private func performConnectionValidationAndRefresh() async {
+        guard bridgeManager.isConnected else {
+            print("⚠️ No bridge connected - skipping auto-refresh")
+            return
+        }
+
+        print("🔍 Validating connection before auto-refresh...")
+
+        // Validate connection with timeout
+        await withTimeout(seconds: 3.0) { [self] in
+            await self.bridgeManager.validateConnection()
+        }
+
+        guard bridgeManager.isConnectionValidated else {
+            print("❌ Connection validation failed - not performing auto-refresh")
+            print("💡 User can manually refresh when network is ready")
+            return
+        }
+
+        print("✅ Connection validated - proceeding with auto-refresh")
+        await bridgeManager.refreshAllData(forceRefresh: false)
+    }
+
+    /// Execute an async operation with a timeout
+    private func withTimeout<T>(seconds: TimeInterval, operation: @escaping () async -> T) async -> T? {
+        return await withTaskGroup(of: T?.self) { group in
+            // Start the actual operation
+            group.addTask {
+                return await operation()
+            }
+
+            // Start timeout task
+            group.addTask {
+                try? await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
+                return nil
+            }
+
+            // Return first completed result
+            if let result = await group.next() {
+                group.cancelAll()
+                return result
+            }
+            return nil
         }
     }
 
@@ -360,7 +431,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 420, height: 480),
+            contentRect: NSRect(x: 0, y: 0, width: 500, height: 480),
             styleMask: [.titled, .closable, .fullSizeContentView],
             backing: .buffered,
             defer: false
@@ -397,11 +468,14 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             contentView.layer?.masksToBounds = true
         }
 
-        window.center()
-        window.makeKeyAndOrderFront(nil)
-        NSApp.activate(ignoringOtherApps: true)
-
         self.aboutWindow = window
+
+        // Center after content is laid out
+        DispatchQueue.main.async {
+            window.center()
+            window.makeKeyAndOrderFront(nil)
+            NSApp.activate(ignoringOtherApps: true)
+        }
     }
 
     // MARK: - SSE Lifecycle Management
@@ -442,6 +516,55 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                     }
                 }
             }
+    }
+
+    private func observeWakeNotifications() {
+        NSWorkspace.shared.notificationCenter.addObserver(
+            self,
+            selector: #selector(handleWakeFromSleep),
+            name: NSWorkspace.didWakeNotification,
+            object: nil
+        )
+    }
+
+    @objc private func handleWakeFromSleep() {
+        print("💤 System woke from sleep")
+        lastWakeTimestamp = Date()
+
+        // Clear connection validation state - connection may be stale
+        bridgeManager.isConnectionValidated = false
+
+        // Reconnect SSE stream after wake
+        Task {
+            await reconnectSSEAfterWake()
+        }
+    }
+
+    private func reconnectSSEAfterWake() async {
+        guard bridgeManager.isConnected else {
+            print("⚠️ No bridge connected - skipping SSE reconnect after wake")
+            return
+        }
+
+        print("🔄 Reconnecting SSE after wake from sleep...")
+
+        // Stop existing SSE connection
+        await stopSSEStream()
+
+        // Wait a moment for network to stabilize
+        try? await Task.sleep(nanoseconds: UInt64(1.0 * 1_000_000_000))
+
+        // Validate connection before reconnecting SSE
+        await bridgeManager.validateConnection()
+
+        guard bridgeManager.isConnectionValidated else {
+            print("❌ Connection validation failed after wake - not starting SSE")
+            return
+        }
+
+        // Restart SSE stream
+        await startSSEStream()
+        print("✅ SSE reconnected after wake from sleep")
     }
 
     private func handleConnectionEstablished() async {
