@@ -58,6 +58,7 @@ xcodebuild -project "hue dat.xcodeproj" -scheme "hue dat macOS" -destination 'pl
 - **SSE processing**: Subscribes to event stream, maintains ID mapping dictionaries
 - **Demo mode**: Offline testing with cached/hardcoded data
 - **Utilities**: Color conversion (XY→RGB, mirek→RGB), scene filtering
+- **Force refresh**: `forceRefresh: Bool` parameter bypasses 30s debounce (for manual user-initiated refreshes)
 
 ### Data Models (HueDatShared/Models/)
 
@@ -117,7 +118,8 @@ xcodebuild -project "hue dat.xcodeproj" -scheme "hue dat macOS" -destination 'pl
 - **NSPopover**: 320×480pt panel with `.ultraThinMaterial`
 - **EventMonitor**: Click-outside-to-dismiss detection
 - **LSUIElement = YES**: Hidden from dock/Cmd+Tab
-- SSE lifecycle: starts on popover open, stops on blur
+- **SSE lifecycle**: Runs in background, auto-reconnects after wake from sleep
+- **Wake-from-sleep handling**: Observes `NSWorkspace.didWakeNotification`, adds 3s delay before auto-refresh, validates connection before refresh
 
 **MenuBarPanelView** - Main container
 - Shows RoomsZonesListView_macOS when connected
@@ -148,9 +150,11 @@ xcodebuild -project "hue dat.xcodeproj" -scheme "hue dat macOS" -destination 'pl
 ### SSL Certificate Handling
 Uses `InsecureURLSessionDelegate` to accept self-signed certs from bridges. **Do not remove** unless implementing proper certificate pinning.
 
-### Rate Limiting
+### Rate Limiting & Debouncing
 - **HueAPIService**: 1-second minimum between grouped light commands
 - **View debouncing**: 500ms in RoomDetailView/ZoneDetailView
+- **Refresh debouncing**: 30s between auto-refresh calls (bypass with `forceRefresh: true`)
+- **Connection validation**: 3s timeout for validation calls
 - **Why**: Prevents overwhelming bridge, which becomes unresponsive
 
 ### Link Button Flow
@@ -159,15 +163,18 @@ Uses `InsecureURLSessionDelegate` to accept self-signed certs from bridges. **Do
 3. Retry succeeds, returns credentials
 
 ### Data Refresh Strategy
-- **Auto**: 60-second timer (lifecycle-aware)
-- **Manual**: Toolbar button, initial load
-- **Smart updates**: Only modifies changed items
+- **Auto**: 60-second timer (lifecycle-aware), respects 30s debounce
+- **Manual**: Toolbar button with `forceRefresh: true` (bypasses debounce)
+- **Smart updates**: Only modifies changed items (prevents UI flicker)
 - **NO refreshes after control actions** (SSE handles real-time)
+- **macOS wake handling**: 3s delay + connection validation before auto-refresh
+- **Loading states**: Always reset properly, even on timeout/error
 
 ### SSE Architecture
 - **Lifecycle-aware**: Starts on app active, stops on background
 - **Event processing**: Filters relevant events, updates local state
 - **Auto-reconnection**: Exponential backoff, max 5 attempts
+- **Wake-from-sleep**: Auto-reconnects after Mac wakes (1s delay + connection validation)
 - **Benefits**: Instant updates from physical switches/other apps
 
 ### Digital Crown Debouncing (CRITICAL)
