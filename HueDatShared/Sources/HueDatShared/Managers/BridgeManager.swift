@@ -84,18 +84,28 @@ public class BridgeManager: ObservableObject {
     }
     
     public func saveConnection(bridge: BridgeInfo, registrationResponse: BridgeRegistrationResponse) {
+        // Validate bridge IP is not localhost (prevent data corruption)
+        if bridge.internalipaddress == "127.0.0.1" ||
+           bridge.internalipaddress == "localhost" ||
+           bridge.internalipaddress == "::1" {
+            print("❌ Refusing to save bridge with localhost IP: \(bridge.internalipaddress)")
+            print("  - Bridge must be on local network (e.g., 192.168.x.x or 10.0.x.x)")
+            return
+        }
+
         let connectionInfo = BridgeConnectionInfo(bridge: bridge, registrationResponse: registrationResponse)
-        
+
         do {
             let data = try JSONEncoder().encode(connectionInfo)
             userDefaults.set(data, forKey: connectedBridgeKey)
-            
+
             // Force synchronize to ensure data is written immediately
             userDefaults.synchronize()
-            
+
             connectedBridge = connectionInfo
             print("✅ Bridge connection saved successfully:")
             print("  - Bridge: \(bridge.displayName) (\(bridge.shortId))")
+            print("  - IP Address: \(bridge.internalipaddress)")
             print("  - Username: \(registrationResponse.username)")
             print("  - ClientKey: \(registrationResponse.clientkey ?? "nil")")
             print("  - Connected Date: \(connectionInfo.connectedDate)")
@@ -567,9 +577,22 @@ public class BridgeManager: ObservableObject {
                 print("✅ Loaded saved bridge connection:")
                 print("  - Bridge: \(connection.bridge.shortId)")
                 print("  - Address: \(connection.bridge.displayAddress)")
+                print("  - Internal IP: \(connection.bridge.internalipaddress)")
                 print("  - Username: \(connection.username)")
                 print("  - ClientKey: \(connection.clientkey ?? "nil")")
                 print("  - Connected Date: \(connection.connectedDate)")
+
+                // Validate that the bridge IP is not localhost (corrupted data)
+                if connection.bridge.internalipaddress == "127.0.0.1" ||
+                   connection.bridge.internalipaddress == "localhost" ||
+                   connection.bridge.internalipaddress == "::1" {
+                    print("❌ Invalid bridge IP detected (localhost) - clearing corrupted connection")
+                    userDefaults.removeObject(forKey: connectedBridgeKey)
+                    userDefaults.synchronize()
+                    connectedBridge = nil
+                    isConnectionValidated = false
+                    print("🧹 Cleared localhost connection - please re-discover your bridge")
+                }
             }
         } catch {
             print("❌ Failed to load bridge connection: \(error)")

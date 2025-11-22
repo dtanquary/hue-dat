@@ -7,6 +7,7 @@ let package = Package(
     name: "HueDatShared",
     platforms: [
         .macOS("15.0"),
+        .iOS(.v17),
         .watchOS(.v10)
     ],
     products: [

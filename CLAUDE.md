@@ -9,6 +9,11 @@ Multi-platform Philips Hue controller with native watchOS and macOS apps. Core f
 **Platforms:**
 - **watchOS**: Standalone app with Digital Crown, haptic feedback, small-screen UI
 - **macOS**: Menu bar app with floating panel (320×480pt)
+- **iOS**: iPhone app with touch-optimized UI
+
+**SDK Version:** iOS 18 SDK (version 26)
+- Includes built-in `glassEffect()` view modifier
+- **DO NOT create custom glassEffect extensions** - already available in SDK
 
 ## Build Commands
 

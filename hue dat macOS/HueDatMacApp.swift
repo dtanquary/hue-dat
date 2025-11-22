@@ -114,6 +114,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // Initialize window manager for SwiftUI Window alternative
         windowManager = WindowManager()
 
+        // Apply saved launch at login preference
+        LaunchAtLoginManager.shared.applySavedPreference()
+
         // Create status bar item
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
 

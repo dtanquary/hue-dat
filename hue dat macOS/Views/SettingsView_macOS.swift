@@ -14,6 +14,7 @@ struct SettingsView_macOS: View {
     @EnvironmentObject var bridgeManager: BridgeManager
 
     @State private var showDisconnectAlert = false
+    @State private var launchAtLogin = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -41,6 +42,31 @@ struct SettingsView_macOS: View {
             // Content
             ScrollView {
                 VStack(spacing: 24) {
+                    // General Section
+                    VStack(alignment: .leading, spacing: 12) {
+                        Text("General")
+                            .font(.headline)
+
+                        VStack(spacing: 8) {
+                            Toggle("Launch at Login", isOn: $launchAtLogin)
+                                .onChange(of: launchAtLogin) { oldValue, newValue in
+                                    do {
+                                        if newValue {
+                                            try LaunchAtLoginManager.shared.enable()
+                                        } else {
+                                            try LaunchAtLoginManager.shared.disable()
+                                        }
+                                    } catch {
+                                        // Revert toggle if operation failed
+                                        launchAtLogin = !newValue
+                                    }
+                                }
+                        }
+                        .padding()
+                        .background(Color.primary.opacity(0.05))
+                        .cornerRadius(8)
+                    }
+
                     // Bridge Connection Section
                     if let connection = bridgeManager.connectedBridge {
                         VStack(alignment: .leading, spacing: 12) {
@@ -100,6 +126,10 @@ struct SettingsView_macOS: View {
             }
         } message: {
             Text("Are you sure you want to disconnect from this bridge? You'll need to pair again to reconnect.")
+        }
+        .onAppear {
+            // Load current launch at login state
+            launchAtLogin = LaunchAtLoginManager.shared.isEnabled
         }
     }
 
