@@ -26,6 +26,9 @@ xcodebuild -project "hue dat.xcodeproj" -scheme "hue dat Watch App" -destination
 
 # Build macOS
 xcodebuild -project "hue dat.xcodeproj" -scheme "hue dat macOS" -destination 'platform=macOS' build
+
+# Build iOS (Simulator)
+xcodebuild -project "hue dat.xcodeproj" -scheme "hue dat iOS" -sdk iphonesimulator -destination 'platform=iOS Simulator,name=iPhone 17,OS=26.1' build
 ```
 
 **Build Scripts:** macOS target includes pre-build script to kill existing app instances (prevents duplicate menu bar icons during development).
@@ -33,7 +36,7 @@ xcodebuild -project "hue dat.xcodeproj" -scheme "hue dat macOS" -destination 'pl
 ## Architecture
 
 ### Shared Package (HueDatShared)
-- **Platform targets**: macOS 14.0+, watchOS 10.0+
+- **Platform targets**: macOS 14.0+, watchOS 10.0+, iOS 18.0+
 - **Contains**: Models, Services, Managers
 - **Platform abstraction**: `DeviceIdentifierProvider` protocol for platform-specific device IDs
 
@@ -139,6 +142,57 @@ xcodebuild -project "hue dat.xcodeproj" -scheme "hue dat macOS" -destination 'pl
 - Color-coded: green/blue/red/gray
 - Subscribes to `streamStateSubject`
 
+#### iOS Views
+
+**HueDatiOSApp** - Entry point
+- SwiftUI App lifecycle
+- Initializes BridgeManager and ContentView
+
+**ContentView** - Root lifecycle manager
+- **Validation gating**: Shows loading only when bridge exists
+- **isConnectionValidated**: Gates view transition to prevent premature data loading
+- **SSE lifecycle**: Manages reconnection after app resume
+- **Scene phase handling**: Stops SSE/refresh on background, restarts on active
+- **1s network delay**: Waits for network stabilization after app resume
+- **Connection validation**: Validates bridge before SSE reconnection
+
+**MainMenuView_iOS** - Bridge discovery
+- **Video background**: Looping light.mp4 with ambient audio mixing
+- **Animated search**: Rotating icon during bridge discovery
+- **Sheet presentations**: BridgesList, ManualEntry, Registration flows
+- **LoopingVideoPlayer**: AVPlayerLooper with scene phase lifecycle
+
+**RoomsAndZonesListView_iOS** - Primary data view
+- **Multi-step loading**: LoadingStepIndicator with progress tracking
+- **TaskGroup-based loading**: Parallel fetch with completion tracking
+- **Loading states**: Step 1-4 with descriptive messages (Preparing, Loading rooms, Loading zones, Loading scenes)
+- **Pull-to-refresh**: Integrated refresh control
+- **SSE status indicator**: Real-time connection monitoring
+- **Turn off all lights**: Bulk control with separate loading state
+- **Section headers**: Room/zone counts with status dots
+
+**RoomDetailView_iOS / ZoneDetailView_iOS** - Control interfaces
+- **Touch-optimized**: Slider controls for brightness (0-100%)
+- **Scene grid**: Visual scene cards with tap activation
+- **ColorOrbsBackground**: Opacity tied to brightness
+- **Optimistic UI**: Immediate visual feedback
+- **500ms debouncing**: Prevents excessive API calls
+- **Turn off button**: Per-room/zone power control
+
+**LoadingStepIndicator** - Multi-step progress component (NEW)
+- **Visual step dots**: Animated circles showing progress
+- **Step counter**: "Step X of Y" display
+- **Descriptive messages**: Context-aware loading text
+- **Smooth animations**: Spring effects on dot transitions
+- **.regularMaterial**: Native iOS glass effect background
+
+**Other views:**
+- RoomRowView, ZoneRowView - List row components
+- BridgesListView_iOS - Discovered bridges with registration
+- ManualBridgeEntryView_iOS - Manual IP entry
+- SettingsView_iOS - App configuration
+- SSEStatusIndicator - Connection status (shared with macOS)
+
 ### State Management
 - **MainActor**: BridgeManager, BridgeDiscoveryService
 - **Actor**: HueAPIService (thread-safe)
@@ -150,6 +204,7 @@ xcodebuild -project "hue dat.xcodeproj" -scheme "hue dat macOS" -destination 'pl
 ### Device Identification
 - **watchOS**: `WKInterfaceDevice.current().identifierForVendor`
 - **macOS**: IOKit hardware UUID with UserDefaults fallback
+- **iOS**: `UIDevice.current.identifierForVendor`
 - Format: `hue_dat_watch_app#A1B2C3D4` (first 8 chars of UUID)
 
 ### SSL Certificate Handling
@@ -179,7 +234,8 @@ Uses `InsecureURLSessionDelegate` to accept self-signed certs from bridges. **Do
 - **Lifecycle-aware**: Starts on app active, stops on background
 - **Event processing**: Filters relevant events, updates local state
 - **Auto-reconnection**: Exponential backoff, max 5 attempts
-- **Wake-from-sleep**: Auto-reconnects after Mac wakes (1s delay + connection validation)
+- **Wake-from-sleep** (macOS): Auto-reconnects after Mac wakes (1s delay + connection validation)
+- **App resume** (iOS): Auto-reconnects after app becomes active (1s delay + connection validation)
 - **Benefits**: Instant updates from physical switches/other apps
 
 ### Digital Crown Debouncing (CRITICAL)
@@ -231,6 +287,7 @@ hue dat Watch App/                         # watchOS Target
 hue dat macOS/                             # macOS Target
 ├── HueDatMacApp.swift                    # AppKit menu bar
 ├── EventMonitor.swift
+├── LaunchAtLoginManager.swift            # Startup configuration
 ├── DeviceIdentifierProvider_macOS.swift
 ├── Extensions/
 │   └── ViewExtensions.swift              # glassEffect()
@@ -243,6 +300,27 @@ hue dat macOS/                             # macOS Target
     ├── ZoneDetailView_macOS.swift
     ├── SettingsView_macOS.swift
     └── SSEStatusIndicator.swift
+
+hue dat iOS/                               # iOS Target
+├── HueDatiOSApp.swift                    # SwiftUI App entry
+├── ContentView.swift                      # Lifecycle manager + SSE
+├── DeviceIdentifierProvider_iOS.swift
+├── Assets.xcassets/                       # App icons
+└── Views/
+    ├── MainMenuView_iOS.swift             # Bridge discovery + video
+    ├── RoomsAndZonesListView_iOS.swift    # Primary data view
+    ├── RoomDetailView_iOS.swift           # Touch controls
+    ├── ZoneDetailView_iOS.swift           # Touch controls
+    ├── LoadingStepIndicator.swift         # Multi-step progress
+    ├── LoopingVideoPlayer.swift           # Background video
+    ├── ColorOrbsBackground_iOS.swift      # Dynamic orbs
+    ├── RoomRowView.swift                  # List row
+    ├── ZoneRowView.swift                  # List row
+    ├── BridgesListView_iOS.swift          # Discovery results
+    ├── ManualBridgeEntryView_iOS.swift    # Manual IP entry
+    ├── SettingsView_iOS.swift             # App settings
+    ├── SSEStatusIndicator.swift           # Connection status
+    └── RoomsZonesListView_iOS.swift       # Placeholder
 ```
 
 ## API Integration

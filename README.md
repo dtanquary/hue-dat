@@ -1,10 +1,10 @@
 # HueDat
 
-Modern Philips Hue controller for watchOS and macOS with native platform integration and real-time Server-Sent Events streaming.
+Modern Philips Hue controller for watchOS, macOS, and iOS with native platform integration and real-time Server-Sent Events streaming.
 
 ## Overview
 
-HueDat is a multi-platform Swift application providing seamless control of Philips Hue lights through native watchOS and macOS applications. Built with SwiftUI and modern Swift concurrency, it features real-time updates via SSE, optimistic UI updates, and platform-specific optimizations like Digital Crown integration and macOS glass effects.
+HueDat is a multi-platform Swift application providing seamless control of Philips Hue lights through native watchOS, macOS, and iOS applications. Built with SwiftUI and modern Swift concurrency, it features real-time updates via SSE, optimistic UI updates, and platform-specific optimizations including Digital Crown integration, macOS glass effects, and iOS touch-optimized controls with multi-step loading indicators.
 
 ## Features
 
@@ -26,6 +26,20 @@ HueDat is a multi-platform Swift application providing seamless control of Phili
 - **Scene Grid Cards** - Visual scene selection with instant feedback
 - **SSE Status Indicator** - Color-coded connection status (green/blue/red/gray)
 - **Bulk Light Control** - Manage all lights in rooms/zones simultaneously
+- **Launch at Login** - Optional startup configuration
+
+### iOS
+- **Multi-Step Loading** - Visual progress indicators with step-by-step feedback ("Step X of Y")
+- **Animated Bridge Discovery** - Rotating search icon during network discovery
+- **Touch-Optimized Controls** - Native slider controls for brightness adjustment
+- **Video Background** - Looping ambient video on main menu with scene phase management
+- **Pull-to-Refresh** - Integrated gesture-based data refresh
+- **Scene Grid** - Visual scene cards with tap activation
+- **SSE Status Indicator** - Real-time connection monitoring
+- **Validation Gating** - Smart loading that prevents premature data fetches
+- **Instant Main Menu** - Zero-delay display when no bridge configured
+- **App Resume Handling** - Automatic SSE reconnection with network stabilization delay
+- **Smooth Animations** - Fade transitions between loading and loaded states
 
 ### Shared Features
 - **Real-time SSE Streaming** - Instant updates from physical switches and other apps
@@ -42,6 +56,7 @@ HueDat is a multi-platform Swift application providing seamless control of Phili
 - **Xcode**: 26.0+ (tested with Xcode 26.1.1)
 - **macOS**: 15.0+ (Sequoia)
 - **watchOS**: 10.0+
+- **iOS**: 18.0+ (iOS 18 SDK version 26)
 - **Swift**: 5.0+
 - **Hardware**: Philips Hue Bridge (v2 API compatible)
 
@@ -78,11 +93,21 @@ xcodebuild -project "hue dat.xcodeproj" \
   build
 ```
 
+### Build iOS (Simulator)
+
+```bash
+xcodebuild -project "hue dat.xcodeproj" \
+  -scheme "hue dat iOS" \
+  -sdk iphonesimulator \
+  -destination 'platform=iOS Simulator,name=iPhone 17,OS=26.1' \
+  build
+```
+
 ## Architecture
 
 ### Shared Package (HueDatShared)
 
-Core functionality is shared between platforms via a Swift Package Manager package supporting macOS 15.0+ and watchOS 10.0+.
+Core functionality is shared between platforms via a Swift Package Manager package supporting macOS 15.0+, watchOS 10.0+, and iOS 18.0+.
 
 **Components:**
 
@@ -104,6 +129,16 @@ Core functionality is shared between platforms via a Swift Package Manager packa
 - EventMonitor for click-outside detection
 - IOKit hardware UUID for device identification
 - NSGlassEffectView wrapper with private variant API
+- LaunchAtLoginManager for startup configuration
+
+#### iOS App
+- SwiftUI App lifecycle with ContentView root manager
+- Touch-optimized slider controls for brightness
+- LoadingStepIndicator for multi-step progress tracking
+- LoopingVideoPlayer with AVPlayerLooper for background video
+- UIDevice.current.identifierForVendor for device identification
+- Validation gating to prevent premature data loading
+- App resume handling with network stabilization delay
 
 ### Actor-Based Concurrency
 
@@ -149,15 +184,30 @@ hue dat/
 │   │   └── [6 other views]
 │   └── DeviceIdentifierProvider_watchOS.swift
 │
-└── hue dat macOS/                         # macOS Target
-    ├── HueDatMacApp.swift                # Menu bar + NSApplicationDelegate
-    ├── EventMonitor.swift                # Click-outside detection
-    ├── Views/
-    │   ├── MenuBarPanelView.swift
-    │   ├── GlassEffectView.swift         # NSGlassEffectView wrapper
-    │   ├── SSEStatusIndicator.swift      # Connection status
-    │   └── [6 other views]
-    └── DeviceIdentifierProvider_macOS.swift
+├── hue dat macOS/                         # macOS Target
+│   ├── HueDatMacApp.swift                # Menu bar + NSApplicationDelegate
+│   ├── EventMonitor.swift                # Click-outside detection
+│   ├── LaunchAtLoginManager.swift        # Startup configuration
+│   ├── Views/
+│   │   ├── MenuBarPanelView.swift
+│   │   ├── GlassEffectView.swift         # NSGlassEffectView wrapper
+│   │   ├── SSEStatusIndicator.swift      # Connection status
+│   │   └── [6 other views]
+│   └── DeviceIdentifierProvider_macOS.swift
+│
+└── hue dat iOS/                           # iOS Target
+    ├── HueDatiOSApp.swift                # SwiftUI App entry
+    ├── ContentView.swift                  # Lifecycle + SSE manager
+    ├── DeviceIdentifierProvider_iOS.swift
+    ├── Assets.xcassets/                   # App icons
+    └── Views/
+        ├── MainMenuView_iOS.swift         # Bridge discovery + video
+        ├── RoomsAndZonesListView_iOS.swift # Primary data view
+        ├── RoomDetailView_iOS.swift       # Touch controls
+        ├── ZoneDetailView_iOS.swift       # Touch controls
+        ├── LoadingStepIndicator.swift     # Multi-step progress
+        ├── LoopingVideoPlayer.swift       # Background video
+        └── [7 other views]
 ```
 
 ## Technical Highlights
@@ -202,6 +252,17 @@ Single URLSession handles both REST and SSE on separate streams:
 - **HueAPIService**: 1-second minimum between grouped light commands
 - **View debouncing**: 500ms in detail views
 - **Reason**: Prevents overwhelming bridge, which becomes unresponsive under load
+
+### Multi-Step Loading System (iOS)
+
+**Problem**: Users perceive frozen app during data loading without feedback
+**Solution**: LoadingStepIndicator with TaskGroup-based progress tracking
+
+- Visual step dots show current progress (1-4 filled circles)
+- Descriptive messages per step ("Preparing...", "Loading rooms...", "Loading zones...", "Loading scenes...")
+- Parallel data fetching with TaskGroup monitors individual completion
+- Smooth spring animations on step transitions
+- **Validation gating**: Prevents showing loading when no bridge configured
 
 ## API Integration
 
@@ -263,6 +324,7 @@ Hue API v2 device hierarchy:
 `DeviceIdentifierProvider` protocol enables platform-specific device identification:
 - **watchOS**: `WKInterfaceDevice.current().identifierForVendor`
 - **macOS**: IOKit hardware UUID with UserDefaults fallback
+- **iOS**: `UIDevice.current.identifierForVendor`
 - Format: `hue_dat_watch_app#A1B2C3D4` (first 8 chars of UUID)
 
 ## Contributing
@@ -271,9 +333,10 @@ Contributions are welcome! This project follows standard Swift/Xcode conventions
 
 **Key Guidelines:**
 - Follow existing code style (SwiftUI, actor-based concurrency)
-- Test on both watchOS and macOS targets
+- Test on all three platform targets (watchOS, macOS, iOS)
 - Maintain platform abstraction via HueDatShared package
 - Update CLAUDE.md if adding new architectural patterns
+- Ensure iOS-specific features use touch-optimized controls
 
 ## License
 
