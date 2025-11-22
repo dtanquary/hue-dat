@@ -371,3 +371,4 @@ SOFTWARE.
 - Philips Hue for the excellent API and hardware
 - Apple for SwiftUI, WatchKit, and AppKit frameworks
 - The Swift community for open-source tools and inspiration
+- [Claude Code](https://claude.com/claude-code) by Anthropic for collaborative development of the iOS app, multi-step loading system, SSE lifecycle improvements, and comprehensive documentation
