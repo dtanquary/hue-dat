@@ -25,99 +25,115 @@ struct RoomsZonesListView_macOS: View {
     @State private var isSettingsHovered = false
 
     var body: some View {
-        VStack(spacing: 0) {
-            // Header with title and buttons
-            HStack {
-                Text("")
-                    .font(.title3)
-                    .fontWeight(.semibold)
-
-                Spacer()
-
-                /*
-                if let timestamp = bridgeManager.lastRefreshTimestamp {
-                    Text(timestamp, style: .relative)
-                        .font(.caption)
-                        .foregroundColor(.secondary)
+        ZStack(alignment: .topLeading) {
+            VStack {
+                // Normal content (takes up space)
+                if bridgeManager.isLoadingRooms || bridgeManager.isLoadingZones {
+                    loadingView.contentMargins(.top, 60)
+                } else if bridgeManager.rooms.isEmpty && bridgeManager.zones.isEmpty {
+                    emptyView.contentMargins(.top, 60)
+                } else {
+                    listContent.contentMargins(.top, 60)
                 }
-                 */
 
-                // SSE status indicator
-                SSEStatusIndicator()
-                    .environmentObject(bridgeManager)
-                    .padding(6)
-
-                Button(action: {
-                    Task {
-                        isTurningOffAll = true
-                        let result = await bridgeManager.turnOffAllLights()
-                        isTurningOffAll = false
-
-                        switch result {
-                        case .success:
-                            break // Success - no alert needed
-                        case .failure(let error):
-                            errorMessage = "Failed to turn off all lights: \(error.localizedDescription)"
-                            showError = true
-                        }
-                    }
-                }) {
-                    Image(systemName: "moon.fill")
-                        .padding(6)
-                        .background(
-                            RoundedRectangle(cornerRadius: 36)
-                                .fill(Color.primary.opacity(isTurnOffHovered ? 0.1 : 0))
-                        )
-                }
-                .buttonStyle(.borderless)
-                .disabled(bridgeManager.isRefreshing || isTurningOffAll)
-                .help("Turn Off All Lights")
-                .onHover { isTurnOffHovered = $0 }
-                .animation(.easeInOut(duration: 0.15), value: isTurnOffHovered)
-
-                Button(action: {
-                    Task {
-                        await bridgeManager.refreshAllData(forceRefresh: true)
-                    }
-                }) {
-                    Image(systemName: "arrow.clockwise")
-                        .symbolEffect(.rotate, isActive: bridgeManager.isRefreshing)
-                        .padding(6)
-                        .background(
-                            RoundedRectangle(cornerRadius: 36)
-                                .fill(Color.primary.opacity(isRefreshHovered ? 0.1 : 0))
-                        )
-                }
-                .buttonStyle(.borderless)
-                .disabled(bridgeManager.isRefreshing)
-                .help("Refresh")
-                .onHover { isRefreshHovered = $0 }
-                .animation(.easeInOut(duration: 0.15), value: isRefreshHovered)
-
-                Button(action: onSettingsSelected) {
-                    Image(systemName: "gear")
-                        .padding(6)
-                        .background(
-                            RoundedRectangle(cornerRadius: 36)
-                                .fill(Color.primary.opacity(isSettingsHovered ? 0.1 : 0))
-                        )
-                }
-                .buttonStyle(.borderless)
-                .help("Settings")
-                .onHover { isSettingsHovered = $0 }
-                .animation(.easeInOut(duration: 0.15), value: isSettingsHovered)
             }
-            .padding()
-
-            Divider()
-
-            // Content
-            if bridgeManager.isLoadingRooms || bridgeManager.isLoadingZones {
-                loadingView
-            } else if bridgeManager.rooms.isEmpty && bridgeManager.zones.isEmpty {
-                emptyView
-            } else {
-                listContent
+            VStack(spacing: 0) {
+                // Header with title and buttons
+                HStack {
+                    VStack(alignment: .leading) {
+                        Text("Rooms & Zones")
+                            .font(.title3)
+                            .fontWeight(.semibold)
+                        if (bridgeManager.isLoadingZones) {
+                            Text("Loading...")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        } else {
+                            Text("\(bridgeManager.rooms.count) Room\(bridgeManager.rooms.count == 1 ? "" : "s") & \(bridgeManager.zones.count) Zone\(bridgeManager.zones.count == 1 ? "" : "s")")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                        
+                    }
+                    
+                    
+                    Spacer()
+                    
+                    /*
+                     if let timestamp = bridgeManager.lastRefreshTimestamp {
+                     Text(timestamp, style: .relative)
+                     .font(.caption)
+                     .foregroundColor(.secondary)
+                     }
+                     */
+                    
+                    // SSE status indicator
+                    SSEStatusIndicator()
+                        .environmentObject(bridgeManager)
+                        .padding(6)
+                    
+                    Button(action: {
+                        Task {
+                            isTurningOffAll = true
+                            let result = await bridgeManager.turnOffAllLights()
+                            isTurningOffAll = false
+                            
+                            switch result {
+                            case .success:
+                                break // Success - no alert needed
+                            case .failure(let error):
+                                errorMessage = "Failed to turn off all lights: \(error.localizedDescription)"
+                                showError = true
+                            }
+                        }
+                    }) {
+                        Image(systemName: "moon.fill")
+                            .padding(6)
+                            .background(
+                                RoundedRectangle(cornerRadius: 36)
+                                    .fill(Color.primary.opacity(isTurnOffHovered ? 0.1 : 0))
+                            )
+                    }
+                    .buttonStyle(.borderless)
+                    .disabled(bridgeManager.isRefreshing || isTurningOffAll)
+                    .help("Turn Off All Lights")
+                    .onHover { isTurnOffHovered = $0 }
+                    .animation(.easeInOut(duration: 0.15), value: isTurnOffHovered)
+                    
+                    Button(action: {
+                        Task {
+                            await bridgeManager.refreshAllData(forceRefresh: true)
+                        }
+                    }) {
+                        Image(systemName: "arrow.clockwise")
+                            .symbolEffect(.rotate, isActive: bridgeManager.isRefreshing)
+                            .padding(6)
+                            .background(
+                                RoundedRectangle(cornerRadius: 36)
+                                    .fill(Color.primary.opacity(isRefreshHovered ? 0.1 : 0))
+                            )
+                    }
+                    .buttonStyle(.borderless)
+                    .disabled(bridgeManager.isRefreshing)
+                    .help("Refresh")
+                    .onHover { isRefreshHovered = $0 }
+                    .animation(.easeInOut(duration: 0.15), value: isRefreshHovered)
+                    
+                    Button(action: onSettingsSelected) {
+                        Image(systemName: "gear")
+                            .padding(6)
+                            .background(
+                                RoundedRectangle(cornerRadius: 36)
+                                    .fill(Color.primary.opacity(isSettingsHovered ? 0.1 : 0))
+                            )
+                    }
+                    .buttonStyle(.borderless)
+                    .help("Settings")
+                    .onHover { isSettingsHovered = $0 }
+                    .animation(.easeInOut(duration: 0.15), value: isSettingsHovered)
+                }
+                .padding()
+                .glassEffect(in: .rect)
             }
         }
         .task {
@@ -138,7 +154,8 @@ struct RoomsZonesListView_macOS: View {
 
     private var loadingView: some View {
         VStack(spacing: 16) {
-            ProgressView()
+            Image(systemName: "square.3.layers.3d.top.filled").symbolEffect(.bounce.byLayer, options: .repeat(.continuous))
+                .font(.largeTitle)
             Text("Loading rooms and zones...")
                 .font(.caption)
                 .foregroundColor(.secondary)

@@ -448,23 +448,36 @@ struct ZoneDetailView_macOS: View {
     }
 }
 
-// Note: Preview commented out because models don't have memberwise initializers
-// Uncomment after adding public initializers to HueZone and HueGroupedLight in HueDatShared
-//#Preview {
-//    ZoneDetailView_macOS(zone: HueZone(
-//        id: "1",
-//        type: "zone",
-//        metadata: HueZone.ZoneMetadata(name: "Upstairs", archetype: "home"),
-//        children: nil,
-//        services: nil,
-//        groupedLights: [HueGroupedLight(
-//            id: "1",
-//            type: "grouped_light",
-//            on: HueGroupedLight.GroupedLightOn(on: true),
-//            dimming: HueGroupedLight.GroupedLightDimming(brightness: 75.0),
-//            color_temperature: nil,
-//            color: nil
-//        )]
-//    ))
-//    .environmentObject(BridgeManager())
-//}
+#Preview {
+    @Previewable @StateObject var manager: BridgeManager = {
+        let mgr = BridgeManager()
+
+        // Add sample zone data
+        let sampleZone = HueZone(
+            id: "preview-zone-1",
+            type: "zone",
+            metadata: HueZone.ZoneMetadata(name: "Upstairs", archetype: "home"),
+            children: nil,
+            services: [HueZone.HueZoneService(rid: "preview-light-1", rtype: "grouped_light")],
+            groupedLights: [HueGroupedLight(
+                id: "preview-light-1",
+                type: "grouped_light",
+                on: HueGroupedLight.GroupedLightOn(on: true),
+                dimming: HueGroupedLight.GroupedLightDimming(brightness: 75.0),
+                color_temperature: nil,
+                color: nil
+            )]
+        )
+
+        mgr.zones = [sampleZone]
+
+        return mgr
+    }()
+
+    ZoneDetailView_macOS(
+        zoneId: "preview-zone-1",
+        onBack: {}
+    )
+    .environmentObject(manager)
+    .frame(width: 320, height: 480)
+}

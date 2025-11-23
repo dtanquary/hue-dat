@@ -52,11 +52,21 @@ public struct HueRoom: Codable, Identifiable, Equatable, Hashable, Sendable {
     public struct HueRoomChild: Codable, Equatable, Hashable, Sendable {
         public let rid: String   // Resource ID (device ID when rtype="device")
         public let rtype: String // Resource type (e.g., "device", "motion", etc.)
+
+        public init(rid: String, rtype: String) {
+            self.rid = rid
+            self.rtype = rtype
+        }
     }
 
     public struct HueRoomService: Codable, Equatable, Hashable, Sendable {
         public let rid: String
         public let rtype: String
+
+        public init(rid: String, rtype: String) {
+            self.rid = rid
+            self.rtype = rtype
+        }
     }
 
     // Custom Equatable implementation for efficient comparison
@@ -110,11 +120,21 @@ public struct HueZone: Codable, Identifiable, Equatable, Hashable, Sendable {
     public struct HueZoneChild: Codable, Equatable, Hashable, Sendable {
         public let rid: String   // Resource ID (device ID when rtype="device")
         public let rtype: String // Resource type (e.g., "device", "motion", etc.)
+
+        public init(rid: String, rtype: String) {
+            self.rid = rid
+            self.rtype = rtype
+        }
     }
 
     public struct HueZoneService: Codable, Equatable, Hashable, Sendable {
         public let rid: String
         public let rtype: String
+
+        public init(rid: String, rtype: String) {
+            self.rid = rid
+            self.rtype = rtype
+        }
     }
 
     // Custom Equatable implementation for efficient comparison
@@ -171,9 +191,20 @@ public struct HueGroupedLight: Codable, Identifiable, Equatable, Hashable, Senda
         public let mirek_valid: Bool?
         public let mirek_schema: GroupedLightColorTemperatureSchema?
 
+        public init(mirek: Int? = nil, mirek_valid: Bool? = nil, mirek_schema: GroupedLightColorTemperatureSchema? = nil) {
+            self.mirek = mirek
+            self.mirek_valid = mirek_valid
+            self.mirek_schema = mirek_schema
+        }
+
         public struct GroupedLightColorTemperatureSchema: Codable, Equatable, Hashable, Sendable {
             public let mirek_minimum: Int
             public let mirek_maximum: Int
+
+            public init(mirek_minimum: Int, mirek_maximum: Int) {
+                self.mirek_minimum = mirek_minimum
+                self.mirek_maximum = mirek_maximum
+            }
         }
     }
 
@@ -182,15 +213,32 @@ public struct HueGroupedLight: Codable, Identifiable, Equatable, Hashable, Senda
         public let gamut: GroupedLightColorGamut?
         public let gamut_type: String?
 
+        public init(xy: GroupedLightColorXY? = nil, gamut: GroupedLightColorGamut? = nil, gamut_type: String? = nil) {
+            self.xy = xy
+            self.gamut = gamut
+            self.gamut_type = gamut_type
+        }
+
         public struct GroupedLightColorXY: Codable, Equatable, Hashable, Sendable {
             public let x: Double
             public let y: Double
+
+            public init(x: Double, y: Double) {
+                self.x = x
+                self.y = y
+            }
         }
 
         public struct GroupedLightColorGamut: Codable, Equatable, Hashable, Sendable {
             public let red: GroupedLightColorXY
             public let green: GroupedLightColorXY
             public let blue: GroupedLightColorXY
+
+            public init(red: GroupedLightColorXY, green: GroupedLightColorXY, blue: GroupedLightColorXY) {
+                self.red = red
+                self.green = green
+                self.blue = blue
+            }
         }
     }
 
@@ -225,19 +273,37 @@ public struct HueLight: Codable, Identifiable, Equatable, Hashable, Sendable {
     public struct LightMetadata: Codable, Equatable, Hashable, Sendable {
         public let name: String
         public let archetype: String?
+
+        public init(name: String, archetype: String? = nil) {
+            self.name = name
+            self.archetype = archetype
+        }
     }
 
     public struct LightOn: Codable, Equatable, Hashable, Sendable {
         public let on: Bool
+
+        public init(on: Bool) {
+            self.on = on
+        }
     }
 
     public struct LightDimming: Codable, Equatable, Hashable, Sendable {
         public let brightness: Double
+
+        public init(brightness: Double) {
+            self.brightness = brightness
+        }
     }
 
     public struct LightColorTemperature: Codable, Equatable, Hashable, Sendable {
         public let mirek: Int?
         public let mirek_valid: Bool?
+
+        public init(mirek: Int? = nil, mirek_valid: Bool? = nil) {
+            self.mirek = mirek
+            self.mirek_valid = mirek_valid
+        }
     }
 
     public struct LightColor: Codable, Equatable, Hashable, Sendable {
@@ -245,15 +311,32 @@ public struct HueLight: Codable, Identifiable, Equatable, Hashable, Sendable {
         public let gamut: LightColorGamut?
         public let gamut_type: String?
 
+        public init(xy: LightColorXY? = nil, gamut: LightColorGamut? = nil, gamut_type: String? = nil) {
+            self.xy = xy
+            self.gamut = gamut
+            self.gamut_type = gamut_type
+        }
+
         public struct LightColorXY: Codable, Equatable, Hashable, Sendable {
             public let x: Double
             public let y: Double
+
+            public init(x: Double, y: Double) {
+                self.x = x
+                self.y = y
+            }
         }
 
         public struct LightColorGamut: Codable, Equatable, Hashable, Sendable {
             public let red: LightColorXY
             public let green: LightColorXY
             public let blue: LightColorXY
+
+            public init(red: LightColorXY, green: LightColorXY, blue: LightColorXY) {
+                self.red = red
+                self.green = green
+                self.blue = blue
+            }
         }
     }
 
@@ -285,11 +368,21 @@ public struct HueDevice: Codable, Sendable {
     public struct HueDeviceService: Codable, Sendable {
         public let rid: String   // Resource ID (the light ID if rtype is "light")
         public let rtype: String // Resource type (e.g., "light", "zigbee_connectivity", etc.)
+
+        public init(rid: String, rtype: String) {
+            self.rid = rid
+            self.rtype = rtype
+        }
     }
 
     public struct HueDeviceMetadata: Codable, Sendable {
         public let name: String?
         public let archetype: String?
+
+        public init(name: String? = nil, archetype: String? = nil) {
+            self.name = name
+            self.archetype = archetype
+        }
     }
 }
 

@@ -432,6 +432,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             existingWindow.close()
             aboutWindow = nil
         }
+        
+        let visualEffectView = NSVisualEffectView()
+        visualEffectView.material = .popover // Or other materials like .sidebar, .headerView
+        visualEffectView.blendingMode = .behindWindow // Or .withinWindow
+        visualEffectView.state = .active // Or .inactive, .followsWindowActiveState
 
         let window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 500, height: 480),
@@ -444,14 +449,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         window.titlebarSeparatorStyle = .none
         window.isReleasedWhenClosed = false
         window.isMovableByWindowBackground = true
-        // window.backgroundColor = .clear  // Transparent background for glass effect
+        window.backgroundColor = .clear  // Transparent background for glass effect
         window.isOpaque = false  // Allow transparency
-        
-//        window.standardWindowButton(.closeButton)?.isHidden = true
-//        // Hide the miniaturize (minimize) button
-//        window.standardWindowButton(.miniaturizeButton)?.isHidden = true
-//        // Hide the zoom button
-//        window.standardWindowButton(.zoomButton)?.isHidden = true
 
         let contentView = AboutView_macOS(onClose: { [weak self] in
             guard let self = self else { return }
@@ -462,14 +461,19 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             self.aboutWindow = nil
         })
 
-        window.contentView = NSHostingController(rootView: contentView).view
+        // Create hosting controller and embed it in the visual effect view
+        let hostingController = NSHostingController(rootView: contentView)
+        hostingController.view.frame = visualEffectView.bounds
+        hostingController.view.autoresizingMask = [.width, .height]
+        visualEffectView.addSubview(hostingController.view)
 
-        // Set rounded corners on the window
-        if let contentView = window.contentView {
-            contentView.wantsLayer = true
-            contentView.layer?.cornerRadius = 24
-            contentView.layer?.masksToBounds = true
-        }
+        // Set the visual effect view as the window's content view
+        window.contentView = visualEffectView
+
+        // Set rounded corners on the visual effect view
+        visualEffectView.wantsLayer = true
+        visualEffectView.layer?.cornerRadius = 24
+        visualEffectView.layer?.masksToBounds = true
 
         self.aboutWindow = window
 

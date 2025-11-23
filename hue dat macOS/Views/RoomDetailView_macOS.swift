@@ -462,23 +462,36 @@ struct RoomDetailView_macOS: View {
     }
 }
 
-// Note: Preview commented out because models don't have memberwise initializers
-// Uncomment after adding public initializers to HueRoom and HueGroupedLight in HueDatShared
-//#Preview {
-//    RoomDetailView_macOS(room: HueRoom(
-//        id: "1",
-//        type: "room",
-//        metadata: HueRoom.RoomMetadata(name: "Living Room", archetype: "living_room"),
-//        children: nil,
-//        services: nil,
-//        groupedLights: [HueGroupedLight(
-//            id: "1",
-//            type: "grouped_light",
-//            on: HueGroupedLight.GroupedLightOn(on: true),
-//            dimming: HueGroupedLight.GroupedLightDimming(brightness: 75.0),
-//            color_temperature: nil,
-//            color: nil
-//        )]
-//    ))
-//    .environmentObject(BridgeManager())
-//}
+#Preview {
+    @Previewable @StateObject var manager: BridgeManager = {
+        let mgr = BridgeManager()
+
+        // Add sample room data
+        let sampleRoom = HueRoom(
+            id: "preview-room-1",
+            type: "room",
+            metadata: HueRoom.RoomMetadata(name: "Living Room", archetype: "living_room"),
+            children: nil,
+            services: [HueRoom.HueRoomService(rid: "preview-light-1", rtype: "grouped_light")],
+            groupedLights: [HueGroupedLight(
+                id: "preview-light-1",
+                type: "grouped_light",
+                on: HueGroupedLight.GroupedLightOn(on: true),
+                dimming: HueGroupedLight.GroupedLightDimming(brightness: 75.0),
+                color_temperature: nil,
+                color: nil
+            )]
+        )
+
+        mgr.rooms = [sampleRoom]
+
+        return mgr
+    }()
+
+    RoomDetailView_macOS(
+        roomId: "preview-room-1",
+        onBack: {}
+    )
+    .environmentObject(manager)
+    .frame(width: 320, height: 480)
+}
