@@ -23,6 +23,10 @@ struct MainMenuView_iOS: View {
     @State private var player = AVQueuePlayer()
     @State private var isVideoSetup = false
     @State private var isViewActive = true
+    
+    @Namespace var animation
+    @State private var showAboutSheet = false
+    
     @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
@@ -66,6 +70,7 @@ struct MainMenuView_iOS: View {
                     .tint(.primary)
                     .font(.title3)
                     .glassEffect()
+                    .matchedTransitionSource(id: "BridgeList", in: animation)
                 }
                 .disabled(discoveryService.isLoading)
             }
@@ -77,6 +82,25 @@ struct MainMenuView_iOS: View {
         }
         .navigationTitle("")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar{
+            ToolbarItem(placement: .topBarTrailing) {
+                Button("About", systemImage: "info"){
+                    showAboutSheet.toggle()
+                }
+                .matchedTransitionSource(id: "About", in: animation)
+            }
+            
+            ToolbarItem(placement: .topBarTrailing) {
+                Button("Add A Bridge", systemImage: "plus"){
+                    showManualEntry = true
+                }
+                .matchedTransitionSource(id: "BridgeManualEntry", in: animation)
+            }
+        }
+        .sheet(isPresented: $showAboutSheet) {
+            Text("About Baby")
+                .navigationTransition(.zoom(sourceID: "About", in: animation))
+        }
         .task {
             print("MainMenuView task started")
             isViewActive = true
@@ -108,12 +132,14 @@ struct MainMenuView_iOS: View {
                     showManualEntry = true
                 }
             )
+            .navigationTransition(.zoom(sourceID: "BridgeList", in: animation))
         }
         .sheet(isPresented: $showManualEntry) {
             ManualBridgeEntryView_iOS { bridgeInfo in
                 manualBridgeInfo = bridgeInfo
                 showRegistrationForManualBridge = true
             }
+            .navigationTransition(.zoom(sourceID: "BridgeManualEntry", in: animation))
         }
         .sheet(isPresented: $showRegistrationForManualBridge) {
             if let bridge = manualBridgeInfo {
@@ -140,7 +166,10 @@ struct MainMenuView_iOS: View {
             }
         }
         .alert("No Bridges Found", isPresented: $discoveryService.showNoBridgesAlert) {
-            Button("OK") { }
+            Button("Manually Add A Bridge") {
+                showManualEntry = true
+            }
+            Button("Ok") { }
         } message: {
             Text("No Hue bridges could be found on your network. Make sure your bridge is connected and try again.")
         }
@@ -179,7 +208,7 @@ struct MainMenuView_iOS: View {
                 // Background Color
                 Color.black
                     .ignoresSafeArea()
-                    .opacity(0.65)
+                    .opacity(0.25)
             } else {
                 // Background Color
                 Color.white
