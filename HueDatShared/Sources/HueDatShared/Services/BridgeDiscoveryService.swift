@@ -33,6 +33,9 @@ public class BridgeDiscoveryService: ObservableObject {
             showNoBridgesAlert = false
         }
 
+        // Yield to allow SwiftUI to re-render with loading state
+        await Task.yield()
+
         var bridges: [BridgeInfo] = []
 
         /*

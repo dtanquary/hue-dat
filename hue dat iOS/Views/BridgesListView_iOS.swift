@@ -25,30 +25,30 @@ struct BridgesListView_iOS: View {
                     }
                 }
 
-                if onManualEntryTapped != nil {
-                    Section {
-                        Button {
-                            onManualEntryTapped?()
-                            dismiss()
-                        } label: {
-                            HStack {
-                                Image(systemName: "plus.circle.fill")
-                                    .font(.title2)
-                                    .foregroundStyle(.blue)
-                                Text("Manually Add Bridge")
-                                    .font(.headline)
-                            }
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 8)
-                        }
-                    }
-                }
+//                if onManualEntryTapped != nil {
+//                    Section {
+//                        Button {
+//                            onManualEntryTapped?()
+//                            dismiss()
+//                        } label: {
+//                            HStack {
+//                                Image(systemName: "plus.circle.fill")
+//                                    .font(.title2)
+//                                    .foregroundStyle(.blue)
+//                                Text("Manually Add Bridge")
+//                                    .font(.headline)
+//                            }
+//                            .frame(maxWidth: .infinity)
+//                            .padding(.vertical, 8)
+//                        }
+//                    }
+//                }
             }
             .navigationTitle("Bridges")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    Button("Cancel") {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Cancel", systemImage: "xmark") {
                         dismiss()
                     }
                 }

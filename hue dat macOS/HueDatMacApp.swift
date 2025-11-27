@@ -149,7 +149,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     func setupPopover() {
         let popover = NSPopover()
-        popover.contentSize = NSSize(width: 320, height: 480)
+        popover.contentSize = PopoverSizeManager.shared.contentSize
         popover.behavior = .transient
         self.popover = popover
     }
@@ -209,15 +209,24 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     func showPopover() {
         guard let popover = popover, let button = statusItem?.button else { return }
 
+        print("🚀 HueDatMacApp: showPopover() - creating content view")
+
+        // Create popover environment and set the popover reference
+        let popoverEnvironment = PopoverEnvironment(popover: popover)
+
         // Recreate content view controller for fresh material rendering
         let contentView = MenuBarPanelView()
             .environmentObject(bridgeManager)
-        popover.contentViewController = NSHostingController(rootView: contentView)
+            .environment(popoverEnvironment)
+
+        let hostingController = NSHostingController(rootView: contentView)
+        popover.contentViewController = hostingController
+
+        print("🚀 HueDatMacApp: Created hosting controller")
 
         // Critical: Activate app to ensure transient behavior works
         NSApp.activate(ignoringOtherApps: true)
 
-        
         // Show popover
         popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
 

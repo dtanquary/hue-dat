@@ -57,8 +57,8 @@ struct ManualBridgeEntryView_iOS: View {
             .navigationTitle("Add Bridge")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    Button("Cancel") {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Cancel", systemImage: "xmark") {
                         dismiss()
                     }
                 }

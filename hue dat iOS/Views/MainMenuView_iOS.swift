@@ -39,7 +39,7 @@ struct MainMenuView_iOS: View {
                 .foregroundStyle(colorScheme == .dark ? .white : .black)
                 .padding(.horizontal)
 
-            Text("Find your Hue bridge to get started")
+            Text("Add your Hue bridge to get started")
                 .font(.title)
                 .foregroundStyle(colorScheme == .dark ? .white : .black.opacity(0.75))
                 .padding(.horizontal)
@@ -47,32 +47,52 @@ struct MainMenuView_iOS: View {
 
             Spacer()
 
-            VStack(spacing: 16) {
-                Button {
-                    Task {
-                        await discoveryService.discoverBridges()
-                        if !discoveryService.discoveredBridges.isEmpty {
-                            showBridgesList = true
+            VStack{
+                VStack(spacing: 16) {
+                    Button {
+                        Task {
+                            await discoveryService.discoverBridges()
+                            if !discoveryService.discoveredBridges.isEmpty {
+                                showBridgesList = true
+                            }
                         }
-                    }
-                } label: {
-                    HStack {
-                        if discoveryService.isLoading {
-                            Image(systemName: "arrow.triangle.2.circlepath")
-                                .symbolEffect(.rotate, isActive: discoveryService.isLoading)
-                        } else {
-                            Image(systemName: "magnifyingglass")
+                    } label: {
+                        HStack {
+                            if discoveryService.isLoading {
+                                Image(systemName: "arrow.triangle.2.circlepath")
+                                    .symbolEffect(.rotate, isActive: discoveryService.isLoading)
+                            } else {
+                                Image(systemName: "magnifyingglass")
+                            }
+                            Text(discoveryService.isLoading ? "Searching..." : "Search For Bridges")
                         }
-                        Text(discoveryService.isLoading ? "Searching..." : "Find Bridges")
+                        .frame(maxWidth: .infinity)
+                        .padding(24)
+                        .tint(.primary)
+                        .font(.title3)
+                        .glassEffect()
+                        .matchedTransitionSource(id: "BridgeList", in: animation)
                     }
-                    .frame(maxWidth: .infinity)
-                    .padding(24)
-                    .tint(.primary)
-                    .font(.title3)
-                    .glassEffect()
-                    .matchedTransitionSource(id: "BridgeList", in: animation)
+                    .disabled(discoveryService.isLoading)
                 }
-                .disabled(discoveryService.isLoading)
+                VStack(spacing: 16) {
+                    Button {
+                        showManualEntry = true
+                    } label: {
+                        HStack {
+                            Image(systemName: "plus")
+                            Text("Manually Add A Bridge")
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(24)
+                        .tint(.primary)
+                        .font(.title3)
+                        .glassEffect()
+                        .matchedTransitionSource(id: "BridgeList", in: animation)
+                    }
+                    .disabled(discoveryService.isLoading)
+                    .matchedTransitionSource(id: "BridgeManualEntry", in: animation)
+                }
             }
             .padding(.horizontal, 32)
         }
@@ -90,16 +110,26 @@ struct MainMenuView_iOS: View {
                 .matchedTransitionSource(id: "About", in: animation)
             }
             
-            ToolbarItem(placement: .topBarTrailing) {
-                Button("Add A Bridge", systemImage: "plus"){
-                    showManualEntry = true
-                }
-                .matchedTransitionSource(id: "BridgeManualEntry", in: animation)
-            }
+//            ToolbarItem(placement: .topBarTrailing) {
+//                Button("Add A Bridge", systemImage: "plus"){
+//                    showManualEntry = true
+//                }
+//                .matchedTransitionSource(id: "BridgeManualEntry", in: animation)
+//            }
+//            
+//            ToolbarItem(placement: .topBarTrailing) {
+//                Button("Find Bridges On My Network", systemImage: "magnifyingglass") {
+//                    Task {
+//                        await discoveryService.discoverBridges()
+//                        if !discoveryService.discoveredBridges.isEmpty {
+//                            showBridgesList = true
+//                        }
+//                    }
+//                }
+//            }
         }
         .sheet(isPresented: $showAboutSheet) {
-            Text("About Baby")
-                .navigationTransition(.zoom(sourceID: "About", in: animation))
+            AboutView_iOS().navigationTransition(.zoom(sourceID: "About", in: animation))
         }
         .task {
             print("MainMenuView task started")
@@ -204,16 +234,15 @@ struct MainMenuView_iOS: View {
                     .opacity(1)
             }
             
+            // Background Color
             if (colorScheme == .dark) {
-                // Background Color
                 Color.black
                     .ignoresSafeArea()
-                    .opacity(0.25)
+                    .opacity(0.3)
             } else {
-                // Background Color
                 Color.white
                     .ignoresSafeArea()
-                    .opacity(0.65)
+                    .opacity(0.6)
             }
         }
     }
