@@ -1460,6 +1460,8 @@ public class BridgeManager: ObservableObject {
     }
 
     /// Activate a specific scene
+    /// Note: This does NOT automatically refresh. Use activateSceneWithConditionalRefresh()
+    /// for SSE-aware refresh behavior.
     public func activateScene(_ sceneId: String) async -> Result<Void, Error> {
         // Demo mode: Just return success without network call
         if isDemoMode {
@@ -1480,6 +1482,39 @@ public class BridgeManager: ObservableObject {
             print("❌ activateScene: Error: \(error.localizedDescription)")
             return .failure(error)
         }
+    }
+
+    /// Activate a scene and conditionally refresh if SSE is disconnected
+    /// Only refreshes when SSE is not connected to avoid duplicate updates
+    /// - Parameters:
+    ///   - sceneId: The scene ID to activate
+    ///   - roomId: Optional room ID to refresh after activation (if SSE disconnected)
+    ///   - zoneId: Optional zone ID to refresh after activation (if SSE disconnected)
+    public func activateSceneWithConditionalRefresh(
+        _ sceneId: String,
+        roomId: String? = nil,
+        zoneId: String? = nil
+    ) async -> Result<Void, Error> {
+        // Activate the scene
+        let result = await activateScene(sceneId)
+
+        // Only refresh if SSE is NOT connected (prevents duplicate updates)
+        guard case .success = result else {
+            return result // Return error if activation failed
+        }
+
+        if !isSSEConnected {
+            print("🔄 SSE disconnected - refreshing after scene activation")
+            if let roomId = roomId {
+                await refreshRoom(roomId: roomId)
+            } else if let zoneId = zoneId {
+                await refreshZone(zoneId: zoneId)
+            }
+        } else {
+            print("✅ SSE connected - skipping refresh (will update via event stream)")
+        }
+
+        return result
     }
 
     /// Get the currently active scene for a specific room (if any)

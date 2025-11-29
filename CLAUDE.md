@@ -136,7 +136,8 @@ xcodebuild -project "hue dat.xcodeproj" -scheme "hue dat iOS" -sdk iphonesimulat
 **Detail Views** (macOS)
 - RoomDetailView_macOS, ZoneDetailView_macOS
 - Mouse/trackpad optimized
-- Calls `refreshRoom(roomId:)` after scene activation
+- Scene activation uses optimistic UI updates
+- Optional SSE-aware refresh: `activateSceneWithConditionalRefresh()` only refreshes when SSE disconnected
 
 **SSEStatusIndicator** - Connection status
 - Color-coded: green/blue/red/gray
@@ -211,7 +212,9 @@ xcodebuild -project "hue dat.xcodeproj" -scheme "hue dat iOS" -sdk iphonesimulat
 Uses `InsecureURLSessionDelegate` to accept self-signed certs from bridges. **Do not remove** unless implementing proper certificate pinning.
 
 ### Rate Limiting & Debouncing
-- **HueAPIService**: 1-second minimum between grouped light commands
+- **HueAPIService**:
+  - 1-second throttle between brightness updates (non-blocking, drops rapid calls)
+  - Power toggles (setPower) exempt from rate limiting (immediate execution)
 - **View debouncing**: 500ms in RoomDetailView/ZoneDetailView
 - **Refresh debouncing**: 30s between auto-refresh calls (bypass with `forceRefresh: true`)
 - **Connection validation**: 3s timeout for validation calls

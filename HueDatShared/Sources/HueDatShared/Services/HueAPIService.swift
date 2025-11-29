@@ -260,22 +260,22 @@ public actor HueAPIService {
 
     // MARK: - Control Methods
 
-    /// Check and enforce rate limit for grouped light
-    /// Returns: true if request should proceed, false if rate limited
-    private func checkGroupedLightRateLimit(groupedLightId: String) async -> Bool {
+    /// Check rate limit for grouped light operations (non-blocking)
+    /// Returns: true if request should proceed, false if rate limited (call will be dropped)
+    private func checkGroupedLightRateLimit(groupedLightId: String) -> Bool {
         let now = Date()
 
         if let lastUpdate = lastGroupedLightUpdate[groupedLightId] {
             let timeSinceLastUpdate = now.timeIntervalSince(lastUpdate)
             if timeSinceLastUpdate < groupedLightRateLimit {
-                // Rate limited - wait for remaining time
-                let waitTime = groupedLightRateLimit - timeSinceLastUpdate
-                print("⏱️ Rate limiting grouped light \(groupedLightId): waiting \(String(format: "%.1f", waitTime))s")
-                try? await Task.sleep(nanoseconds: UInt64(waitTime * 1_000_000_000))
+                // Rate limited - drop this request
+                print("⏭️ Dropping grouped light update for \(groupedLightId): too soon (\(String(format: "%.1f", timeSinceLastUpdate))s since last)")
+                return false
             }
         }
 
-        lastGroupedLightUpdate[groupedLightId] = Date()
+        // Update timestamp and allow request
+        lastGroupedLightUpdate[groupedLightId] = now
         return true
     }
 
@@ -284,8 +284,7 @@ public actor HueAPIService {
     ///   - groupedLightId: The grouped light ID from room/zone services
     ///   - on: true to turn on, false to turn off
     public func setPower(groupedLightId: String, on: Bool) async throws {
-        // Enforce rate limit
-        _ = await checkGroupedLightRateLimit(groupedLightId: groupedLightId)
+        // No rate limiting for power toggles - instant feedback is critical for UX
 
         guard let url = URL(string: "https://\(baseURL)/clip/v2/resource/grouped_light/\(groupedLightId)") else {
             throw HueAPIError.invalidURL
@@ -326,8 +325,10 @@ public actor HueAPIService {
     ///   - groupedLightId: The grouped light ID from room/zone services
     ///   - brightness: Brightness percentage (0.0 to 100.0)
     public func setBrightness(groupedLightId: String, brightness: Double) async throws {
-        // Enforce rate limit
-        _ = await checkGroupedLightRateLimit(groupedLightId: groupedLightId)
+        // Check rate limit (non-blocking - drops rapid calls)
+        guard checkGroupedLightRateLimit(groupedLightId: groupedLightId) else {
+            return // Drop this call - too soon since last update
+        }
 
         guard let url = URL(string: "https://\(baseURL)/clip/v2/resource/grouped_light/\(groupedLightId)") else {
             throw HueAPIError.invalidURL
@@ -368,15 +369,16 @@ public actor HueAPIService {
     ///   - groupedLightId: The grouped light ID from room/zone services
     ///   - delta: Relative brightness change (-100.0 to +100.0)
     public func adjustBrightness(groupedLightId: String, delta: Double) async throws {
-        // Enforce rate limit
-        _ = await checkGroupedLightRateLimit(groupedLightId: groupedLightId)
+        // Check rate limit (non-blocking - drops rapid calls)
+        guard checkGroupedLightRateLimit(groupedLightId: groupedLightId) else {
+            return // Drop this call - too soon since last update
+        }
 
         guard let url = URL(string: "https://\(baseURL)/clip/v2/resource/grouped_light/\(groupedLightId)") else {
             throw HueAPIError.invalidURL
         }
 
-        // Build JSON payload with dimming_delta
-        // Note: This structure is based on logical API patterns; actual Hue API v2 support needs verification
+        // Build JSON payload with dimming_delta (confirmed working with Hue API v2)
         let payload: [String: Any] = [
             "dimming_delta": [
                 "action": delta >= 0 ? "up" : "down",
@@ -481,7 +483,6 @@ public actor HueAPIService {
             throw HueAPIError.httpError(statusCode: httpResponse.statusCode)
         }
 
-        print("✅ Connection validated")
         return true
     }
 
