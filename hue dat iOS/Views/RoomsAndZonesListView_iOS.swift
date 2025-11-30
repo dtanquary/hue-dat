@@ -18,6 +18,7 @@ struct RoomsAndZonesListView_iOS: View {
     @State private var zonesCount = 0
     @State private var loadingStep = 0
     @State private var loadingMessage = ""
+    @Namespace var animation
 
     private var lastUpdateText: String {
         if let lastUpdate = bridgeManager.lastRefreshTimestamp {
@@ -61,17 +62,25 @@ struct RoomsAndZonesListView_iOS: View {
 
     @ViewBuilder
     private var listContentView: some View {
+        let isLoading = bridgeManager.isLoadingRooms || bridgeManager.isLoadingZones
+
         List {
             // Rooms section
             if !bridgeManager.rooms.isEmpty {
                 Section {
                     ForEach(bridgeManager.rooms) { room in
-                        NavigationLink {
-                            RoomDetailView_iOS(roomId: room.id)
-                                .environmentObject(bridgeManager)
-                        } label: {
-                            RoomRowView(room: room)
+                        ZStack {
+                            RoomRowView(room: room, isLoading: isLoading)
+
+                            NavigationLink {
+                                RoomDetailView_iOS(roomId: room.id)
+                                    .environmentObject(bridgeManager)
+                            } label: {
+                                EmptyView()
+                            }
+                            .opacity(0)
                         }
+                        .disabled(isLoading)
                         .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 6, trailing: 16))
                         .listRowSeparator(.hidden)
                         .listRowBackground(Color.clear)
@@ -90,12 +99,18 @@ struct RoomsAndZonesListView_iOS: View {
             if !bridgeManager.zones.isEmpty {
                 Section {
                     ForEach(bridgeManager.zones) { zone in
-                        NavigationLink {
-                            ZoneDetailView_iOS(zoneId: zone.id)
-                                .environmentObject(bridgeManager)
-                        } label: {
-                            ZoneRowView(zone: zone)
+                        ZStack {
+                            ZoneRowView(zone: zone, isLoading: isLoading)
+
+                            NavigationLink {
+                                ZoneDetailView_iOS(zoneId: zone.id)
+                                    .environmentObject(bridgeManager)
+                            } label: {
+                                EmptyView()
+                            }
+                            .opacity(0)
                         }
+                        .disabled(isLoading)
                         .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 6, trailing: 16))
                         .listRowSeparator(.hidden)
                         .listRowBackground(Color.clear)
@@ -135,7 +150,7 @@ struct RoomsAndZonesListView_iOS: View {
             .sheet(isPresented: $showSettings) {
                 NavigationStack {
                     SettingsView_iOS(bridgeManager: bridgeManager)
-                }
+                }.navigationTransition(.zoom(sourceID: "Settings", in: animation))
             }
             .alert("Network Error", isPresented: $showNetworkErrorAlert) {
                 Button("OK", role: .cancel) {}
@@ -238,11 +253,10 @@ struct RoomsAndZonesListView_iOS: View {
         }
 
         ToolbarItem(placement: .topBarTrailing) {
-            Button {
+            Button("Settings", systemImage: "gear"){
                 showSettings = true
-            } label: {
-                Image(systemName: "gear")
             }
+            .matchedTransitionSource(id: "Settings", in: animation)
         }
     }
 

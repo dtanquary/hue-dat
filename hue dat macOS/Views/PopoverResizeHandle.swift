@@ -37,25 +37,14 @@ class PopoverResizeHandle: NSView {
         wantsLayer = true
         // Transparent background - invisible but still captures mouse events
         layer?.backgroundColor = NSColor.clear.cgColor
-
-        print("🔧 PopoverResizeHandle: setupView() called")
-    }
-
-    override var frame: NSRect {
-        didSet {
-            print("🔧 PopoverResizeHandle: frame changed to \(frame)")
-        }
     }
 
     override func updateTrackingAreas() {
         super.updateTrackingAreas()
 
-        print("🔧 PopoverResizeHandle: updateTrackingAreas() - bounds: \(bounds)")
-
         // Remove old tracking area
         if let existingArea = trackingArea {
             removeTrackingArea(existingArea)
-            print("🔧 PopoverResizeHandle: Removed old tracking area")
         }
 
         // Create new tracking area for cursor updates
@@ -75,27 +64,22 @@ class PopoverResizeHandle: NSView {
 
         if let area = trackingArea {
             addTrackingArea(area)
-            print("🔧 PopoverResizeHandle: Added tracking area with bounds: \(bounds)")
         }
     }
 
     override func cursorUpdate(with event: NSEvent) {
-        print("🔧 PopoverResizeHandle: cursorUpdate called")
         NSCursor.resizeUpDown.set()
     }
 
     override func mouseEntered(with event: NSEvent) {
-        print("🔧 PopoverResizeHandle: mouseEntered at \(event.locationInWindow)")
         NSCursor.resizeUpDown.set()
     }
 
     override func mouseExited(with event: NSEvent) {
-        print("🔧 PopoverResizeHandle: mouseExited at \(event.locationInWindow)")
         NSCursor.arrow.set()
     }
 
     override func mouseMoved(with event: NSEvent) {
-        print("🔧 PopoverResizeHandle: mouseMoved at \(event.locationInWindow)")
     }
 
     override var acceptsFirstResponder: Bool { true }
@@ -105,7 +89,6 @@ class PopoverResizeHandle: NSView {
     }
 
     override func mouseDown(with event: NSEvent) {
-        print("🔧 PopoverResizeHandle: mouseDown - popover is \(popover == nil ? "nil" : "set")")
         isDragging = true
         dragStartMouseY = NSEvent.mouseLocation.y
         dragStartHeight = popover?.contentSize.height ?? 480
@@ -121,7 +104,6 @@ class PopoverResizeHandle: NSView {
         // Direct manipulation: drag down (deltaY positive) = taller, drag up (deltaY negative) = shorter
         let newHeight = max(minHeight, min(maxHeight, dragStartHeight + deltaY))
 
-        print("🔧 PopoverResizeHandle: mouseDragged - deltaY: \(deltaY), newHeight: \(newHeight)")
         popover?.contentSize = NSSize(width: 320, height: newHeight)
     }
 

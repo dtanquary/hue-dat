@@ -50,6 +50,9 @@ struct MainMenuView_iOS: View {
             VStack{
                 VStack(spacing: 16) {
                     Button {
+                        // Set loading state immediately for instant UI feedback
+                        discoveryService.isLoading = true
+
                         Task {
                             await discoveryService.discoverBridges()
                             if !discoveryService.discoveredBridges.isEmpty {

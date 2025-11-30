@@ -45,14 +45,17 @@ struct RoomsAndZonesListView: View {
                 }
                 .padding()
             } else {
+                let isRefreshing = bridgeManager.isRefreshing && hasLoadedData
+
                 List {
                     // Rooms section
                     if !bridgeManager.rooms.isEmpty {
                         Section("Rooms") {
                             ForEach(bridgeManager.rooms) { room in
                                 NavigationLink(destination: RoomDetailView(roomId: room.id, bridgeManager: bridgeManager)) {
-                                    RoomRowView(room: room)
+                                    RoomRowView(room: room, isLoading: isRefreshing)
                                 }
+                                .disabled(isRefreshing)
                             }
                         }
                     }
@@ -62,8 +65,9 @@ struct RoomsAndZonesListView: View {
                         Section("Zones") {
                             ForEach(bridgeManager.zones) { zone in
                                 NavigationLink(destination: ZoneDetailView(zoneId: zone.id, bridgeManager: bridgeManager)) {
-                                    ZoneRowView(zone: zone)
+                                    ZoneRowView(zone: zone, isLoading: isRefreshing)
                                 }
+                                .disabled(isRefreshing)
                             }
                         }
                     }
@@ -283,6 +287,7 @@ struct RoomsAndZonesListView: View {
 // MARK: - Room Row View
 struct RoomRowView: View {
     let room: HueRoom
+    var isLoading: Bool = false
 
     // Dynamic Type scaled metrics
     @ScaledMetric(relativeTo: .headline) private var rowSpacing: CGFloat = 12
@@ -335,6 +340,7 @@ struct RoomRowView: View {
             }
         }
         .padding(.vertical, verticalPadding)
+        .skeletonLoader(isActive: isLoading)
     }
 
     private func iconForArchetype(_ archetype: String) -> String {
@@ -360,6 +366,7 @@ struct RoomRowView: View {
 // MARK: - Zone Row View
 struct ZoneRowView: View {
     let zone: HueZone
+    var isLoading: Bool = false
 
     // Dynamic Type scaled metrics
     @ScaledMetric(relativeTo: .headline) private var rowSpacing: CGFloat = 12
@@ -411,5 +418,6 @@ struct ZoneRowView: View {
             }
         }
         .padding(.vertical, verticalPadding)
+        .skeletonLoader(isActive: isLoading)
     }
 }

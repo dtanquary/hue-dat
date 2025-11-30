@@ -24,6 +24,12 @@ struct ZoneDetailView_iOS: View {
     @State private var optimisticIsOn: Bool?
     @State private var optimisticBrightness: Double?
 
+    // Task tracking for cleanup
+    @State private var brightnessTask: Task<Void, Never>?
+    @State private var sceneTask: Task<Void, Never>?
+    @State private var powerTask: Task<Void, Never>?
+    @State private var sceneResetWorkItem: DispatchWorkItem?
+
     private var zone: HueZone? {
         bridgeManager.zones.first(where: { $0.id == zoneId })
     }
@@ -163,6 +169,11 @@ struct ZoneDetailView_iOS: View {
         }
         .onDisappear {
             isViewActive = false
+            // Cancel any running tasks
+            brightnessTask?.cancel()
+            sceneTask?.cancel()
+            powerTask?.cancel()
+            sceneResetWorkItem?.cancel()
         }
         .alert("Error", isPresented: $showError) {
             Button("OK") {
@@ -181,19 +192,24 @@ struct ZoneDetailView_iOS: View {
     private func togglePower(_ newValue: Bool) {
         guard let lightId = groupedLightId else { return }
 
+        // Cancel any existing power task
+        powerTask?.cancel()
+
         // Optimistic update
         optimisticIsOn = newValue
 
-        Task {
+        powerTask = Task {
             do {
                 try await HueAPIService.shared.setPower(groupedLightId: lightId, on: newValue)
-                // Update actual state
+                // Update actual state only if view is still active
+                guard !Task.isCancelled, isViewActive else { return }
                 await MainActor.run {
                     isOn = newValue
                     optimisticIsOn = nil
                 }
             } catch {
-                // Rollback optimistic update
+                // Rollback optimistic update only if view is still active
+                guard !Task.isCancelled, isViewActive else { return }
                 await MainActor.run {
                     optimisticIsOn = nil
                     errorMessage = "Failed to toggle power: \(error.localizedDescription)"
@@ -209,25 +225,30 @@ struct ZoneDetailView_iOS: View {
         // Don't trigger API call when applying scene brightness
         guard !isApplyingScene else { return }
 
+        // Cancel any existing brightness task
+        brightnessTask?.cancel()
+
         // Optimistic update
         optimisticBrightness = newValue
 
         // Debounce: only send request after user stops adjusting
-        Task {
+        brightnessTask = Task {
             try? await Task.sleep(nanoseconds: 300_000_000) // 300ms debounce
 
-            // Check if value is still the same (user stopped adjusting)
-            guard optimisticBrightness == newValue else { return }
+            // Check if value is still the same (user stopped adjusting) and view is active
+            guard !Task.isCancelled, isViewActive, optimisticBrightness == newValue else { return }
 
             do {
                 try await HueAPIService.shared.setBrightness(groupedLightId: lightId, brightness: newValue)
-                // Update actual state
+                // Update actual state only if view is still active
+                guard !Task.isCancelled, isViewActive else { return }
                 await MainActor.run {
                     brightness = newValue
                     optimisticBrightness = nil
                 }
             } catch {
-                // Rollback optimistic update
+                // Rollback optimistic update only if view is still active
+                guard !Task.isCancelled, isViewActive else { return }
                 await MainActor.run {
                     optimisticBrightness = nil
                     errorMessage = "Failed to set brightness: \(error.localizedDescription)"
@@ -241,17 +262,21 @@ struct ZoneDetailView_iOS: View {
         // Extract scene brightness for optimistic update
         let sceneBrightness = bridgeManager.extractAverageBrightnessFromScene(scene)
 
+        // Cancel any existing scene task
+        sceneTask?.cancel()
+
         // Optimistic updates - immediate UI feedback
         optimisticIsOn = true
         if let sceneBrightness = sceneBrightness {
             optimisticBrightness = sceneBrightness
         }
 
-        Task {
+        sceneTask = Task {
             do {
                 try await HueAPIService.shared.activateScene(sceneId: scene.id)
 
-                // Update actual state after successful activation
+                // Update actual state after successful activation, only if view is still active
+                guard !Task.isCancelled, isViewActive else { return }
                 await MainActor.run {
                     isOn = true
                     if let sceneBrightness = sceneBrightness {
@@ -260,17 +285,21 @@ struct ZoneDetailView_iOS: View {
                         brightness = sceneBrightness
 
                         // Reset flag after brief delay
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                        sceneResetWorkItem?.cancel()
+                        let workItem = DispatchWorkItem {
                             guard isViewActive else { return }
                             isApplyingScene = false
                         }
+                        sceneResetWorkItem = workItem
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1, execute: workItem)
                     }
                     // Clear optimistic state
                     optimisticIsOn = nil
                     optimisticBrightness = nil
                 }
             } catch {
-                // Rollback optimistic updates on error
+                // Rollback optimistic updates on error, only if view is still active
+                guard !Task.isCancelled, isViewActive else { return }
                 await MainActor.run {
                     optimisticIsOn = nil
                     optimisticBrightness = nil

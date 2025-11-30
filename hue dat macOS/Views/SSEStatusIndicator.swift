@@ -14,6 +14,7 @@ struct SSEStatusIndicator: View {
     @State private var streamState: StreamState = .idle
     @State private var cancellable: AnyCancellable?
     @State private var isHovering: Bool = false
+    @State private var isAnimating: Bool = false
 
     var body: some View {
         Group {
@@ -37,12 +38,9 @@ struct SSEStatusIndicator: View {
         }
         .help(tooltipForState)
         .onAppear {
-            print("🟢 SSE Status Indicator appeared - subscribing to stream state")
-
             // Set initial state based on BridgeManager's connection status
             if bridgeManager.isSSEConnected {
                 streamState = .connected
-                print("🟢 SSE Status Indicator: Initial state set to connected")
             }
 
             subscribeToStreamState()
@@ -54,17 +52,23 @@ struct SSEStatusIndicator: View {
     }
 
     private var indicatorContent: some View {
-        HStack(spacing: 4) {
-            Image(systemName: "antenna.radiowaves.left.and.right")
-                .foregroundStyle(colorForState)
-                .frame(width: 8, height: 8)
-
-            if streamState == .connecting {
-                ProgressView()
-                    .scaleEffect(0.5)
-                    .frame(width: 12, height: 12)
+        Image(systemName: "antenna.radiowaves.left.and.right")
+            .foregroundStyle(colorForState)
+            .frame(width: 8, height: 8)
+            .opacity(streamState == .connecting ? (isAnimating ? 0.3 : 1.0) : 1.0)
+            .animation(
+                streamState == .connecting
+                    ? .easeInOut(duration: 0.6).repeatForever(autoreverses: true)
+                    : .default,
+                value: isAnimating
+            )
+            .onChange(of: streamState) { newState in
+                if case .connecting = newState {
+                    isAnimating = true
+                } else {
+                    isAnimating = false
+                }
             }
-        }
     }
 
     private var isClickable: Bool {
@@ -88,7 +92,6 @@ struct SSEStatusIndicator: View {
         Task {
             // Guard against preview/test mode where bridge might not be connected
             guard bridgeManager.connectedBridge != nil else {
-                print("⚠️ SSE Status Indicator: No connected bridge, skipping subscription")
                 return
             }
 
@@ -99,7 +102,6 @@ struct SSEStatusIndicator: View {
                 cancellable = streamSubject
                     .receive(on: DispatchQueue.main)
                     .sink { state in
-                        print("🟢 SSE Status Indicator: State changed to \(state)")
                         streamState = state
                     }
             }

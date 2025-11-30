@@ -381,70 +381,16 @@ struct RoomDetailView_macOS: View {
 
     @ViewBuilder
     private func sceneCard(for scene: HueScene) -> some View {
-        let isActive = scene.status?.active == "active"
-        let isHovered = hoveredSceneId == scene.id
-        let colors = bridgeManager.extractColorsFromScene(scene)
-
-        Button(action: {
-            activateScene(scene)
-        }) {
-            ZStack(alignment: .bottom) {
-                // Background with color stripes or default material
-                if !colors.isEmpty {
-                    HStack(spacing: 0) {
-                        ForEach(0..<colors.count, id: \.self) { index in
-                            colors[index]
-                        }
-                    }
-                } else {
-                    Color.gray.opacity(0.3)
-                }
-
-                // Scene name overlay at bottom
-                HStack {
-                    Text(scene.metadata.name)
-                        .font(.caption)
-                        .fontWeight(.medium)
-                        .foregroundColor(.white)
-                        .lineLimit(2)
-                        .multilineTextAlignment(.center)
-                }
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 6)
-                .padding(.horizontal, 8)
-                .background(.ultraThinMaterial.opacity(0.9))
-
-                // Checkmark for active scene (top-right)
-                if isActive {
-                    VStack {
-                        HStack {
-                            Spacer()
-                            Image(systemName: "checkmark.circle.fill")
-                                .foregroundColor(.white)
-                                .font(.body)
-                                .shadow(color: .black.opacity(0.3), radius: 2)
-                                .padding(8)
-                        }
-                        Spacer()
-                    }
-                }
+        SceneCardView_macOS(
+            scene: scene,
+            isActive: scene.status?.active == "active",
+            isHovered: hoveredSceneId == scene.id,
+            onTap: { activateScene(scene) },
+            onHoverChange: { isHovered in
+                hoveredSceneId = isHovered ? scene.id : nil
             }
-            .aspectRatio(1.0, contentMode: .fit)
-            .clipShape(RoundedRectangle(cornerRadius: 8))
-            .overlay(
-                RoundedRectangle(cornerRadius: 8)
-                    .stroke(
-                        isActive ? Color.white.opacity(0.8) : Color.clear,
-                        lineWidth: 2.5
-                    )
-            )
-            .scaleEffect(isHovered ? 1.02 : 1.0)
-            .animation(.easeInOut(duration: 0.15), value: isHovered)
-        }
-        .buttonStyle(.plain)
-        .onHover { isHovered in
-            hoveredSceneId = isHovered ? scene.id : nil
-        }
+        )
+        .environmentObject(bridgeManager)
     }
 
     private func iconForArchetype(_ archetype: String) -> String {
@@ -494,4 +440,79 @@ struct RoomDetailView_macOS: View {
     )
     .environmentObject(manager)
     .frame(width: 320, height: 480)
+}
+
+// MARK: - Scene Card View
+struct SceneCardView_macOS: View {
+    let scene: HueScene
+    let isActive: Bool
+    let isHovered: Bool
+    let onTap: () -> Void
+    let onHoverChange: (Bool) -> Void
+
+    @EnvironmentObject var bridgeManager: BridgeManager
+    @State private var colors: [Color] = []
+
+    var body: some View {
+        Button(action: onTap) {
+            ZStack(alignment: .bottom) {
+                // Background with color stripes or default material
+                if !colors.isEmpty {
+                    HStack(spacing: 0) {
+                        ForEach(0..<colors.count, id: \.self) { index in
+                            colors[index]
+                        }
+                    }
+                } else {
+                    Color.gray.opacity(0.3)
+                }
+
+                // Scene name overlay at bottom
+                HStack {
+                    Text(scene.metadata.name)
+                        .font(.caption)
+                        .fontWeight(.medium)
+                        .foregroundColor(.primary)
+                        .lineLimit(2)
+                        .multilineTextAlignment(.center)
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 6)
+                .padding(.horizontal, 8)
+                .background(.ultraThinMaterial.opacity(0.9))
+
+                // Checkmark for active scene (top-right)
+                if isActive {
+                    VStack {
+                        HStack {
+                            Spacer()
+                            Image(systemName: "checkmark.circle.fill")
+                                .foregroundColor(.white)
+                                .font(.body)
+                                .shadow(color: .black.opacity(0.3), radius: 2)
+                                .padding(8)
+                        }
+                        Spacer()
+                    }
+                }
+            }
+            .aspectRatio(1.0, contentMode: .fit)
+            .clipShape(RoundedRectangle(cornerRadius: 8))
+            .overlay(
+                RoundedRectangle(cornerRadius: 8)
+                    .stroke(
+                        isActive ? Color.white.opacity(0.8) : Color.clear,
+                        lineWidth: 2.5
+                    )
+            )
+            .scaleEffect(isHovered ? 1.02 : 1.0)
+            .animation(.easeInOut(duration: 0.15), value: isHovered)
+        }
+        .buttonStyle(.plain)
+        .onHover(perform: onHoverChange)
+        .onAppear {
+            // Extract colors only once when view appears
+            colors = bridgeManager.extractColorsFromScene(scene)
+        }
+    }
 }

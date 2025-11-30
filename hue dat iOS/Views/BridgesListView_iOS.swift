@@ -24,25 +24,6 @@ struct BridgesListView_iOS: View {
                         bridgeRow(for: bridge)
                     }
                 }
-
-//                if onManualEntryTapped != nil {
-//                    Section {
-//                        Button {
-//                            onManualEntryTapped?()
-//                            dismiss()
-//                        } label: {
-//                            HStack {
-//                                Image(systemName: "plus.circle.fill")
-//                                    .font(.title2)
-//                                    .foregroundStyle(.blue)
-//                                Text("Manually Add Bridge")
-//                                    .font(.headline)
-//                            }
-//                            .frame(maxWidth: .infinity)
-//                            .padding(.vertical, 8)
-//                        }
-//                    }
-//                }
             }
             .navigationTitle("Bridges")
             .navigationBarTitleDisplayMode(.inline)
@@ -104,10 +85,10 @@ struct BridgesListView_iOS: View {
         } label: {
             HStack {
                 VStack(alignment: .leading, spacing: 4) {
-                    Text(bridge.displayName)
+                    Text(bridge.displayAddress)
                         .font(.headline)
 
-                    Text(bridge.displayAddress)
+                    Text(bridge.id)
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                 }

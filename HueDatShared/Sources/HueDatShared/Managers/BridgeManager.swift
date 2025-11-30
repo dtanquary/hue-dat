@@ -364,7 +364,9 @@ public class BridgeManager: ObservableObject {
 
                         // Handle disconnections with auto-reconnect
                         if case .disconnected = state, self.reconnectAttempts < self.maxReconnectAttempts {
-                            Task {
+                            // Detach from MainActor to prevent UI blocking during reconnection delay
+                            Task.detached { [weak self] in
+                                guard let self = self else { return }
                                 await self.handleReconnection()
                             }
                         }
@@ -528,22 +530,36 @@ public class BridgeManager: ObservableObject {
     }
 
     /// Handle auto-reconnection with exponential backoff
+    /// Note: This function is called from a detached Task to prevent blocking MainActor
     private func handleReconnection() async {
         // Don't attempt reconnection if we're in demo mode or not connected to a bridge
-        if isDemoMode || connectedBridge == nil {
+        let shouldSkip = await MainActor.run {
+            isDemoMode || connectedBridge == nil
+        }
+
+        if shouldSkip {
             print("⚠️ Skipping SSE reconnection - no active bridge connection")
             return
         }
 
-        reconnectAttempts += 1
-        let delay = min(pow(2.0, Double(reconnectAttempts - 1)), 32.0) // 1s, 2s, 4s, 8s, 16s, 32s max
+        // Increment attempts and calculate delay on MainActor
+        let (currentAttempt, delay) = await MainActor.run { () -> (Int, Double) in
+            reconnectAttempts += 1
+            let delay = min(pow(2.0, Double(reconnectAttempts - 1)), 32.0) // 1s, 2s, 4s, 8s, 16s, 32s max
+            return (reconnectAttempts, delay)
+        }
 
-        print("🔄 SSE disconnected. Reconnecting in \(Int(delay))s (attempt \(reconnectAttempts)/\(maxReconnectAttempts))")
+        print("🔄 SSE disconnected. Reconnecting in \(Int(delay))s (attempt \(currentAttempt)/\(maxReconnectAttempts))")
 
+        // Sleep without blocking MainActor (we're already detached)
         try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
 
         // Check again before reconnecting (bridge might have been disconnected during sleep)
-        guard connectedBridge != nil else {
+        let bridgeStillConnected = await MainActor.run {
+            connectedBridge != nil
+        }
+
+        guard bridgeStillConnected else {
             print("⚠️ Bridge disconnected during reconnection delay - aborting")
             return
         }
@@ -1548,7 +1564,6 @@ public class BridgeManager: ObservableObject {
     /// Extract colors from a scene's actions
     public func extractColorsFromScene(_ scene: HueScene) -> [Color] {
         guard let actions = scene.actions else {
-            print("⚠️ extractColorsFromScene: Scene '\(scene.metadata.name)' has no actions")
             return []
         }
 
@@ -1565,11 +1580,10 @@ public class BridgeManager: ObservableObject {
                 return mirekToRGB(mirek: mirek, brightness: brightness)
             }
 
-            // No color data, return nil
+            // No color data (likely a dynamic scene like gradients)
             return nil
         }
 
-        print("🎨 extractColorsFromScene: Extracted \(colors.count) colors from scene '\(scene.metadata.name)'")
         return colors
     }
 

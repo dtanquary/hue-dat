@@ -27,13 +27,20 @@ struct RoomsZonesListView_macOS: View {
     var body: some View {
         ZStack(alignment: .topLeading) {
             VStack {
-                // Normal content (takes up space)
-                if bridgeManager.isLoadingRooms || bridgeManager.isLoadingZones {
-                    loadingView.contentMargins(.top, 60)
-                } else if bridgeManager.rooms.isEmpty && bridgeManager.zones.isEmpty {
-                    emptyView.contentMargins(.top, 60)
-                } else {
+                // Show list with skeleton loaders when refreshing with cached data
+                // Show loading view only when loading with no cached data
+                let hasData = !bridgeManager.rooms.isEmpty || !bridgeManager.zones.isEmpty
+                let isLoading = bridgeManager.isLoadingRooms || bridgeManager.isLoadingZones
+
+                if hasData {
+                    // Show list (with skeleton if loading)
                     listContent.contentMargins(.top, 60)
+                } else if isLoading {
+                    // Show loading view only when no cached data
+                    loadingView.contentMargins(.top, 60)
+                } else {
+                    // Show empty view when not loading and no data
+                    emptyView.contentMargins(.top, 60)
                 }
 
             }
@@ -184,17 +191,22 @@ struct RoomsZonesListView_macOS: View {
     }
 
     private var listContent: some View {
-        ScrollView {
+        let isLoading = bridgeManager.isLoadingRooms || bridgeManager.isLoadingZones
+
+        return ScrollView {
             VStack(alignment: .leading, spacing: 12) {
                 // Rooms Section
                 if !bridgeManager.rooms.isEmpty {
                     sectionHeader("Rooms", count: bridgeManager.rooms.count)
 
                     ForEach(bridgeManager.rooms) { room in
-                        RoomRowView(room: room)
+                        RoomRowView(room: room, isLoading: isLoading)
                             .contentShape(Rectangle())
                             .onTapGesture {
-                                onRoomSelected(room)
+                                // Disable tap during loading
+                                if !isLoading {
+                                    onRoomSelected(room)
+                                }
                             }
                     }
                 }
@@ -205,10 +217,13 @@ struct RoomsZonesListView_macOS: View {
                         .padding(.top, bridgeManager.rooms.isEmpty ? 0 : 8)
 
                     ForEach(bridgeManager.zones) { zone in
-                        ZoneRowView(zone: zone)
+                        ZoneRowView(zone: zone, isLoading: isLoading)
                             .contentShape(Rectangle())
                             .onTapGesture {
-                                onZoneSelected(zone)
+                                // Disable tap during loading
+                                if !isLoading {
+                                    onZoneSelected(zone)
+                                }
                             }
                     }
                 }
@@ -230,6 +245,7 @@ struct RoomsZonesListView_macOS: View {
 
 struct RoomRowView: View {
     let room: HueRoom
+    var isLoading: Bool = false
     @EnvironmentObject var bridgeManager: BridgeManager
     @State private var isHovered: Bool = false
 
@@ -300,6 +316,7 @@ struct RoomRowView: View {
             }
             .clipShape(RoundedRectangle(cornerRadius: 8))
         )
+        .skeletonLoader(isActive: isLoading)
         .animation(.easeInOut(duration: 0.15), value: isHovered)
         .onHover { isHovered = $0 }
     }
@@ -323,6 +340,7 @@ struct RoomRowView: View {
 
 struct ZoneRowView: View {
     let zone: HueZone
+    var isLoading: Bool = false
     @EnvironmentObject var bridgeManager: BridgeManager
     @State private var isHovered: Bool = false
 
@@ -393,6 +411,7 @@ struct ZoneRowView: View {
             }
             .clipShape(RoundedRectangle(cornerRadius: 8))
         )
+        .skeletonLoader(isActive: isLoading)
         .animation(.easeInOut(duration: 0.15), value: isHovered)
         .onHover { isHovered = $0 }
     }

@@ -49,11 +49,32 @@ struct ContentView: View {
         .onAppear {
             // When the view appears (app launch or wake), validate any restored connection
             if bridgeManager.connectedBridge != nil {
-                isValidatingConnection = true
-                validationMessage = "Validating connection..."
-                Task {
-                    await bridgeManager.validateConnection()
+                // Check if we have cached rooms or zones
+                let hasCachedData = !bridgeManager.rooms.isEmpty || !bridgeManager.zones.isEmpty
+
+                if hasCachedData {
+                    // Skip validation loading dialog - we have cached data to show immediately
+                    print("✅ Found cached data - skipping validation dialog")
+                    isConnectionValidated = true
+                    isValidatingConnection = false
+
+                    // Still validate in background to ensure bridge is reachable
+                    Task {
+                        await bridgeManager.validateConnection()
+
+                        // Start SSE stream after validation
+                        await startSSEStream()
+                    }
+                } else {
+                    // No cached data - show validation loading dialog
+                    print("⏳ No cached data - showing validation dialog")
+                    isValidatingConnection = true
+                    validationMessage = "Validating connection..."
+                    Task {
+                        await bridgeManager.validateConnection()
+                    }
                 }
+
                 // NOTE: Periodic refresh is started by RoomsAndZonesListView after initial data load
                 // to prevent race condition with initial load
             } else {
@@ -130,9 +151,16 @@ struct ContentView: View {
             Text(connectionFailureMessage.isEmpty ? "Unable to connect to your Hue bridge. The bridge may have a new IP address or be unreachable." : connectionFailureMessage)
         }
         .onChange(of: bridgeManager.connectedBridge) { oldValue, newValue in
-            // When bridge is disconnected, reset validation state
             if newValue == nil {
+                // Bridge disconnected - reset validation state
                 isConnectionValidated = false
+            } else if oldValue == nil {
+                // New bridge connected - trigger validation to show rooms/zones view
+                isValidatingConnection = true
+                validationMessage = "Validating connection..."
+                Task {
+                    await bridgeManager.validateConnection()
+                }
             }
         }
     }

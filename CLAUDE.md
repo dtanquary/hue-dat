@@ -150,12 +150,13 @@ xcodebuild -project "hue dat.xcodeproj" -scheme "hue dat iOS" -sdk iphonesimulat
 - Initializes BridgeManager and ContentView
 
 **ContentView** - Root lifecycle manager
-- **Validation gating**: Shows loading only when bridge exists
+- **Smart startup**: Skips validation dialog if cached data exists (instant app load)
+- **Validation gating**: Shows loading only when bridge exists and no cached data
 - **isConnectionValidated**: Gates view transition to prevent premature data loading
 - **SSE lifecycle**: Manages reconnection after app resume
 - **Scene phase handling**: Stops SSE/refresh on background, restarts on active
 - **1s network delay**: Waits for network stabilization after app resume
-- **Connection validation**: Validates bridge before SSE reconnection
+- **Background validation**: Validates bridge in background even when cached data shown
 
 **MainMenuView_iOS** - Bridge discovery
 - **Video background**: Looping light.mp4 with ambient audio mixing
@@ -236,7 +237,9 @@ Uses `InsecureURLSessionDelegate` to accept self-signed certs from bridges. **Do
 ### SSE Architecture
 - **Lifecycle-aware**: Starts on app active, stops on background
 - **Event processing**: Filters relevant events, updates local state
-- **Auto-reconnection**: Exponential backoff, max 5 attempts
+- **Auto-reconnection**: Exponential backoff (1s, 2s, 4s, 8s, 16s, 32s max), max 5 attempts
+- **Non-blocking reconnection**: Uses `Task.detached` to prevent UI freezes during reconnection delays
+- **Network error handling**: Special handling for `NSURLErrorNetworkConnectionLost` (connection reset by peer)
 - **Wake-from-sleep** (macOS): Auto-reconnects after Mac wakes (1s delay + connection validation)
 - **App resume** (iOS): Auto-reconnects after app becomes active (1s delay + connection validation)
 - **Benefits**: Instant updates from physical switches/other apps

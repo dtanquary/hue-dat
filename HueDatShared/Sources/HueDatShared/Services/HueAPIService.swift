@@ -502,6 +502,7 @@ public actor HueAPIService {
         streamTask?.cancel()
         streamTask = nil
         streamStateSubject.send(.idle)
+        print("🛑 SSE stream stopped and cleaned up")
     }
 
     private func streamEvents() async {
@@ -583,11 +584,17 @@ public actor HueAPIService {
             print("ℹ️ SSE stream ended")
 
         } catch is CancellationError {
+            // Clean cancellation
             streamStateSubject.send(.disconnected(nil))
             print("ℹ️ SSE stream cancelled")
+        } catch let error as URLError where error.code == .networkConnectionLost {
+            // Network connection lost - common during network transitions
+            print("⚠️ SSE stream: Network connection lost (bridge may have reset connection)")
+            streamStateSubject.send(.disconnected(error))
         } catch {
-            streamStateSubject.send(.error("Stream error: \(error.localizedDescription)"))
+            // Other errors
             print("❌ SSE stream error: \(error)")
+            streamStateSubject.send(.error("Stream error: \(error.localizedDescription)"))
         }
     }
 }

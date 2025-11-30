@@ -124,6 +124,9 @@ struct BridgeSetupView_macOS: View {
 
             HStack(spacing: 12) {
                 Button("Retry") {
+                    // Set loading state immediately for instant UI feedback
+                    discoveryService.isLoading = true
+
                     Task {
                         await discoveryService.discoverBridges()
                     }
@@ -194,6 +197,9 @@ struct BridgeSetupView_macOS: View {
                 Spacer()
 
                 Button("Refresh") {
+                    // Set loading state immediately for instant UI feedback
+                    discoveryService.isLoading = true
+
                     Task {
                         await discoveryService.discoverBridges()
                     }

@@ -46,10 +46,10 @@ struct AboutView_iOS: View {
     private var compactLayout: some View {
         VStack(spacing: 32) {
             appIconSection
-            // appInfoSection
+            appInfoSection
             featuresSection
             limitationsSection
-            footerSection
+            // footerSection
         }
         .padding(.horizontal, 20)
         .padding(.top, 24)
@@ -121,19 +121,19 @@ private extension AboutView_iOS {
         // Replace "AppIcon" with your actual app icon asset name
         // Or use Image("AppIcon") for a custom image asset
         ZStack {
-//            RoundedRectangle(cornerRadius: 22, style: .continuous)
-//                .fill(
-//                    LinearGradient(
-//                        colors: [.secondary, .clear],
-//                        startPoint: .topLeading,
-//                        endPoint: .bottomTrailing
-//                    )
-//                ).opacity(0.5)
+            RoundedRectangle(cornerRadius: 22, style: .continuous)
+                .fill(
+                    LinearGradient(
+                        colors: [.secondary, .clear],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                ).opacity(0.5)
             
-//            Image("hueDatLight")
-//                .opacity(0.5)
-//                .font(.system(size: 44, weight: .medium))
-//                .offset(y: 50)
+            Image("hueDatLight")
+                .opacity(0.5)
+                .font(.system(size: 44, weight: .medium))
+                .offset(y: 50)
             
             Image("hueDatLight")
                 .resizable()
@@ -152,10 +152,10 @@ private extension AboutView_iOS {
 private extension AboutView_iOS {
     var appInfoSection: some View {
         VStack(alignment: isCompact ? .leading : .leading, spacing: 12) {
-            Text("What is this?")
+            Label("What is this?", systemImage: "questionmark.circle.fill")
                 .font(.headline)
             
-            Text("A brief description of your app goes here. This app helps users accomplish their goals efficiently and elegantly, with a focus on simplicity and great design.")
+            Text("A minimalistic way to access basic room, zone, and scene functionalities for Philips Hue lights.\n\nThis application also includes versions for WatchOS and MacOS which were my original primary focus.\n\nThe iPhone and iPad versions are relatively pointless. They were more an exercise in 'can I make a cool iOS app'.")
                 .font(.body)
                 .multilineTextAlignment(isCompact ? .leading : .leading)
                 .fixedSize(horizontal: false, vertical: true)
@@ -171,23 +171,23 @@ private extension AboutView_iOS {
 private extension AboutView_iOS {
     var featuresSection: some View {
         AboutCardViewLiquidGlass(
-            title: "About Hue Dat",
+            title: "What Does This App Do?",
             systemImage: "checkmark.circle.fill",
             tint: .green
         ) {
             VStack(alignment: .leading, spacing: 12) {
                 FeatureRow(
                     icon: "lightbulb.fill",
-                    text: "I created this as a minimalistic way to access basic room, zone, and scene functionalities for Philips Hue lights"
+                    text: "Basic light functionality (On/Off, brightness adjustments, applying scenes) to rooms or zones."
                 )
                 FeatureRow(
                     icon: "sparkles",
-                    text: "To be honest, the iPhone and iPad versions of this app are relatively pointless. It was more an exercise in 'can I make a cool iOS app'. Just use the official Hue app."
+                    text: "Gives you a MacOS, WatchOS, and iOS app all in one."
                 )
-                FeatureRow(
-                    icon: "apple.logo",
-                    text: "Native versions of this application are also available for WatchOS and MacOS"
-                )
+//                FeatureRow(
+//                    icon: "apple.logo",
+//                    text: "Native versions of this application are also available for WatchOS and MacOS"
+//                )
             }
         }
     }
@@ -198,15 +198,19 @@ private extension AboutView_iOS {
 private extension AboutView_iOS {
     var limitationsSection: some View {
         AboutCardViewLiquidGlass(
-            title: "What This App Doesn't Do",
+            title: "What This App Doesn't Do:",
             systemImage: "xmark.circle.fill",
             tint: .orange
         ) {
             VStack(alignment: .leading, spacing: 12) {
                 FeatureRow(
                     icon: "lightbulb.slash.fill",
-                    text: "Does not let you edit your Philips Hue rooms or zones."
+                    text: "Cannot configure your Philips Hue lights. Use the official app for any adjustments to lights, rooms, or zones."
                 )
+//                FeatureRow(
+//                    icon: "applewatch",
+//                    text: "Apple watch version is not just a companion app, its a stand alone version that does not require an iPhone nearby to function."
+//                )
                 FeatureRow(
                     icon: "person.2.slash.fill",
                     text: "Does not share data with third parties"
@@ -283,7 +287,7 @@ struct AboutCardView<Content: View>: View {
                 .fill(.ultraThinMaterial)
         }
         // iOS 26+ Liquid Glass alternative:
-        .glassEffect(.regular, in: .rect(cornerRadius: 16))
+//        .glassEffect(.regular, in: .rect(cornerRadius: 16))
     }
 }
 

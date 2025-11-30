@@ -52,7 +52,7 @@ struct SettingsView_iOS: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
-                Button("Done") {
+                Button("Close", systemImage: "xmark") {
                     dismiss()
                 }
             }
