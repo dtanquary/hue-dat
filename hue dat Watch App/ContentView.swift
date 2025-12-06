@@ -16,6 +16,12 @@ struct ContentView: View {
     @State private var showConnectionFailedAlert = false
     @State private var connectionFailureMessage = ""
 
+    // Staleness check for auto-refresh (matches macOS gold standard)
+    private let lastRefreshKey = "LastWatchOSRefreshTimestamp"
+    private let refreshThreshold: TimeInterval = 30 * 60  // 30 minutes
+    private let resumeDelay: TimeInterval = 3.0  // Network stabilization delay
+    @State private var lastResumeTimestamp: Date?
+
     var body: some View {
         NavigationStack(path: $navigationPath) {
             MainMenuView(bridgeManager: bridgeManager)
@@ -43,21 +49,17 @@ struct ContentView: View {
             if bridgeManager.connectedBridge != nil {
                 switch newPhase {
                 case .active:
-                    // App became active - re-validate and reconnect SSE stream
+                    // Track resume timestamp for staleness check
+                    lastResumeTimestamp = Date()
+
+                    // App became active - re-validate and reconnect SSE stream with delay
                     Task {
-                        await bridgeManager.validateConnection()
-
-                        // Reset reconnection backoff when returning from idle
-                        await MainActor.run {
-                            bridgeManager.reconnectAttempts = 0
-                        }
-
-                        // Attempt to reconnect if not already connected
-                        if !bridgeManager.isSSEConnected {
-                            print("🔄 App became active - attempting SSE reconnection")
-                            await startSSEStream()
-                        }
+                        await reconnectSSEAfterResume()
                     }
+
+                    // Check staleness before triggering periodic refresh (macOS gold standard)
+                    checkAndRefreshIfNeeded()
+
                     // Start periodic refresh when app becomes active
                     bridgeManager.startPeriodicRefresh()
 
@@ -166,6 +168,84 @@ struct ContentView: View {
             }
             print("🛑 SSE stream stopped")
         }
+    }
+
+    /// Reconnect SSE stream after app becomes active (with validation and delay)
+    private func reconnectSSEAfterResume() async {
+        guard bridgeManager.connectedBridge != nil else {
+            print("⚠️ No bridge connected - skipping SSE reconnect after resume")
+            return
+        }
+
+        print("🔄 Reconnecting SSE after app became active...")
+
+        // Stop existing SSE connection
+        await HueAPIService.shared.stopEventStream()
+
+        // Wait for network to stabilize (3 seconds - matches macOS gold standard)
+        try? await Task.sleep(nanoseconds: UInt64(resumeDelay * 1_000_000_000))
+
+        // Validate connection before reconnecting SSE
+        await bridgeManager.validateConnection()
+
+        // Reset reconnection backoff when returning from idle
+        await MainActor.run {
+            bridgeManager.reconnectAttempts = 0
+        }
+
+        // Only reconnect if validation succeeded
+        guard bridgeManager.isConnectionValidated else {
+            print("❌ Connection validation failed after resume - not starting SSE")
+            return
+        }
+
+        // Restart SSE stream
+        await startSSEStream()
+        print("✅ SSE reconnected after app resume")
+    }
+
+    // MARK: - Staleness Check (macOS Gold Standard Pattern)
+
+    /// Check if data refresh is needed based on staleness threshold
+    private func checkAndRefreshIfNeeded() {
+        let now = Date()
+
+        // Guard: Enforce minimum delay after resume
+        if let lastResume = lastResumeTimestamp {
+            let timeSinceResume = now.timeIntervalSince(lastResume)
+            if timeSinceResume < resumeDelay {
+                Task {
+                    try? await Task.sleep(nanoseconds: UInt64((resumeDelay - timeSinceResume) * 1_000_000_000))
+                    await performRefreshIfStale()
+                }
+                return
+            }
+        }
+
+        Task {
+            await performRefreshIfStale()
+        }
+    }
+
+    /// Perform refresh only if data is stale (> 30 minutes old)
+    private func performRefreshIfStale() async {
+        let now = Date()
+
+        // Check staleness threshold
+        let lastRefresh = UserDefaults.standard.object(forKey: lastRefreshKey) as? Date
+        let dataIsFresh = lastRefresh != nil && now.timeIntervalSince(lastRefresh!) < refreshThreshold
+
+        if dataIsFresh {
+            let minutesAgo = Int(now.timeIntervalSince(lastRefresh!) / 60)
+            print("⏭️ Data is fresh (last refresh \(minutesAgo) min ago) - skipping auto-refresh")
+            return
+        }
+
+        // Update timestamp BEFORE refresh
+        UserDefaults.standard.set(now, forKey: lastRefreshKey)
+
+        print("🔄 Auto-refreshing data (last refresh > 30 minutes ago or first launch)")
+        await bridgeManager.refreshAllData(forceRefresh: false)
     }
 }
 

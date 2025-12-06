@@ -298,7 +298,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func checkAndRefreshIfNeeded() {
         let now = Date()
-        let twoHoursInSeconds: TimeInterval = 2 * 60 * 60
+        let thirtyMinutesInSeconds: TimeInterval = 30 * 60
 
         // Check if we just woke from sleep - add delay before allowing refresh
         if let lastWake = lastWakeTimestamp {
@@ -319,11 +319,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // Get last popover open timestamp
         let lastTimestamp = UserDefaults.standard.object(forKey: lastPopoverOpenKey) as? Date
 
-        // Check if we need to refresh (no previous timestamp or > 2 hours)
+        // Check if we need to refresh (no previous timestamp or > 30 minutes)
         let shouldRefresh: Bool
         if let lastTimestamp = lastTimestamp {
             let timeSinceLastOpen = now.timeIntervalSince(lastTimestamp)
-            shouldRefresh = timeSinceLastOpen > twoHoursInSeconds
+            shouldRefresh = timeSinceLastOpen > thirtyMinutesInSeconds
             print("⏱️ Time since last popover open: \(Int(timeSinceLastOpen / 60)) minutes")
         } else {
             shouldRefresh = true
@@ -336,7 +336,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         // Trigger refresh if needed (with validation)
         if shouldRefresh {
-            print("🔄 Auto-refreshing data (last open > 2 hours ago)")
+            print("🔄 Auto-refreshing data (last open > 30 minutes ago)")
             Task {
                 await performConnectionValidationAndRefresh()
             }

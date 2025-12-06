@@ -19,13 +19,28 @@ struct ContentView: View {
     @State private var validationMessage = "Connecting to bridge..."
     @State private var isConnectionValidated = false
 
+    // Staleness check for auto-refresh (matches macOS gold standard)
+    private let lastRefreshKey = "LastiOSRefreshTimestamp"
+    private let refreshThreshold: TimeInterval = 30 * 60  // 30 minutes
+    @State private var lastResumeTimestamp: Date?
+
     var body: some View {
         ZStack {
             NavigationStack(path: $navigationPath) {
-                if isConnectionValidated && bridgeManager.connectedBridge != nil {
-                    RoomsAndZonesListView_iOS(bridgeManager: bridgeManager)
-                } else {
-                    MainMenuView_iOS(bridgeManager: bridgeManager)
+                Group {
+                    if isConnectionValidated && bridgeManager.connectedBridge != nil {
+                        RoomsAndZonesListView_iOS(bridgeManager: bridgeManager)
+                    } else {
+                        MainMenuView_iOS(bridgeManager: bridgeManager)
+                    }
+                }
+                .navigationDestination(for: HueRoom.self) { room in
+                    RoomDetailView_iOS(roomId: room.id)
+                        .environmentObject(bridgeManager)
+                }
+                .navigationDestination(for: HueZone.self) { zone in
+                    ZoneDetailView_iOS(zoneId: zone.id)
+                        .environmentObject(bridgeManager)
                 }
             }
             .opacity(isValidatingConnection ? 0 : 1)
@@ -47,6 +62,27 @@ struct ContentView: View {
         }
         .animation(.easeInOut(duration: 0.3), value: isValidatingConnection)
         .onAppear {
+            // Listen for navigation notifications from search
+            NotificationCenter.default.addObserver(
+                forName: NSNotification.Name("NavigateToRoom"),
+                object: nil,
+                queue: .main
+            ) { notification in
+                if let room = notification.userInfo?["room"] as? HueRoom {
+                    navigationPath.append(room)
+                }
+            }
+
+            NotificationCenter.default.addObserver(
+                forName: NSNotification.Name("NavigateToZone"),
+                object: nil,
+                queue: .main
+            ) { notification in
+                if let zone = notification.userInfo?["zone"] as? HueZone {
+                    navigationPath.append(zone)
+                }
+            }
+
             // When the view appears (app launch or wake), validate any restored connection
             if bridgeManager.connectedBridge != nil {
                 // Check if we have cached rooms or zones
@@ -88,10 +124,17 @@ struct ContentView: View {
             if bridgeManager.connectedBridge != nil {
                 switch newPhase {
                 case .active:
+                    // Track resume timestamp for staleness check
+                    lastResumeTimestamp = Date()
+
                     // App became active - re-validate and reconnect SSE stream
                     Task {
                         await reconnectSSEAfterResume()
                     }
+
+                    // Check staleness before triggering periodic refresh (macOS gold standard)
+                    checkAndRefreshIfNeeded()
+
                     // Start periodic refresh when app becomes active
                     bridgeManager.startPeriodicRefresh()
 
@@ -223,8 +266,8 @@ struct ContentView: View {
         // Stop existing SSE connection
         await HueAPIService.shared.stopEventStream()
 
-        // Wait a moment for network to stabilize
-        try? await Task.sleep(nanoseconds: UInt64(1.0 * 1_000_000_000))
+        // Wait for network to stabilize (3 seconds - matches macOS gold standard)
+        try? await Task.sleep(nanoseconds: UInt64(3.0 * 1_000_000_000))
 
         // Validate connection before reconnecting SSE
         await bridgeManager.validateConnection()
@@ -243,6 +286,56 @@ struct ContentView: View {
         // Restart SSE stream
         await startSSEStream()
         print("✅ SSE reconnected after app resume")
+    }
+
+    // MARK: - Staleness Check (macOS Gold Standard Pattern)
+
+    /// Check if data refresh is needed based on staleness threshold
+    private func checkAndRefreshIfNeeded() {
+        let now = Date()
+
+        // Guard 1: Enforce minimum delay after resume (3 seconds)
+        if let lastResume = lastResumeTimestamp {
+            let timeSinceResume = now.timeIntervalSince(lastResume)
+            if timeSinceResume < 3.0 {
+                // Too soon after resume - schedule delayed check
+                Task {
+                    try? await Task.sleep(nanoseconds: UInt64((3.0 - timeSinceResume) * 1_000_000_000))
+                    await performRefreshIfStale()
+                }
+                return
+            }
+        }
+
+        Task {
+            await performRefreshIfStale()
+        }
+    }
+
+    /// Perform refresh only if data is stale (> 30 minutes old)
+    private func performRefreshIfStale() async {
+        let now = Date()
+
+        // Check staleness threshold
+        let lastRefresh = UserDefaults.standard.object(forKey: lastRefreshKey) as? Date
+        let dataIsFresh = lastRefresh != nil && now.timeIntervalSince(lastRefresh!) < refreshThreshold
+
+        if dataIsFresh {
+            let minutesAgo = Int(now.timeIntervalSince(lastRefresh!) / 60)
+            print("⏭️ Data is fresh (last refresh \(minutesAgo) min ago) - skipping auto-refresh")
+            return
+        }
+
+        // Update timestamp BEFORE refresh (prevents duplicate calls)
+        UserDefaults.standard.set(now, forKey: lastRefreshKey)
+
+        print("🔄 Auto-refreshing data (last refresh > 30 minutes ago or first launch)")
+        await bridgeManager.refreshAllData(forceRefresh: false)
+    }
+
+    /// Update refresh timestamp after successful data operations
+    private func updateRefreshTimestamp() {
+        UserDefaults.standard.set(Date(), forKey: lastRefreshKey)
     }
 }
 
