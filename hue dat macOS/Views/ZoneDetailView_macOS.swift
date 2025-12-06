@@ -26,11 +26,6 @@ struct ZoneDetailView_macOS: View {
     @State private var optimisticIsOn: Bool?
     @State private var optimisticBrightness: Double?
 
-    // Drag gesture state for brightness bar
-    @State private var isDraggingBrightness = false
-    @State private var dragStartY: CGFloat? = nil
-    @State private var dragStartBrightness: Double = 0.0
-
     private var zone: HueZone? {
         bridgeManager.zones.first(where: { $0.id == zoneId })
     }
@@ -114,55 +109,7 @@ struct ZoneDetailView_macOS: View {
                     Spacer()
                 }
 
-                // Layer 2: Brightness drag bar on right side
-                HStack {
-                    Spacer()
-
-                    VStack(spacing: 8) {
-                        Spacer()
-
-                        // Brightness bar track
-                        ZStack(alignment: .bottom) {
-                            // Background track
-                            RoundedRectangle(cornerRadius: 20)
-                                .fill(Color.white.opacity(0.2))
-                                .frame(width: 40, height: 200)
-
-                            // Fill based on brightness
-                            RoundedRectangle(cornerRadius: 20)
-                                .fill(Color.white.opacity(0.8))
-                                .frame(width: 40, height: 200 * (displayBrightness / 100.0))
-                        }
-                        .gesture(
-                            DragGesture(minimumDistance: 0)
-                                .onChanged { value in
-                                    if dragStartY == nil {
-                                        dragStartY = value.startLocation.y
-                                        dragStartBrightness = displayBrightness
-                                    }
-
-                                    guard let startY = dragStartY else { return }
-
-                                    // Calculate brightness based on vertical drag
-                                    // Inverted: dragging up increases brightness
-                                    let dragDistance = startY - value.location.y
-                                    let brightnessChange = (dragDistance / 200.0) * 100.0
-                                    let newBrightness = max(1.0, min(100.0, dragStartBrightness + brightnessChange))
-
-                                    setBrightness(newBrightness)
-                                }
-                                .onEnded { _ in
-                                    dragStartY = nil
-                                    dragStartBrightness = 0.0
-                                }
-                        )
-
-                        Spacer()
-                    }
-                    .padding(.trailing, 16)
-                }
-
-                // Layer 3: Brightness percentage overlay
+                // Layer 2: Brightness percentage overlay
                 VStack {
                     HStack {
                         Spacer()
@@ -183,7 +130,7 @@ struct ZoneDetailView_macOS: View {
                     Spacer()
                 }
 
-                // Layer 4: Horizontal slider at bottom
+                // Layer 3: Horizontal slider at bottom
                 VStack {
                     Spacer()
 

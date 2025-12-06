@@ -58,26 +58,22 @@ struct RoomRowView: View {
             .padding(.trailing, 12)
         }
         .padding(.vertical, 12)
-        .background(
-            ZStack {
-                // Brightness progress bar background
-                GeometryReader { geometry in
-                    HStack(spacing: 0) {
-                        Rectangle()
-                            .fill(Color.orange.opacity(0.15))
-                            .frame(width: geometry.size.width * (status.brightness ?? 0) / 100.0)
-
-                        Spacer(minLength: 0)
+        .background {
+            // Base background
+            RoundedRectangle(cornerRadius: 12)
+                .fill(Color.primary.opacity(0.1))
+                .overlay(alignment: .leading) {
+                    // Brightness progress bar (only if not loading)
+                    if !isLoading, let brightness = status.brightness {
+                        GeometryReader { geometry in
+                            Rectangle()
+                                .fill(Color.orange.opacity(0.15))
+                                .frame(width: geometry.size.width * brightness / 100.0)
+                        }
+                        .clipShape(RoundedRectangle(cornerRadius: 12))
                     }
                 }
-                .animation(.easeInOut(duration: 0.3), value: status.brightness)
-
-                // Base background
-                RoundedRectangle(cornerRadius: 12)
-                    .fill(Color.primary.opacity(0.1))
-            }
-            .clipShape(RoundedRectangle(cornerRadius: 12))
-        )
+        }
         .skeletonLoader(isActive: isLoading)
     }
 

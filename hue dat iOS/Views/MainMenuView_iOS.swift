@@ -260,7 +260,8 @@ struct MainMenuView_iOS: View {
 
         // Load video from asset catalog
         let videoURL = await MainActor.run {
-            LoopingVideoPlayer.loadVideoURL(named: "light")
+            let videoName = colorScheme == .light ? "light" : "light-lightTheme"
+            return LoopingVideoPlayer.loadVideoURL(named: videoName)
         }
 
         guard let videoURL = videoURL else {

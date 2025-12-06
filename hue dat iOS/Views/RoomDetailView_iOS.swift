@@ -139,7 +139,7 @@ struct RoomDetailView_iOS: View {
                                 GridItem(.flexible(), spacing: 12)
                             ], spacing: 12) {
                                 ForEach(bridgeManager.scenes.filter({ $0.group.rid == roomId })) { scene in
-                                    sceneCard(for: scene)
+                                    sceneCard(for: scene, groupId: roomId)
                                 }
                             }
                         }
@@ -311,14 +311,12 @@ struct RoomDetailView_iOS: View {
     }
 
     @ViewBuilder
-    private func sceneCard(for scene: HueScene) -> some View {
+    private func sceneCard(for scene: HueScene, groupId: String) -> some View {
         let isActive = scene.status?.active == "active"
         let colors = bridgeManager.extractColorsFromScene(scene)
+        let isPinned = bridgeManager.isScenePinned(sceneId: scene.id, forGroupId: groupId)
 
-        Button(action: {
-            activateScene(scene)
-        }) {
-            ZStack(alignment: .bottom) {
+        ZStack(alignment: .bottom) {
                 // Background with color stripes or default material
                 if !colors.isEmpty {
                     HStack(spacing: 0) {
@@ -344,6 +342,21 @@ struct RoomDetailView_iOS: View {
                 .padding(.horizontal, 8)
                 .background(.ultraThinMaterial.opacity(0.9))
 
+                // Pin indicator (top-left)
+                if isPinned {
+                    VStack {
+                        HStack {
+                            Image(systemName: "pin.fill")
+                                .foregroundColor(.white)
+                                .font(.body)
+                                .shadow(color: .black.opacity(0.3), radius: 2)
+                                .padding(8)
+                            Spacer()
+                        }
+                        Spacer()
+                    }
+                }
+
                 // Checkmark for active scene (top-right)
                 if isActive {
                     VStack {
@@ -368,8 +381,18 @@ struct RoomDetailView_iOS: View {
                         lineWidth: 2.5
                     )
             )
+        .contentShape(Rectangle())
+        .onTapGesture {
+            activateScene(scene)
         }
-        .buttonStyle(.plain)
+        .onLongPressGesture(minimumDuration: 0.5) {
+            // Haptic feedback
+            let feedback = UIImpactFeedbackGenerator(style: .medium)
+            feedback.impactOccurred()
+
+            // Toggle pin state
+            bridgeManager.toggleScenePin(sceneId: scene.id, forGroupId: groupId)
+        }
     }
 
     private func iconForArchetype(_ archetype: String) -> String {

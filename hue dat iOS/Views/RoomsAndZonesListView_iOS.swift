@@ -7,6 +7,7 @@
 
 import SwiftUI
 import HueDatShared
+import Combine
 
 struct RoomsAndZonesListView_iOS: View {
     @ObservedObject var bridgeManager: BridgeManager
@@ -18,7 +19,25 @@ struct RoomsAndZonesListView_iOS: View {
     @State private var zonesCount = 0
     @State private var loadingStep = 0
     @State private var loadingMessage = ""
+    @State private var searchText = ""
+
+    enum FocusedField {
+        case search
+    }
+    @FocusState private var focusedField: FocusedField?
+
     @Namespace var animation
+
+    // Search functionality
+    @State private var showSearchOverlay = false
+    @State private var searchManager: SearchManager?
+    @State private var toastMessage: String?
+    @State private var showToast = false
+
+    // SSE status tracking
+    @State private var sseStreamState: StreamState = .idle
+    @State private var sseStateCancellable: AnyCancellable?
+    @State private var isReconnecting = false
 
     private var lastUpdateText: String {
         if let lastUpdate = bridgeManager.lastRefreshTimestamp {
@@ -27,6 +46,39 @@ struct RoomsAndZonesListView_iOS: View {
             return "Updated \(formatter.localizedString(for: lastUpdate, relativeTo: Date()))"
         }
         return ""
+    }
+
+    // MARK: - SSE Status Properties
+
+    private var sseStatusColor: Color {
+        switch sseStreamState {
+        case .connected: return .green
+        case .connecting: return .blue
+        case .disconnected, .error: return .red
+        case .idle: return .gray
+        }
+    }
+
+    private var sseStatusText: String {
+        switch sseStreamState {
+        case .connected: return "SSE Connected"
+        case .connecting: return "SSE Connecting..."
+        case .disconnected: return "SSE Disconnected"
+        case .error: return "SSE Connection Error"
+        case .idle: return "SSE Not Started"
+        }
+    }
+
+    private var sseStatusIcon: String {
+        // Use antenna icon for all states - color will differentiate
+        return "antenna.radiowaves.left.and.right"
+    }
+
+    private var showReconnectButton: Bool {
+        switch sseStreamState {
+        case .disconnected, .error, .idle: return true
+        case .connected, .connecting: return false
+        }
     }
 
     @ViewBuilder
@@ -70,15 +122,12 @@ struct RoomsAndZonesListView_iOS: View {
                 Section {
                     ForEach(bridgeManager.rooms) { room in
                         ZStack {
-                            RoomRowView(room: room, isLoading: isLoading)
-
-                            NavigationLink {
-                                RoomDetailView_iOS(roomId: room.id)
-                                    .environmentObject(bridgeManager)
-                            } label: {
+                            NavigationLink(value: room) {
                                 EmptyView()
                             }
                             .opacity(0)
+
+                            RoomRowView(room: room, isLoading: isLoading)
                         }
                         .disabled(isLoading)
                         .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 6, trailing: 16))
@@ -100,15 +149,12 @@ struct RoomsAndZonesListView_iOS: View {
                 Section {
                     ForEach(bridgeManager.zones) { zone in
                         ZStack {
-                            ZoneRowView(zone: zone, isLoading: isLoading)
-
-                            NavigationLink {
-                                ZoneDetailView_iOS(zoneId: zone.id)
-                                    .environmentObject(bridgeManager)
-                            } label: {
+                            NavigationLink(value: zone) {
                                 EmptyView()
                             }
                             .opacity(0)
+
+                            ZoneRowView(zone: zone, isLoading: isLoading)
                         }
                         .disabled(isLoading)
                         .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 6, trailing: 16))
@@ -147,6 +193,24 @@ struct RoomsAndZonesListView_iOS: View {
 
     var body: some View {
         contentWithNavigation
+            .onChange(of: focusedField) { _, newField in
+                let isFocused = newField == .search
+                print("🔍 Search field focus changed: \(isFocused)")
+                withAnimation {
+                    showSearchOverlay = isFocused
+                    print("🔍 showSearchOverlay set to: \(showSearchOverlay)")
+                }
+            }
+            .onChange(of: searchText) { _, newText in
+                print("🔍 Search text changed: '\(newText)'")
+                // Show overlay if field is focused OR there's text
+                if focusedField == .search || !newText.isEmpty {
+                    withAnimation {
+                        showSearchOverlay = true
+                        print("🔍 showSearchOverlay updated to: true (focused: \(focusedField == .search), text: '\(newText)')")
+                    }
+                }
+            }
             .sheet(isPresented: $showSettings) {
                 NavigationStack {
                     SettingsView_iOS(bridgeManager: bridgeManager)
@@ -167,6 +231,19 @@ struct RoomsAndZonesListView_iOS: View {
                 }
             }
             .task {
+                // Initialize SearchManager
+                if searchManager == nil {
+                    searchManager = SearchManager(bridgeManager: bridgeManager)
+                }
+
+                // Subscribe to SSE state changes
+                subscribeToSSEState()
+
+                // Set initial SSE state
+                if bridgeManager.isSSEConnected {
+                    sseStreamState = .connected
+                }
+
                 // Initialize counts
                 roomsCount = bridgeManager.rooms.count
                 zonesCount = bridgeManager.zones.count
@@ -205,39 +282,119 @@ struct RoomsAndZonesListView_iOS: View {
     @ViewBuilder
     private var contentWithNavigation: some View {
         mainContent
+//            .safeAreaBar(edge: .bottom) {
+//                if (!bridgeManager.rooms.isEmpty || !bridgeManager.zones.isEmpty)
+//                    && hasLoadedData {
+//                    searchBarView
+//                }
+//            }
             .navigationTitle("Rooms & Zones")
-            .navigationBarTitleDisplayMode(.large)
+//            .navigationSubtitle(bridgeManager.isRefreshing ? "Loading..." : "\(bridgeManager.rooms.count) Room\(bridgeManager.rooms.count == 1 ? "" : "s") & \(bridgeManager.zones.count) Zone\(bridgeManager.zones.count == 1 ? "" : "s")")
+            .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 toolbarContent
+            }
+            .toolbar {
+                if (!bridgeManager.rooms.isEmpty || !bridgeManager.zones.isEmpty)
+                    && hasLoadedData {
+                    searchToolbarContent
+                }
             }
             .opacity((bridgeManager.isRefreshing && !hasLoadedData) ? 0.5 : 1.0)
             .animation(.easeInOut(duration: 0.3), value: bridgeManager.isRefreshing)
             .overlay {
-                loadingOverlay
+                ZStack {
+                    loadingOverlay
+
+                    if showSearchOverlay {
+                        let _ = print("🔍 Rendering SearchResultsOverlay")
+                        let results = performSearch() // Cache search results
+                        SearchResultsOverlay(
+                            searchResults: results,
+                            searchQuery: searchText,
+                            onRoomTap: navigateToRoom,
+                            onZoneTap: navigateToZone,
+                            onSceneTap: activateScene
+                        )
+                        .transition(.opacity)
+                        .zIndex(100)
+                    }
+                }
             }
+            .toast(isShowing: $showToast, message: toastMessage ?? "")
     }
 
     @ToolbarContentBuilder
     private var toolbarContent: some ToolbarContent {
-        ToolbarItem(placement: .topBarTrailing) {
-            SSEStatusIndicator(bridgeManager: bridgeManager)
-        }
-        .sharedBackgroundVisibility(.hidden)
+        // SSE Status Menu
+        ToolbarItem(placement: .navigationBarTrailing) {
+            Menu {
+                // Status display with colored antenna icon
+                Label {
+                    Text(sseStatusText)
+                } icon: {
+                    Image(systemName: sseStatusIcon)
+                        .foregroundStyle(sseStatusColor)
+                }
 
-        ToolbarItem(placement: .topBarTrailing) {
-            Button {
-                Task {
-                    await turnOffAllLights()
+                // Explanatory caption
+                Text("Real-time updates from your Hue Bridge")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
+                // Reconnect button (only when disconnected)
+                if showReconnectButton {
+                    Divider()
+                    Button {
+                        reconnectSSE()
+                    } label: {
+                        Label("Reconnect", systemImage: "arrow.clockwise")
+                    }
+                    .disabled(isReconnecting || sseStreamState == .connecting)
                 }
             } label: {
-                if isTurningOffLights {
-                    ProgressView()
-                } else {
-                    Image(systemName: "moon")
-                }
+                Image(systemName: "antenna.radiowaves.left.and.right")
+                    .foregroundStyle(sseStatusColor)
             }
-            .disabled(isTurningOffLights || bridgeManager.connectedBridge == nil)
-        }
+        }.sharedBackgroundVisibility(.hidden)
+
+        ToolbarSpacer(.flexible, placement: .topBarTrailing)
+
+        ToolbarItem(placement: .topBarTrailing) {
+            Menu {
+                VStack(alignment: .leading) {
+//                    Text("Custom Dropdown View")
+//                        .font(.headline)
+//                        .padding(.bottom, 5)
+
+                    Button {
+                        Task {
+                            await turnOffAllLights()
+                        }
+                    } label: {
+                        Text("Turn off all lights")
+                        if isTurningOffLights {
+                            ProgressView()
+                        } else {
+                            Image(systemName: "lightbulb.slash")
+                        }
+                    }
+                    .disabled(isTurningOffLights || bridgeManager.connectedBridge == nil)
+                }
+                .padding()
+                .background(Color.white)
+                .cornerRadius(8)
+                .shadow(radius: 5)
+
+            } label: {
+                Image(systemName: "moon.fill") // Icon for the dropdown
+                    .font(.subheadline)
+            }
+            
+            
+        }.sharedBackgroundVisibility(.hidden)
+        
+        ToolbarSpacer(.flexible, placement: .topBarTrailing)
 
         ToolbarItem(placement: .topBarTrailing) {
             Button {
@@ -258,6 +415,68 @@ struct RoomsAndZonesListView_iOS: View {
             }
             .matchedTransitionSource(id: "Settings", in: animation)
         }
+    }
+    
+    @ToolbarContentBuilder
+    private var searchToolbarContent: some ToolbarContent {
+        ToolbarItem(placement: .bottomBar) {
+            searchBarView
+        }
+        if (showSearchOverlay) {
+            ToolbarSpacer(.flexible, placement: .bottomBar)
+            ToolbarItem(placement: .bottomBar) {
+                Button("Close", systemImage: "xmark"){
+                    print("🔍 Clear button tapped")
+                    focusedField = nil
+                    searchText = ""
+                    withAnimation {
+                        showSearchOverlay = false
+                    }
+                }
+            }
+        }
+    }
+    
+    @ViewBuilder
+    private var searchBarView: some View {
+        HStack(spacing: 12) {
+            // Search field container
+            HStack(spacing: 8) {
+                Image(systemName: "magnifyingglass")
+                    .foregroundColor(.secondary)
+
+                TextField("Rooms, Zones, and Scenes", text: $searchText)
+                    .focused($focusedField, equals: .search)
+                    .textInputAutocapitalization(.never)
+                    .disableAutocorrection(true)
+                    .onSubmit {
+                        print("🔍 TextField submitted")
+                    }
+            }
+//            .padding(.horizontal, 8)
+//            .padding(.vertical, 6)
+            //.background(Color(.systemFill))
+            //.cornerRadius(10)
+            // .glassEffect()
+
+            // Clear button - appears when focused or has text
+//            if focusedField == .search || !searchText.isEmpty {
+//                Button {
+//                    print("🔍 Clear button tapped")
+//                    focusedField = nil
+//                    searchText = ""
+//                    withAnimation {
+//                        showSearchOverlay = false
+//                    }
+//                } label: {
+//                    Image(systemName: "xmark.circle.fill")
+//                        .foregroundColor(.secondary)
+//                }
+//                .transition(.opacity.combined(with: .scale))
+//            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 8)
     }
 
     @ViewBuilder
@@ -346,6 +565,111 @@ struct RoomsAndZonesListView_iOS: View {
         }
 
         isTurningOffLights = false
+    }
+
+    // MARK: - SSE Status Functions
+
+    private func subscribeToSSEState() {
+        Task {
+            guard bridgeManager.connectedBridge != nil else { return }
+            let service = HueAPIService.shared
+            let streamSubject = await service.streamStateSubject
+
+            await MainActor.run {
+                sseStateCancellable = streamSubject
+                    .receive(on: DispatchQueue.main)
+                    .sink { state in
+                        sseStreamState = state
+                        if state == .connected {
+                            isReconnecting = false
+                        }
+                    }
+            }
+        }
+    }
+
+    private func reconnectSSE() {
+        isReconnecting = true
+        Task {
+            await bridgeManager.reconnectSSE()
+            // State will be updated via subscription
+        }
+    }
+
+    // MARK: - Search Functions
+
+    private func performSearch() -> SearchResults {
+        guard let searchManager = searchManager else {
+            print("🔍 ⚠️ SearchManager is nil!")
+            return SearchResults(rooms: [], zones: [], scenes: [])
+        }
+        let results = searchManager.search(searchText)
+        print("🔍 Search '\(searchText)' returned: \(results.rooms.count) rooms, \(results.zones.count) zones, \(results.scenes.count) scenes")
+        return results
+    }
+
+    // MARK: - Navigation Handlers
+
+    private func navigateToRoom(_ room: HueRoom) {
+        // Close search
+        searchText = ""
+        focusedField = nil
+        withAnimation {
+            showSearchOverlay = false
+        }
+
+        // Note: Navigation will be handled by ContentView's navigationDestination
+        // We'll use a Notification to trigger navigation
+        NotificationCenter.default.post(
+            name: NSNotification.Name("NavigateToRoom"),
+            object: nil,
+            userInfo: ["room": room]
+        )
+    }
+
+    private func navigateToZone(_ zone: HueZone) {
+        // Close search
+        searchText = ""
+        focusedField = nil
+        withAnimation {
+            showSearchOverlay = false
+        }
+
+        // Note: Navigation will be handled by ContentView's navigationDestination
+        NotificationCenter.default.post(
+            name: NSNotification.Name("NavigateToZone"),
+            object: nil,
+            userInfo: ["zone": zone]
+        )
+    }
+
+    // MARK: - Scene Activation
+
+    private func activateScene(_ sceneResult: SceneSearchResult) {
+        Task { @MainActor in
+            do {
+                try await HueAPIService.shared.activateScene(
+                    sceneId: sceneResult.scene.id
+                )
+
+                // Success - show toast and close search
+                toastMessage = "Scene '\(sceneResult.scene.metadata.name)' applied"
+                withAnimation {
+                    showToast = true
+                    // CONFIGURABLE: Set this to false to keep search open
+                    let closeSearchOnSuccess = true
+                    if closeSearchOnSuccess {
+                        searchText = ""
+                        focusedField = nil
+                        showSearchOverlay = false
+                    }
+                }
+            } catch {
+                // Error - show error alert, keep search open
+                showNetworkErrorAlert = true
+                bridgeManager.refreshError = "Failed to activate scene: \(error.localizedDescription)"
+            }
+        }
     }
 }
 

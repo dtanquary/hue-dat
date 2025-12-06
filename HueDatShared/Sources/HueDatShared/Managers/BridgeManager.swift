@@ -31,6 +31,9 @@ public class BridgeManager: ObservableObject {
     @Published public var isDemoMode: Bool = false  // Demo mode flag for offline demonstration
     @Published public var isRefreshing: Bool = false  // Combined refresh state for UI feedback
 
+    // Scene pinning: [bridgeId: [groupId: [sceneIds]]]
+    @Published public private(set) var pinnedSceneIds: [String: [String: [String]]] = [:]
+
     // Event broadcasting for connection validation
     private let connectionValidationSubject = PassthroughSubject<ConnectionValidationResult, Never>()
     public var connectionValidationPublisher: AnyPublisher<ConnectionValidationResult, Never> {
@@ -50,6 +53,7 @@ public class BridgeManager: ObservableObject {
     private let cachedZonesKey = "CachedZones"
     private let cachedScenesKey = "CachedScenes"
     private let demoModeKey = "DemoMode"
+    private let pinnedScenesKey = "PinnedScenes"
 
     // Refresh state management (concurrent call protection)
     private var isRefreshingRooms: Bool = false
@@ -81,6 +85,7 @@ public class BridgeManager: ObservableObject {
         loadRoomsFromStorage()
         loadZonesFromStorage()
         loadScenesFromStorage()
+        loadPinnedScenesFromStorage()
     }
     
     public func saveConnection(bridge: BridgeInfo, registrationResponse: BridgeRegistrationResponse) {
@@ -123,6 +128,12 @@ public class BridgeManager: ObservableObject {
     }
     
     public func disconnectBridge() {
+        // Remove bridge-specific pinned scenes before clearing connection
+        if let bridgeId = connectedBridge?.bridge.id {
+            pinnedSceneIds[bridgeId] = nil
+            savePinnedScenesToStorage()
+        }
+
         userDefaults.removeObject(forKey: connectedBridgeKey)
         userDefaults.removeObject(forKey: cachedRoomsKey)
         userDefaults.removeObject(forKey: cachedZonesKey)
@@ -698,6 +709,37 @@ public class BridgeManager: ObservableObject {
             print("💾 Saved \(scenes.count) scenes to storage (\(data.count) bytes)")
         } catch {
             print("❌ Failed to save scenes to storage: \(error)")
+        }
+    }
+
+    // MARK: - Pinned Scenes Storage
+
+    private func loadPinnedScenesFromStorage() {
+        guard let data = userDefaults.data(forKey: pinnedScenesKey) else {
+            print("📂 No pinned scenes found")
+            return
+        }
+
+        do {
+            pinnedSceneIds = try JSONDecoder().decode([String: [String: [String]]].self, from: data)
+            let totalPins = pinnedSceneIds.values.flatMap { $0.values }.reduce(0) { $0 + $1.count }
+            print("✅ Loaded \(totalPins) pinned scenes from storage")
+        } catch {
+            print("❌ Failed to load pinned scenes: \(error)")
+            // Clean up corrupted data
+            userDefaults.removeObject(forKey: pinnedScenesKey)
+        }
+    }
+
+    private func savePinnedScenesToStorage() {
+        do {
+            let data = try JSONEncoder().encode(pinnedSceneIds)
+            userDefaults.set(data, forKey: pinnedScenesKey)
+            userDefaults.synchronize()
+            let totalPins = pinnedSceneIds.values.flatMap { $0.values }.reduce(0) { $0 + $1.count }
+            print("💾 Saved \(totalPins) pinned scenes to storage (\(data.count) bytes)")
+        } catch {
+            print("❌ Failed to save pinned scenes to storage: \(error)")
         }
     }
 
@@ -1442,6 +1484,7 @@ public class BridgeManager: ObservableObject {
             // If no errors, update scenes
             self.scenes = response.data
             saveScenesToStorage()
+            validateAndCleanPinnedScenes()
             print("✅ fetchScenes: Success - retrieved \(response.data.count) scenes")
         } catch {
             print("❌ fetchScenes: Error: \(error.localizedDescription)")
@@ -1606,6 +1649,208 @@ public class BridgeManager: ObservableObject {
         let average = brightnesses.reduce(0.0, +) / Double(brightnesses.count)
         print("💡 extractAverageBrightnessFromScene: Average brightness for scene '\(scene.metadata.name)' is \(average)%")
         return average
+    }
+
+    // MARK: - Scene Pinning
+
+    /// Pin a scene to a specific room or zone
+    /// - Parameters:
+    ///   - sceneId: The scene ID to pin
+    ///   - groupId: The room or zone ID (matches scene.group.rid)
+    public func pinScene(sceneId: String, forGroupId groupId: String) {
+        guard let bridgeId = connectedBridge?.bridge.id else {
+            print("⚠️ pinScene: No connected bridge - operation skipped")
+            return
+        }
+
+        // Initialize bridge dictionary if needed
+        if pinnedSceneIds[bridgeId] == nil {
+            pinnedSceneIds[bridgeId] = [:]
+        }
+
+        // Initialize group array if needed
+        if pinnedSceneIds[bridgeId]?[groupId] == nil {
+            pinnedSceneIds[bridgeId]?[groupId] = []
+        }
+
+        // Check if already pinned
+        if let scenes = pinnedSceneIds[bridgeId]?[groupId], scenes.contains(sceneId) {
+            print("📌 pinScene: Scene \(sceneId) already pinned to group \(groupId)")
+            return
+        }
+
+        // Add to pinned list
+        pinnedSceneIds[bridgeId]?[groupId]?.append(sceneId)
+        savePinnedScenesToStorage()
+        print("📌 pinScene: Pinned scene \(sceneId) to group \(groupId)")
+    }
+
+    /// Unpin a scene from a specific room or zone
+    /// - Parameters:
+    ///   - sceneId: The scene ID to unpin
+    ///   - groupId: The room or zone ID
+    public func unpinScene(sceneId: String, forGroupId groupId: String) {
+        guard let bridgeId = connectedBridge?.bridge.id else {
+            print("⚠️ unpinScene: No connected bridge - operation skipped")
+            return
+        }
+
+        guard var groupScenes = pinnedSceneIds[bridgeId]?[groupId] else {
+            print("⚠️ unpinScene: No pinned scenes for group \(groupId)")
+            return
+        }
+
+        groupScenes.removeAll { $0 == sceneId }
+
+        // Update storage
+        if groupScenes.isEmpty {
+            pinnedSceneIds[bridgeId]?[groupId] = nil
+        } else {
+            pinnedSceneIds[bridgeId]?[groupId] = groupScenes
+        }
+
+        savePinnedScenesToStorage()
+        print("📌 unpinScene: Unpinned scene \(sceneId) from group \(groupId)")
+    }
+
+    /// Toggle pin state for a scene
+    /// - Parameters:
+    ///   - sceneId: The scene ID to toggle
+    ///   - groupId: The room or zone ID
+    public func toggleScenePin(sceneId: String, forGroupId groupId: String) {
+        if isScenePinned(sceneId: sceneId, forGroupId: groupId) {
+            unpinScene(sceneId: sceneId, forGroupId: groupId)
+        } else {
+            pinScene(sceneId: sceneId, forGroupId: groupId)
+        }
+    }
+
+    /// Check if a scene is pinned
+    /// - Parameters:
+    ///   - sceneId: The scene ID to check
+    ///   - groupId: The room or zone ID
+    /// - Returns: True if the scene is pinned for this group
+    public func isScenePinned(sceneId: String, forGroupId groupId: String) -> Bool {
+        guard let bridgeId = connectedBridge?.bridge.id else {
+            return false
+        }
+
+        return pinnedSceneIds[bridgeId]?[groupId]?.contains(sceneId) ?? false
+    }
+
+    /// Get all pinned scenes for a specific room
+    /// - Parameter roomId: The room ID
+    /// - Returns: Array of HueScene objects that are pinned (filtered from cached scenes)
+    public func getPinnedScenes(forRoomId roomId: String) -> [HueScene] {
+        guard let bridgeId = connectedBridge?.bridge.id else {
+            return []
+        }
+
+        guard let pinnedIds = pinnedSceneIds[bridgeId]?[roomId] else {
+            return []
+        }
+
+        // Return scenes in pinned order
+        let pinnedScenes = pinnedIds.compactMap { sceneId -> HueScene? in
+            scenes.first { scene in
+                scene.id == sceneId && scene.group.rid == roomId && scene.group.rtype == "room"
+            }
+        }
+
+        return pinnedScenes
+    }
+
+    /// Get all pinned scenes for a specific zone
+    /// - Parameter zoneId: The zone ID
+    /// - Returns: Array of HueScene objects that are pinned (filtered from cached scenes)
+    public func getPinnedScenes(forZoneId zoneId: String) -> [HueScene] {
+        guard let bridgeId = connectedBridge?.bridge.id else {
+            return []
+        }
+
+        guard let pinnedIds = pinnedSceneIds[bridgeId]?[zoneId] else {
+            return []
+        }
+
+        // Return scenes in pinned order
+        let pinnedScenes = pinnedIds.compactMap { sceneId -> HueScene? in
+            scenes.first { scene in
+                scene.id == sceneId && scene.group.rid == zoneId && scene.group.rtype == "zone"
+            }
+        }
+
+        return pinnedScenes
+    }
+
+    /// Get count of pinned scenes for a group
+    /// - Parameter groupId: The room or zone ID
+    /// - Returns: Number of pinned scenes
+    public func getPinnedSceneCount(forGroupId groupId: String) -> Int {
+        guard let bridgeId = connectedBridge?.bridge.id else {
+            return 0
+        }
+
+        return pinnedSceneIds[bridgeId]?[groupId]?.count ?? 0
+    }
+
+    /// Clear all pinned scenes for a specific group
+    /// - Parameter groupId: The room or zone ID
+    public func clearPinnedScenes(forGroupId groupId: String) {
+        guard let bridgeId = connectedBridge?.bridge.id else {
+            print("⚠️ clearPinnedScenes: No connected bridge - operation skipped")
+            return
+        }
+
+        pinnedSceneIds[bridgeId]?[groupId] = nil
+        savePinnedScenesToStorage()
+        print("📌 clearPinnedScenes: Cleared all pinned scenes for group \(groupId)")
+    }
+
+    /// Clear ALL pinned scenes across all bridges
+    public func clearAllPinnedScenes() {
+        pinnedSceneIds = [:]
+        savePinnedScenesToStorage()
+        print("📌 clearAllPinnedScenes: Cleared all pinned scenes")
+    }
+
+    /// Validate and clean up stale pinned scenes
+    /// Removes scene IDs that no longer exist in the current scenes array
+    private func validateAndCleanPinnedScenes() {
+        guard let bridgeId = connectedBridge?.bridge.id else {
+            return
+        }
+
+        guard var bridgePins = pinnedSceneIds[bridgeId] else {
+            return
+        }
+
+        var didClean = false
+
+        for (groupId, sceneIds) in bridgePins {
+            // Get current valid scene IDs for this group
+            let groupScenes = scenes.filter { $0.group.rid == groupId }
+            let validSceneIds = Set(groupScenes.map { $0.id })
+
+            // Filter out stale pins (maintain order with filter, not Set operations)
+            let validPins = sceneIds.filter { validSceneIds.contains($0) }
+
+            if validPins.count != sceneIds.count {
+                let removed = sceneIds.count - validPins.count
+                print("🧹 validateAndCleanPinnedScenes: Cleaned \(removed) stale pinned scene(s) for group \(groupId)")
+
+                if validPins.isEmpty {
+                    bridgePins[groupId] = nil
+                } else {
+                    bridgePins[groupId] = validPins
+                }
+                didClean = true
+            }
+        }
+
+        if didClean {
+            pinnedSceneIds[bridgeId] = bridgePins
+            savePinnedScenesToStorage()
+        }
     }
 
     // MARK: - Light Cache Management
