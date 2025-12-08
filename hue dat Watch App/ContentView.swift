@@ -22,13 +22,23 @@ struct ContentView: View {
     private let resumeDelay: TimeInterval = 3.0  // Network stabilization delay
     @State private var lastResumeTimestamp: Date?
 
+    // Idle timeout - return to list view after 5 minutes of inactivity
+    private let idleTimeoutThreshold: TimeInterval = 5 * 60  // 5 minutes
+    @State private var lastBackgroundTimestamp: Date?
+
     var body: some View {
         NavigationStack(path: $navigationPath) {
             MainMenuView(bridgeManager: bridgeManager)
                 .navigationDestination(for: String.self) { route in
                     if route == "roomsAndZones" {
-                        RoomsAndZonesListView(bridgeManager: bridgeManager)
+                        RoomsAndZonesListView(bridgeManager: bridgeManager, navigationPath: $navigationPath)
                     }
+                }
+                .navigationDestination(for: HueRoom.self) { room in
+                    RoomDetailView(roomId: room.id, bridgeManager: bridgeManager)
+                }
+                .navigationDestination(for: HueZone.self) { zone in
+                    ZoneDetailView(zoneId: zone.id, bridgeManager: bridgeManager)
                 }
         }
         .onAppear {
@@ -52,6 +62,19 @@ struct ContentView: View {
                     // Track resume timestamp for staleness check
                     lastResumeTimestamp = Date()
 
+                    // Check if we've been idle for more than 5 minutes - return to list view
+                    if let backgroundTime = lastBackgroundTimestamp {
+                        let idleTime = Date().timeIntervalSince(backgroundTime)
+                        if idleTime > idleTimeoutThreshold && navigationPath.count > 1 {
+                            print("⏰ App idle for \(Int(idleTime / 60)) minutes - returning to list view")
+                            // Keep only the "roomsAndZones" route, remove detail views
+                            while navigationPath.count > 1 {
+                                navigationPath.removeLast()
+                            }
+                        }
+                    }
+                    lastBackgroundTimestamp = nil
+
                     // App became active - re-validate and reconnect SSE stream with delay
                     Task {
                         await reconnectSSEAfterResume()
@@ -64,6 +87,11 @@ struct ContentView: View {
                     bridgeManager.startPeriodicRefresh()
 
                 case .background, .inactive:
+                    // Track when we went to background for idle timeout check
+                    if lastBackgroundTimestamp == nil {
+                        lastBackgroundTimestamp = Date()
+                    }
+
                     // App going to background/inactive - stop SSE and periodic refresh to save battery
                     stopSSEStream()
                     bridgeManager.stopPeriodicRefresh()

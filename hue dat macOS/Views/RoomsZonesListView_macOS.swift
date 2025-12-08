@@ -276,7 +276,7 @@ struct RoomRowView: View {
                     .fontWeight(.medium)
 
                 if let brightness = brightness {
-                    Text("\(Int(brightness))% brightness")
+                    Text("\(brightness.truncatingRemainder(dividingBy: 1) == 0 ? "\(Int(brightness))" : String(format: "%.1f", brightness))% brightness")
                         .font(.caption)
                         .foregroundColor(.secondary)
                 }
@@ -371,7 +371,7 @@ struct ZoneRowView: View {
                     .fontWeight(.medium)
 
                 if let brightness = brightness {
-                    Text("\(Int(brightness))% brightness")
+                    Text("\(brightness.truncatingRemainder(dividingBy: 1) == 0 ? "\(Int(brightness))" : String(format: "%.1f", brightness))% brightness")
                         .font(.caption)
                         .foregroundColor(.secondary)
                 }

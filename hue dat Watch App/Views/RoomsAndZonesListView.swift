@@ -10,6 +10,7 @@ import HueDatShared
 
 struct RoomsAndZonesListView: View {
     @ObservedObject var bridgeManager: BridgeManager
+    @Binding var navigationPath: NavigationPath
     @State private var hasLoadedData = false
     @State private var rotationAngle: Double = 0
     @State private var showSettings = false
@@ -52,7 +53,7 @@ struct RoomsAndZonesListView: View {
                     if !bridgeManager.rooms.isEmpty {
                         Section("Rooms") {
                             ForEach(bridgeManager.rooms) { room in
-                                NavigationLink(destination: RoomDetailView(roomId: room.id, bridgeManager: bridgeManager)) {
+                                NavigationLink(value: room) {
                                     RoomRowView(room: room, isLoading: isRefreshing)
                                 }
                                 .disabled(isRefreshing)
@@ -64,7 +65,7 @@ struct RoomsAndZonesListView: View {
                     if !bridgeManager.zones.isEmpty {
                         Section("Zones") {
                             ForEach(bridgeManager.zones) { zone in
-                                NavigationLink(destination: ZoneDetailView(zoneId: zone.id, bridgeManager: bridgeManager)) {
+                                NavigationLink(value: zone) {
                                     ZoneRowView(zone: zone, isLoading: isRefreshing)
                                 }
                                 .disabled(isRefreshing)

@@ -114,7 +114,7 @@ struct RoomDetailView_macOS: View {
                     HStack {
                         Spacer()
 
-                        Text("\(Int(displayBrightness))%")
+                        Text(displayBrightness.truncatingRemainder(dividingBy: 1) == 0 ? "\(Int(displayBrightness))%" : String(format: "%.1f%%", displayBrightness))
                             .font(.headline)
                             .foregroundColor(.white)
                             .padding(.horizontal, 12)

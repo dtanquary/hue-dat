@@ -49,11 +49,9 @@ struct RoomRowView: View {
                         .foregroundStyle(.primary)
                 }
 
-                if let brightness = status.brightness {
-                    Text("\(Int(brightness))%")
-                        .font(.callout)
-                        .foregroundStyle(.secondary)
-                }
+                Text(brightnessText(status.brightness))
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
             }
             .padding(.trailing, 12)
         }
@@ -94,6 +92,14 @@ struct RoomRowView: View {
         case "recreation": return "gamecontroller"
         default: return "lightbulb.led.fill"
         }
+    }
+
+    private func brightnessText(_ brightness: Double?) -> String {
+        guard let brightness = brightness else { return "--" }
+        if brightness.truncatingRemainder(dividingBy: 1) == 0 {
+            return "\(Int(brightness))%"
+        }
+        return String(format: "%.1f%%", brightness)
     }
 }
 

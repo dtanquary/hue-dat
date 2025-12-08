@@ -24,6 +24,10 @@ struct ContentView: View {
     private let refreshThreshold: TimeInterval = 30 * 60  // 30 minutes
     @State private var lastResumeTimestamp: Date?
 
+    // Idle timeout - return to list view after 5 minutes of inactivity
+    private let idleTimeoutThreshold: TimeInterval = 5 * 60  // 5 minutes
+    @State private var lastBackgroundTimestamp: Date?
+
     var body: some View {
         ZStack {
             NavigationStack(path: $navigationPath) {
@@ -127,6 +131,16 @@ struct ContentView: View {
                     // Track resume timestamp for staleness check
                     lastResumeTimestamp = Date()
 
+                    // Check if we've been idle for more than 5 minutes - return to list view
+                    if let backgroundTime = lastBackgroundTimestamp {
+                        let idleTime = Date().timeIntervalSince(backgroundTime)
+                        if idleTime > idleTimeoutThreshold && !navigationPath.isEmpty {
+                            print("⏰ App idle for \(Int(idleTime / 60)) minutes - returning to list view")
+                            navigationPath.removeLast(navigationPath.count)
+                        }
+                    }
+                    lastBackgroundTimestamp = nil
+
                     // App became active - re-validate and reconnect SSE stream
                     Task {
                         await reconnectSSEAfterResume()
@@ -139,6 +153,11 @@ struct ContentView: View {
                     bridgeManager.startPeriodicRefresh()
 
                 case .background, .inactive:
+                    // Track when we went to background for idle timeout check
+                    if lastBackgroundTimestamp == nil {
+                        lastBackgroundTimestamp = Date()
+                    }
+
                     // App going to background/inactive - stop SSE and periodic refresh to save battery
                     stopSSEStream()
                     bridgeManager.stopPeriodicRefresh()

@@ -332,15 +332,17 @@ struct RoomsAndZonesListView_iOS: View {
                 // Status display with colored antenna icon
                 Label {
                     Text(sseStatusText)
+                        .fontWeight(.semibold)
                 } icon: {
                     Image(systemName: sseStatusIcon)
+                        .symbolRenderingMode(.palette)
                         .foregroundStyle(sseStatusColor)
                 }
 
                 // Explanatory caption
                 Text("Real-time updates from your Hue Bridge")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
 
                 // Reconnect button (only when disconnected)
                 if showReconnectButton {
@@ -358,60 +360,85 @@ struct RoomsAndZonesListView_iOS: View {
             }
         }.sharedBackgroundVisibility(.hidden)
 
-        ToolbarSpacer(.flexible, placement: .topBarTrailing)
+//        ToolbarItem(placement: .topBarTrailing) {
+//            Menu {
+//                Button {
+//                    Task {
+//                        await turnOffAllLights()
+//                    }
+//                } label: {
+//                    Label("Turn off all lights", systemImage: "lightbulb.slash")
+//                }
+//                .disabled(isTurningOffLights || bridgeManager.connectedBridge == nil)
+//            } label: {
+//                if isTurningOffLights {
+//                    ProgressView()
+//                } else {
+//                    Image(systemName: "moon.fill")
+//                }
+//            }
+//        }.sharedBackgroundVisibility(.hidden)
 
+//        ToolbarItem(placement: .topBarTrailing) {
+//            Button {
+//                Task {
+//                    await refreshData(forceRefresh: true)
+//                }
+//            } label: {
+//                Image(systemName: "arrow.clockwise")
+//                    .symbolEffect(.rotate, isActive: bridgeManager.isRefreshing)
+//                    
+//            }
+//            .disabled(bridgeManager.isRefreshing)
+//        }
+//
+//        ToolbarItem(placement: .topBarTrailing) {
+//            Button("Settings", systemImage: "gear"){
+//                showSettings = true
+//            }
+//            .matchedTransitionSource(id: "Settings", in: animation)
+//        }
+        
         ToolbarItem(placement: .topBarTrailing) {
             Menu {
-                VStack(alignment: .leading) {
-//                    Text("Custom Dropdown View")
-//                        .font(.headline)
-//                        .padding(.bottom, 5)
-
-                    Button {
-                        Task {
-                            await turnOffAllLights()
-                        }
-                    } label: {
-                        Text("Turn off all lights")
-                        if isTurningOffLights {
-                            ProgressView()
-                        } else {
-                            Image(systemName: "lightbulb.slash")
-                        }
-                    }
-                    .disabled(isTurningOffLights || bridgeManager.connectedBridge == nil)
+                PinnedScenesListView { scene, groupId in
+                    activateSceneFromPinned(scene, groupId: groupId)
                 }
-                .padding()
-                .background(Color.white)
-                .cornerRadius(8)
-                .shadow(radius: 5)
-
+                .environmentObject(bridgeManager)
             } label: {
-                Image(systemName: "moon.fill") // Icon for the dropdown
-                    .font(.subheadline)
+                Image(systemName: "pin.fill")
             }
-            
-            
-        }.sharedBackgroundVisibility(.hidden)
-        
-        ToolbarSpacer(.flexible, placement: .topBarTrailing)
-
-        ToolbarItem(placement: .topBarTrailing) {
-            Button {
-                Task {
-                    await refreshData(forceRefresh: true)
-                }
-            } label: {
-                Image(systemName: "arrow.clockwise")
-                    .symbolEffect(.rotate, isActive: bridgeManager.isRefreshing)
-                    
-            }
-            .disabled(bridgeManager.isRefreshing)
         }
-
+        
+        ToolbarSpacer(placement: .topBarTrailing)
+        
         ToolbarItem(placement: .topBarTrailing) {
-            Button("Settings", systemImage: "gear"){
-                showSettings = true
+            Menu {
+                Button {
+                    Task {
+                        await turnOffAllLights()
+                    }
+                } label: {
+                    Label("Turn off all lights", systemImage: "moon.fill")
+                }
+                .disabled(isTurningOffLights || bridgeManager.connectedBridge == nil)
+                
+                Button {
+                    Task {
+                        await refreshData(forceRefresh: true)
+                    }
+                } label: {
+                    Label("Refresh Data", systemImage: "arrow.clockwise")
+                        .symbolEffect(.rotate, isActive: bridgeManager.isRefreshing)
+                        
+                }
+                .disabled(bridgeManager.isRefreshing || bridgeManager.connectedBridge == nil)
+                
+                Button("Settings", systemImage: "gear"){
+                    showSettings = true
+                }
+            } label: {
+                Image(systemName: "ellipsis")
             }
             .matchedTransitionSource(id: "Settings", in: animation)
         }
@@ -666,6 +693,26 @@ struct RoomsAndZonesListView_iOS: View {
                 }
             } catch {
                 // Error - show error alert, keep search open
+                showNetworkErrorAlert = true
+                bridgeManager.refreshError = "Failed to activate scene: \(error.localizedDescription)"
+            }
+        }
+    }
+
+    private func activateSceneFromPinned(_ scene: HueScene, groupId: String) {
+        Task { @MainActor in
+            do {
+                try await HueAPIService.shared.activateScene(
+                    sceneId: scene.id
+                )
+
+                // Success - show toast
+                toastMessage = "Scene '\(scene.metadata.name)' applied"
+                withAnimation {
+                    showToast = true
+                }
+            } catch {
+                // Error - show error alert
                 showNetworkErrorAlert = true
                 bridgeManager.refreshError = "Failed to activate scene: \(error.localizedDescription)"
             }

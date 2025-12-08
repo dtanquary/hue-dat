@@ -65,7 +65,7 @@ struct ZoneDetailView_iOS: View {
                     Spacer()
 
                     // Brightness percentage display
-                    Text("\(Int(displayBrightness))%")
+                    Text(displayBrightness.truncatingRemainder(dividingBy: 1) == 0 ? "\(Int(displayBrightness))%" : String(format: "%.1f%%", displayBrightness))
                         .font(.title.bold())
                         .foregroundColor(.white)
                         .padding(.horizontal, 20)
