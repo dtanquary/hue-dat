@@ -8,13 +8,14 @@
 import Foundation
 import AppKit
 
-@MainActor
+/// Manages popover size persistence.
+/// Note: Not marked @MainActor to allow safe access from NSView callbacks.
+/// All operations (UserDefaults, NSScreen) are thread-safe.
 class PopoverSizeManager {
     static let shared = PopoverSizeManager()
 
     private let userDefaults = UserDefaults.standard
     private let popoverHeightKey = "PopoverHeight"
-    private let screenResolutionKey = "PopoverScreenResolution"
 
     private let defaultHeight: CGFloat = 480
     private let minHeight: CGFloat = 300
@@ -22,20 +23,15 @@ class PopoverSizeManager {
     private let width: CGFloat = 320
 
     private init() {
-        // Check if screen resolution has changed and reset if needed
-        checkAndResetIfResolutionChanged()
-
-        // Listen for screen configuration changes
+        debugLog("📐 [PopoverSizeManager] init - singleton created")
+        // Listen for screen configuration changes (height will be clamped dynamically)
         NotificationCenter.default.addObserver(
             self,
             selector: #selector(screenConfigurationChanged),
             name: NSApplication.didChangeScreenParametersNotification,
             object: nil
         )
-    }
-
-    deinit {
-        NotificationCenter.default.removeObserver(self)
+        // Note: No deinit needed - singleton is never deallocated
     }
 
     /// Get the maximum allowed height based on current screen
@@ -75,38 +71,15 @@ class PopoverSizeManager {
 
     /// Get the content size for NSPopover initialization
     var contentSize: NSSize {
-        NSSize(width: width, height: savedHeight)
+        let size = NSSize(width: width, height: savedHeight)
+        debugLog("📐 [PopoverSizeManager] contentSize accessed: \(size)")
+        return size
     }
 
-    // MARK: - Screen Resolution Tracking
-
-    private func currentScreenResolution() -> String? {
-        guard let screen = NSScreen.main else { return nil }
-        let frame = screen.frame
-        return "\(Int(frame.width))x\(Int(frame.height))"
-    }
-
-    private func checkAndResetIfResolutionChanged() {
-        let currentResolution = currentScreenResolution()
-        let savedResolution = userDefaults.string(forKey: screenResolutionKey)
-
-        // If resolution changed or this is first launch
-        if let current = currentResolution, current != savedResolution {
-            print("📺 PopoverSizeManager: Screen resolution changed from \(savedResolution ?? "none") to \(current) - resetting to default")
-            resetToDefault()
-            if let resolution = currentResolution {
-                userDefaults.set(resolution, forKey: screenResolutionKey)
-            }
-        }
-    }
+    // MARK: - Screen Configuration Observer
 
     @objc private func screenConfigurationChanged() {
-        print("📺 PopoverSizeManager: Screen configuration changed")
-        checkAndResetIfResolutionChanged()
-    }
-
-    private func resetToDefault() {
-        userDefaults.removeObject(forKey: popoverHeightKey)
-        print("📺 PopoverSizeManager: Reset to default height (\(defaultHeight))")
+        // Height will be automatically clamped via savedHeight getter when accessed
+        debugLog("📺 PopoverSizeManager: Screen configuration changed - height will be clamped if needed")
     }
 }

@@ -112,9 +112,7 @@ class PopoverResizeHandle: NSView {
         NSCursor.pop()
 
         if let height = popover?.contentSize.height {
-            Task { @MainActor in
-                PopoverSizeManager.shared.saveHeight(height)
-            }
+            PopoverSizeManager.shared.saveHeight(height)
         }
     }
 }

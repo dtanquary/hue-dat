@@ -97,6 +97,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     var aboutWindow: NSWindow?
     var eventMonitor: EventMonitor?
 
+    // Strong references to prevent premature deallocation (fixes crash after reboot)
+    var hostingController: NSHostingController<AnyView>?
+    var popoverEnvironment: PopoverEnvironment?
+
     // MARK: - SwiftUI Window Alternative Properties
     var windowManager: WindowManager?
 
@@ -108,6 +112,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private let minimumDelayAfterWake: TimeInterval = 3.0  // 3 seconds
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        // Initialize debug logger FIRST
+        debugLog("🚀 applicationDidFinishLaunching - starting up")
+        debugLog("Log file: \(DebugLogger.shared.logFilePath)")
+
         // Initialize bridge manager on main thread
         bridgeManager = BridgeManager()
 
@@ -148,10 +156,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func setupPopover() {
+        debugLog("📦 setupPopover() - creating NSPopover")
         let popover = NSPopover()
+        debugLog("📦 setupPopover() - getting content size from PopoverSizeManager")
         popover.contentSize = PopoverSizeManager.shared.contentSize
         popover.behavior = .transient
         self.popover = popover
+        debugLog("📦 setupPopover() - popover created with size: \(popover.contentSize)")
     }
 
     @objc func handleStatusItemClick(_ sender: NSStatusBarButton) {
@@ -207,48 +218,90 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func showPopover() {
-        guard let popover = popover, let button = statusItem?.button else { return }
+        guard let popover = popover, let button = statusItem?.button else {
+            debugLog("⚠️ showPopover() - early return: popover=\(self.popover != nil), button=\(statusItem?.button != nil)")
+            return
+        }
 
-        print("🚀 HueDatMacApp: showPopover() - creating content view")
+        debugLog("🚀 showPopover() - creating content view")
 
-        // Create popover environment and set the popover reference
-        let popoverEnvironment = PopoverEnvironment(popover: popover)
+        // Store popover environment as property to prevent premature deallocation
+        debugLog("🚀 showPopover() - creating PopoverEnvironment")
+        popoverEnvironment = PopoverEnvironment(popover: popover)
+        debugLog("🚀 showPopover() - PopoverEnvironment created")
 
         // Recreate content view controller for fresh material rendering
+        debugLog("🚀 showPopover() - creating MenuBarPanelView")
         let contentView = MenuBarPanelView()
             .environmentObject(bridgeManager)
-            .environment(popoverEnvironment)
+            .environment(popoverEnvironment!)
 
-        let hostingController = NSHostingController(rootView: contentView)
+        // Store hosting controller as property to ensure it stays alive
+        debugLog("🚀 showPopover() - creating NSHostingController")
+        hostingController = NSHostingController(rootView: AnyView(contentView))
         popover.contentViewController = hostingController
-
-        print("🚀 HueDatMacApp: Created hosting controller")
+        debugLog("🚀 showPopover() - NSHostingController created and assigned")
 
         // Critical: Activate app to ensure transient behavior works
+        debugLog("🚀 showPopover() - activating app")
         NSApp.activate(ignoringOtherApps: true)
 
         // Show popover
+        debugLog("🚀 showPopover() - calling popover.show()")
         popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
+        debugLog("🚀 showPopover() - popover.show() completed")
 
         // Explicitly ensure popover window gets keyboard focus
         if let popoverWindow = popover.contentViewController?.view.window {
             popoverWindow.makeKey()
+            debugLog("🚀 showPopover() - popover window made key")
         }
 
         // Start event monitor to catch outside clicks
+        debugLog("🚀 showPopover() - creating EventMonitor")
         eventMonitor = EventMonitor { [weak self] in
+            debugLogSync("👁️ EventMonitor handler called - will close popover")
             self?.closePopover()
         }
         eventMonitor?.start()
+        debugLog("🚀 showPopover() - EventMonitor started")
 
         // Check timestamp and trigger auto-refresh if needed
+        debugLog("🚀 showPopover() - calling checkAndRefreshIfNeeded()")
         checkAndRefreshIfNeeded()
+        debugLog("🚀 showPopover() - complete")
     }
 
     func closePopover() {
+        debugLogSync("🔻 Starting popover close sequence")
+        debugLogSync("🔻 popover: \(popover != nil ? "exists" : "nil")")
+        debugLogSync("🔻 popover.isShown: \(popover?.isShown ?? false)")
+        debugLogSync("🔻 eventMonitor: \(eventMonitor != nil ? "exists" : "nil")")
+        debugLogSync("🔻 hostingController: \(hostingController != nil ? "exists" : "nil")")
+        debugLogSync("🔻 popoverEnvironment: \(popoverEnvironment != nil ? "exists" : "nil")")
+
+        debugLogSync("🔻 Step 1: Calling popover?.performClose(nil)")
         popover?.performClose(nil)
+        debugLogSync("🔻 Step 1 complete")
+
+        debugLogSync("🔻 Step 2: Calling eventMonitor?.stop()")
         eventMonitor?.stop()
+        debugLogSync("🔻 Step 2 complete")
+
+        debugLogSync("🔻 Step 3: Setting eventMonitor = nil")
         eventMonitor = nil
+        debugLogSync("🔻 Step 3 complete")
+
+        // Clear strong references after popover is closed
+        debugLogSync("🔻 Step 4: Setting hostingController = nil")
+        hostingController = nil
+        debugLogSync("🔻 Step 4 complete")
+
+        debugLogSync("🔻 Step 5: Setting popoverEnvironment = nil")
+        popoverEnvironment = nil
+        debugLogSync("🔻 Step 5 complete")
+
+        debugLogSync("🔻 Popover close sequence finished")
     }
 
     // MARK: - SwiftUI Window Alternative Methods
@@ -403,8 +456,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationWillResignActive(_ notification: Notification) {
+        debugLogSync("⚡️ App losing focus - triggering closePopover()")
         // Close popover when app loses focus for additional reliability
         closePopover()
+        debugLogSync("⚡️ closePopover() completed")
     }
 
     func showContextMenu() {
