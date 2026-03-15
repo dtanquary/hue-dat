@@ -7,6 +7,7 @@
 
 import Foundation
 import Combine
+import os
 
 // MARK: - API Errors
 
@@ -137,7 +138,7 @@ public actor HueAPIService {
             } catch {
                 // Log raw response for debugging
                 if let responseString = String(data: data, encoding: .utf8) {
-                    print("❌ Failed to decode response. Raw data: \(responseString)")
+                    AppLogger.api.error("Failed to decode response. Raw data: \(responseString, privacy: .private)")
                 }
                 throw HueAPIError.decodingError(error)
             }
@@ -173,7 +174,7 @@ public actor HueAPIService {
             let timeSinceLastUpdate = now.timeIntervalSince(lastUpdate)
             if timeSinceLastUpdate < groupedLightRateLimit {
                 // Rate limited - drop this request
-                print("⏭️ Dropping grouped light update for \(groupedLightId): too soon (\(String(format: "%.1f", timeSinceLastUpdate))s since last)")
+                AppLogger.api.debug("Dropping grouped light update for \(groupedLightId, privacy: .public): too soon (\(String(format: "%.1f", timeSinceLastUpdate), privacy: .public)s since last)")
                 return false
             }
         }
@@ -221,7 +222,7 @@ public actor HueAPIService {
             throw HueAPIError.httpError(statusCode: httpResponse.statusCode)
         }
 
-        print("✅ Set power: \(on ? "ON" : "OFF") for grouped light \(groupedLightId)")
+        AppLogger.api.info("Set power: \(on ? "ON" : "OFF", privacy: .public) for grouped light \(groupedLightId, privacy: .public)")
     }
 
     /// Set brightness for a grouped light (room or zone)
@@ -265,7 +266,7 @@ public actor HueAPIService {
             throw HueAPIError.httpError(statusCode: httpResponse.statusCode)
         }
 
-        print("✅ Set brightness: \(brightness)% for grouped light \(groupedLightId)")
+        AppLogger.api.info("Set brightness: \(brightness, privacy: .public)% for grouped light \(groupedLightId, privacy: .public)")
     }
 
     /// Adjust brightness relatively for a grouped light (room or zone)
@@ -312,7 +313,7 @@ public actor HueAPIService {
             throw HueAPIError.httpError(statusCode: httpResponse.statusCode)
         }
 
-        print("✅ Adjusted brightness: \(delta > 0 ? "+" : "")\(delta)% for grouped light \(groupedLightId)")
+        AppLogger.api.info("Adjusted brightness: \(delta > 0 ? "+" : "", privacy: .public)\(delta, privacy: .public)% for grouped light \(groupedLightId, privacy: .public)")
     }
 
     // MARK: - Scene Methods
@@ -358,7 +359,7 @@ public actor HueAPIService {
             throw HueAPIError.httpError(statusCode: httpResponse.statusCode)
         }
 
-        print("✅ Activated scene \(sceneId)")
+        AppLogger.api.info("Activated scene \(sceneId, privacy: .public)")
     }
 
     // MARK: - Connection Validation
@@ -406,7 +407,7 @@ public actor HueAPIService {
         streamTask?.cancel()
         streamTask = nil
         streamStateSubject.send(.idle)
-        print("🛑 SSE stream stopped and cleaned up")
+        AppLogger.sse.info("SSE stream stopped and cleaned up")
     }
 
     private func streamEvents() async {
@@ -438,11 +439,11 @@ public actor HueAPIService {
             // Verify content type
             if let contentType = httpResponse.value(forHTTPHeaderField: "Content-Type"),
                !contentType.contains("text/event-stream") {
-                print("⚠️ Warning: Expected text/event-stream, got \(contentType)")
+                AppLogger.sse.warning("Expected text/event-stream, got \(contentType, privacy: .public)")
             }
 
             streamStateSubject.send(.connected)
-            print("✅ SSE stream connected (HTTP/2 multiplexing enabled)")
+            AppLogger.sse.info("SSE stream connected (HTTP/2 multiplexing enabled)")
 
             // Process SSE stream
             for try await line in bytes.lines {
@@ -455,13 +456,13 @@ public actor HueAPIService {
                             do {
                                 let events = try JSONDecoder().decode([SSEEvent].self, from: jsonData)
                                 if !events.isEmpty {
-                                    print("📦 Parsed \(events.count) SSE event(s)")
+                                    AppLogger.sse.debug("Parsed \(events.count, privacy: .public) SSE event(s)")
                                     // Publish to subscribers
                                     eventPublisher.send(events)
                                 }
                             } catch {
-                                print("⚠️ Failed to parse SSE event JSON: \(error)")
-                                print("  Raw data: \(jsonString.prefix(200))...")
+                                AppLogger.sse.warning("Failed to parse SSE event JSON: \(error.localizedDescription, privacy: .public)")
+                                AppLogger.sse.debug("Raw data: \(jsonString.prefix(200), privacy: .private)...")
                             }
                         }
                     }
@@ -470,7 +471,7 @@ public actor HueAPIService {
                     continue
                 } else if line.hasPrefix("event:") {
                     // Event type - could track this if needed
-                    print("🏷️ Event type: \(line.dropFirst(6))")
+                    AppLogger.sse.debug("Event type: \(line.dropFirst(6), privacy: .public)")
                 } else if line.hasPrefix("id:") {
                     // Event ID - could track for reconnection
                     continue
@@ -479,25 +480,25 @@ public actor HueAPIService {
                     continue
                 } else {
                     // Unknown SSE field
-                    print("❓ Unknown SSE field: \(line)")
+                    AppLogger.sse.warning("Unknown SSE field: \(line, privacy: .public)")
                 }
             }
 
             // Stream ended normally
             streamStateSubject.send(.disconnected(nil))
-            print("ℹ️ SSE stream ended")
+            AppLogger.sse.info("SSE stream ended")
 
         } catch is CancellationError {
             // Clean cancellation
             streamStateSubject.send(.disconnected(nil))
-            print("ℹ️ SSE stream cancelled")
+            AppLogger.sse.info("SSE stream cancelled")
         } catch let error as URLError where error.code == .networkConnectionLost {
             // Network connection lost - common during network transitions
-            print("⚠️ SSE stream: Network connection lost (bridge may have reset connection)")
+            AppLogger.sse.warning("SSE stream: Network connection lost (bridge may have reset connection)")
             streamStateSubject.send(.disconnected(error))
         } catch {
             // Other errors
-            print("❌ SSE stream error: \(error)")
+            AppLogger.sse.error("SSE stream error: \(error.localizedDescription, privacy: .public)")
             streamStateSubject.send(.error("Stream error: \(error.localizedDescription)"))
         }
     }

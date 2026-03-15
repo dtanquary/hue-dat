@@ -8,6 +8,7 @@
 
 import Foundation
 import Combine
+import os
 
 /// Processes SSE events from the Hue bridge and updates BridgeManager state.
 ///
@@ -70,17 +71,17 @@ public class SSEEventProcessor {
         guard let bm = bridgeManager else { return }
 
         if bm.isDemoMode {
-            print("startListeningToSSEEvents: Demo mode - skipping SSE")
+            AppLogger.sse.debug("startListeningToSSEEvents: Demo mode - skipping SSE")
             return
         }
 
         // Prevent duplicate subscriptions
         if eventSubscription != nil && streamStateSubscription != nil {
-            print("SSE event listeners already running - skipping duplicate start")
+            AppLogger.sse.warning("SSE event listeners already running - skipping duplicate start")
             return
         }
 
-        print("Starting SSE event listener")
+        AppLogger.sse.debug("Starting SSE event listener")
 
         // Cancel any existing subscriptions first to prevent memory leaks
         eventSubscription?.cancel()
@@ -122,7 +123,7 @@ public class SSEEventProcessor {
 
     /// Stop listening to SSE events.
     public func stopListeningToSSEEvents() {
-        print("Stopping SSE event listener")
+        AppLogger.sse.info("Stopping SSE event listener")
         eventSubscription?.cancel()
         streamStateSubscription?.cancel()
         eventSubscription = nil
@@ -139,16 +140,16 @@ public class SSEEventProcessor {
         guard let bm = bridgeManager else { return }
 
         guard bm.isConnected else {
-            print("Cannot reconnect SSE - no bridge connected")
+            AppLogger.sse.warning("Cannot reconnect SSE - no bridge connected")
             return
         }
 
         if bm.isSSEConnected {
-            print("SSE already connected - skipping reconnection")
+            AppLogger.sse.info("SSE already connected - skipping reconnection")
             return
         }
 
-        print("Manually reconnecting SSE stream...")
+        AppLogger.sse.debug("Manually reconnecting SSE stream...")
 
         stopListeningToSSEEvents()
         bm.reconnectAttempts = 0
@@ -156,9 +157,9 @@ public class SSEEventProcessor {
 
         do {
             try await HueAPIService.shared.startEventStream()
-            print("SSE stream reconnected successfully")
+            AppLogger.sse.info("SSE stream reconnected successfully")
         } catch {
-            print("Failed to reconnect SSE stream: \(error.localizedDescription)")
+            AppLogger.sse.error("Failed to reconnect SSE stream: \(error.localizedDescription, privacy: .public)")
         }
     }
 
@@ -170,7 +171,7 @@ public class SSEEventProcessor {
 
         guard !relevantUpdates.isEmpty else { return }
 
-        print("Processing \(relevantUpdates.count) relevant event(s)")
+        AppLogger.sse.debug("Processing \(relevantUpdates.count, privacy: .public) relevant event(s)")
 
         for eventData in relevantUpdates {
             switch eventData.resourceType {
@@ -191,7 +192,7 @@ public class SSEEventProcessor {
     /// Handle grouped_light update event.
     private func handleGroupedLightUpdate(_ data: SSEEventData) async {
         guard let bm = bridgeManager else { return }
-        print("Grouped light update: \(data.debugDescription)")
+        AppLogger.sse.debug("Grouped light update: \(data.debugDescription, privacy: .public)")
 
         let groupedLightId = data.id
 
@@ -201,7 +202,7 @@ public class SSEEventProcessor {
             await MainActor.run {
                 bm.updateLocalRoomState(roomId: roomId, on: on, brightness: brightness)
             }
-            print("  Updated room \(roomId)")
+            AppLogger.sse.debug("Updated room \(roomId, privacy: .public)")
         }
 
         if let zoneId = groupedLightToZoneMap[groupedLightId] {
@@ -210,7 +211,7 @@ public class SSEEventProcessor {
             await MainActor.run {
                 bm.updateLocalZoneState(zoneId: zoneId, on: on, brightness: brightness)
             }
-            print("  Updated zone \(zoneId)")
+            AppLogger.sse.debug("Updated zone \(zoneId, privacy: .public)")
         }
     }
 
@@ -228,7 +229,7 @@ public class SSEEventProcessor {
                 let archetype = metadata.archetype ?? updatedItem.metadata.archetype
                 updatedItem.metadata = GroupMetadata(name: name, archetype: archetype)
                 collection[index] = updatedItem
-                print("  Updated \(label) '\(name)' metadata")
+                AppLogger.sse.debug("Updated \(label, privacy: .public) '\(name, privacy: .public)' metadata")
             }
         }
     }
@@ -236,7 +237,7 @@ public class SSEEventProcessor {
     /// Handle room metadata update event.
     private func handleRoomUpdate(_ data: SSEEventData) async {
         guard let bm = bridgeManager else { return }
-        print("Room update: \(data.debugDescription)")
+        AppLogger.sse.debug("Room update: \(data.debugDescription, privacy: .public)")
         await MainActor.run {
             self.handleGroupMetadataUpdate(data, in: &bm.rooms, label: "room")
         }
@@ -245,7 +246,7 @@ public class SSEEventProcessor {
     /// Handle zone metadata update event.
     private func handleZoneUpdate(_ data: SSEEventData) async {
         guard let bm = bridgeManager else { return }
-        print("Zone update: \(data.debugDescription)")
+        AppLogger.sse.debug("Zone update: \(data.debugDescription, privacy: .public)")
         await MainActor.run {
             self.handleGroupMetadataUpdate(data, in: &bm.zones, label: "zone")
         }
@@ -253,9 +254,9 @@ public class SSEEventProcessor {
 
     /// Handle scene status update event.
     private func handleSceneUpdate(_ data: SSEEventData) async {
-        print("Scene update: \(data.debugDescription)")
+        AppLogger.sse.debug("Scene update: \(data.debugDescription, privacy: .public)")
         if let status = data.status?.active {
-            print("  Scene \(data.id.prefix(8)) is now: \(status)")
+            AppLogger.sse.debug("Scene \(data.id.prefix(8), privacy: .public) is now: \(status, privacy: .public)")
         }
     }
 
@@ -270,7 +271,7 @@ public class SSEEventProcessor {
         }
 
         if shouldSkip {
-            print("Skipping SSE reconnection - no active bridge connection")
+            AppLogger.sse.warning("Skipping SSE reconnection - no active bridge connection")
             return
         }
 
@@ -281,7 +282,7 @@ public class SSEEventProcessor {
             return (bm.reconnectAttempts, delay)
         }
 
-        print("SSE disconnected. Reconnecting in \(Int(delay))s (attempt \(currentAttempt)/\(maxReconnectAttempts))")
+        AppLogger.sse.debug("SSE disconnected. Reconnecting in \(Int(delay), privacy: .public)s (attempt \(currentAttempt, privacy: .public)/\(self.maxReconnectAttempts, privacy: .public))")
 
         try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
 
@@ -291,18 +292,18 @@ public class SSEEventProcessor {
         }
 
         guard bridgeStillConnected else {
-            print("Bridge disconnected during reconnection delay - aborting")
+            AppLogger.sse.warning("Bridge disconnected during reconnection delay - aborting")
             return
         }
 
         do {
             try await HueAPIService.shared.startEventStream()
-            print("SSE stream reconnected")
+            AppLogger.sse.info("SSE stream reconnected")
             await MainActor.run { [weak self] in
                 self?.bridgeManager?.reconnectAttempts = 0
             }
         } catch {
-            print("Failed to reconnect SSE stream: \(error)")
+            AppLogger.sse.error("Failed to reconnect SSE stream: \(error.localizedDescription, privacy: .public)")
         }
     }
 }

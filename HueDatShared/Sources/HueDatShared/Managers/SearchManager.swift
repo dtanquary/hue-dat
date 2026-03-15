@@ -6,6 +6,7 @@
 //
 
 import Foundation
+import os
 
 // MARK: - Scene Search Result with Context
 
@@ -99,7 +100,7 @@ public class SearchManager: ObservableObject {
     /// - Parameter query: Search string (empty returns no results)
     /// - Returns: Search results container
     public func search(_ query: String) -> SearchResults {
-        print("🔍 SearchManager: Searching for '\(query)'")
+        AppLogger.search.debug("Searching for '\(query, privacy: .public)'")
 
         let rooms = searchRooms(query)
         let zones = searchZones(query)
@@ -107,7 +108,7 @@ public class SearchManager: ObservableObject {
 
         let results = SearchResults(rooms: rooms, zones: zones, scenes: scenes)
 
-        print("   ✓ Found \(results.totalCount) total matches (rooms: \(rooms.count), zones: \(zones.count), scenes: \(scenes.count))")
+        AppLogger.search.debug("Found \(results.totalCount, privacy: .public) total matches (rooms: \(rooms.count, privacy: .public), zones: \(zones.count, privacy: .public), scenes: \(scenes.count, privacy: .public))")
 
         return results
     }
@@ -117,7 +118,7 @@ public class SearchManager: ObservableObject {
     /// - Returns: Array of matching rooms
     public func searchRooms(_ query: String) -> [HueRoom] {
         guard let bridgeManager = bridgeManager else {
-            print("⚠️ SearchManager: BridgeManager not available")
+            AppLogger.search.warning("BridgeManager not available")
             return []
         }
 
@@ -135,7 +136,7 @@ public class SearchManager: ObservableObject {
     /// - Returns: Array of matching zones
     public func searchZones(_ query: String) -> [HueZone] {
         guard let bridgeManager = bridgeManager else {
-            print("⚠️ SearchManager: BridgeManager not available")
+            AppLogger.search.warning("BridgeManager not available")
             return []
         }
 
@@ -153,7 +154,7 @@ public class SearchManager: ObservableObject {
     /// - Returns: Array of matching scenes with context
     public func searchScenes(_ query: String) -> [SceneSearchResult] {
         guard let bridgeManager = bridgeManager else {
-            print("⚠️ SearchManager: BridgeManager not available")
+            AppLogger.search.warning("BridgeManager not available")
             return []
         }
 

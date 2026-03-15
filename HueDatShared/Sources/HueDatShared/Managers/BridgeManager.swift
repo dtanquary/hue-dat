@@ -340,14 +340,14 @@ public class BridgeManager: ObservableObject {
     }
 
     private func loadConnectedBridge() {
-        print("🔍 Loading bridge connection from UserDefaults...")
+        AppLogger.bridge.debug("Loading bridge connection from UserDefaults...")
 
         guard let data = userDefaults.data(forKey: connectedBridgeKey) else {
-            print("❌ No saved bridge connection found")
+            AppLogger.bridge.error("No saved bridge connection found")
             return
         }
 
-        print("📊 Found saved data: \(data.count) bytes")
+        AppLogger.bridge.debug("Found saved data: \(data.count, privacy: .public) bytes")
 
         do {
             var connection = try JSONDecoder().decode(BridgeConnectionInfo.self, from: data)
@@ -363,44 +363,43 @@ public class BridgeManager: ObservableObject {
                     clientkey: keychainClientkey,
                     connectedDate: connection.connectedDate
                 )
-                print("🔑 Loaded credentials from Keychain")
+                AppLogger.bridge.debug("Loaded credentials from Keychain")
             } else if !connection.username.isEmpty {
                 // Migrate credentials from UserDefaults to Keychain
                 saveToKeychain(key: "\(bridgeId)_username", value: connection.username)
                 if let clientkey = connection.clientkey {
                     saveToKeychain(key: "\(bridgeId)_clientkey", value: clientkey)
                 }
-                print("🔑 Migrated credentials from UserDefaults to Keychain")
+                AppLogger.bridge.debug("Migrated credentials from UserDefaults to Keychain")
             }
 
             connectedBridge = connection
-            print("✅ Loaded saved bridge connection:")
-            print("  - Bridge: \(connection.bridge.shortId)")
-            print("  - Address: \(connection.bridge.displayAddress)")
-            print("  - Internal IP: \(connection.bridge.internalipaddress)")
+            AppLogger.bridge.info("Loaded saved bridge connection")
+            AppLogger.bridge.debug("Bridge: \(connection.bridge.shortId, privacy: .private)")
+            AppLogger.bridge.debug("Address: \(connection.bridge.displayAddress, privacy: .private)")
+            AppLogger.bridge.debug("Internal IP: \(connection.bridge.internalipaddress, privacy: .private)")
             #if DEBUG
-            print("  - Username: \(connection.username)")
-            print("  - ClientKey: \(connection.clientkey ?? "nil")")
+            AppLogger.bridge.debug("Username: \(connection.username, privacy: .private)")
+            AppLogger.bridge.debug("ClientKey: \(connection.clientkey ?? "nil", privacy: .private)")
             #endif
-            print("  - Connected Date: \(connection.connectedDate)")
+            AppLogger.bridge.debug("Connected Date: \(connection.connectedDate.description, privacy: .public)")
 
             // Validate that the bridge IP is not localhost (corrupted data)
             if connection.bridge.internalipaddress == "127.0.0.1" ||
                connection.bridge.internalipaddress == "localhost" ||
                connection.bridge.internalipaddress == "::1" {
-                print("❌ Invalid bridge IP detected (localhost) - clearing corrupted connection")
+                AppLogger.bridge.error("Invalid bridge IP detected (localhost) - clearing corrupted connection")
                 userDefaults.removeObject(forKey: connectedBridgeKey)
                 connectedBridge = nil
                 isConnectionValidated = false
-                print("🧹 Cleared localhost connection - please re-discover your bridge")
+                AppLogger.bridge.debug("Cleared localhost connection - please re-discover your bridge")
             }
         } catch {
-            print("❌ Failed to load bridge connection: \(error)")
-            print("  - Error details: \(error.localizedDescription)")
+            AppLogger.bridge.error("Failed to load bridge connection: \(error.localizedDescription, privacy: .public)")
             // Clean up corrupted data
             userDefaults.removeObject(forKey: connectedBridgeKey)
             isConnectionValidated = false
-            print("🧹 Cleaned up corrupted data")
+            AppLogger.bridge.debug("Cleaned up corrupted data")
         }
     }
 
@@ -408,16 +407,16 @@ public class BridgeManager: ObservableObject {
 
     private func loadRoomsFromStorage() {
         guard let data = userDefaults.data(forKey: cachedRoomsKey) else {
-            print("📂 No cached rooms found")
+            AppLogger.bridge.debug("No cached rooms found")
             return
         }
 
         do {
             rooms = try JSONDecoder().decode([HueRoom].self, from: data)
             sseProcessor.rebuildGroupedLightToRoomMap()
-            print("✅ Loaded \(rooms.count) cached rooms from storage")
+            AppLogger.bridge.info("Loaded \(self.rooms.count, privacy: .public) cached rooms from storage")
         } catch {
-            print("❌ Failed to load cached rooms: \(error)")
+            AppLogger.bridge.error("Failed to load cached rooms: \(error.localizedDescription, privacy: .public)")
             // Clean up corrupted data
             userDefaults.removeObject(forKey: cachedRoomsKey)
         }
@@ -427,24 +426,24 @@ public class BridgeManager: ObservableObject {
         do {
             let data = try JSONEncoder().encode(rooms)
             userDefaults.set(data, forKey: cachedRoomsKey)
-            print("💾 Saved \(rooms.count) rooms to storage (\(data.count) bytes)")
+            AppLogger.bridge.debug("Saved \(self.rooms.count, privacy: .public) rooms to storage (\(data.count, privacy: .public) bytes)")
         } catch {
-            print("❌ Failed to save rooms to storage: \(error)")
+            AppLogger.bridge.error("Failed to save rooms to storage: \(error.localizedDescription, privacy: .public)")
         }
     }
 
     private func loadZonesFromStorage() {
         guard let data = userDefaults.data(forKey: cachedZonesKey) else {
-            print("📂 No cached zones found")
+            AppLogger.bridge.debug("No cached zones found")
             return
         }
 
         do {
             zones = try JSONDecoder().decode([HueZone].self, from: data)
             sseProcessor.rebuildGroupedLightToZoneMap()
-            print("✅ Loaded \(zones.count) cached zones from storage")
+            AppLogger.bridge.info("Loaded \(self.zones.count, privacy: .public) cached zones from storage")
         } catch {
-            print("❌ Failed to load cached zones: \(error)")
+            AppLogger.bridge.error("Failed to load cached zones: \(error.localizedDescription, privacy: .public)")
             // Clean up corrupted data
             userDefaults.removeObject(forKey: cachedZonesKey)
         }
@@ -454,23 +453,23 @@ public class BridgeManager: ObservableObject {
         do {
             let data = try JSONEncoder().encode(zones)
             userDefaults.set(data, forKey: cachedZonesKey)
-            print("💾 Saved \(zones.count) zones to storage (\(data.count) bytes)")
+            AppLogger.bridge.debug("Saved \(self.zones.count, privacy: .public) zones to storage (\(data.count, privacy: .public) bytes)")
         } catch {
-            print("❌ Failed to save zones to storage: \(error)")
+            AppLogger.bridge.error("Failed to save zones to storage: \(error.localizedDescription, privacy: .public)")
         }
     }
 
     private func loadScenesFromStorage() {
         guard let data = userDefaults.data(forKey: cachedScenesKey) else {
-            print("📂 No cached scenes found")
+            AppLogger.bridge.debug("No cached scenes found")
             return
         }
 
         do {
             scenes = try JSONDecoder().decode([HueScene].self, from: data)
-            print("✅ Loaded \(scenes.count) cached scenes from storage")
+            AppLogger.bridge.info("Loaded \(self.scenes.count, privacy: .public) cached scenes from storage")
         } catch {
-            print("❌ Failed to load cached scenes: \(error)")
+            AppLogger.bridge.error("Failed to load cached scenes: \(error.localizedDescription, privacy: .public)")
             // Clean up corrupted data
             userDefaults.removeObject(forKey: cachedScenesKey)
         }
@@ -480,9 +479,9 @@ public class BridgeManager: ObservableObject {
         do {
             let data = try JSONEncoder().encode(scenes)
             userDefaults.set(data, forKey: cachedScenesKey)
-            print("💾 Saved \(scenes.count) scenes to storage (\(data.count) bytes)")
+            AppLogger.bridge.debug("Saved \(self.scenes.count, privacy: .public) scenes to storage (\(data.count, privacy: .public) bytes)")
         } catch {
-            print("❌ Failed to save scenes to storage: \(error)")
+            AppLogger.bridge.error("Failed to save scenes to storage: \(error.localizedDescription, privacy: .public)")
         }
     }
 
@@ -495,14 +494,14 @@ public class BridgeManager: ObservableObject {
     public func validateConnection() async {
         // Demo mode: Skip validation and return success
         if isDemoMode {
-            print("🎭 validateConnection: Demo mode - skipping validation")
+            AppLogger.bridge.debug("validateConnection: Demo mode - skipping validation")
             isConnectionValidated = true
             connectionValidationSubject.send(.success)
             return
         }
 
         guard let bridge = currentConnectedBridge?.bridge else {
-            print("❌ validateConnection: No connected bridge available")
+            AppLogger.bridge.error("validateConnection: No connected bridge available")
             isConnectionValidated = false
             connectionValidationSubject.send(.failure(message: "No bridge connection available"))
             return
@@ -517,11 +516,11 @@ public class BridgeManager: ObservableObject {
 
         do {
             _ = try await HueAPIService.shared.validateConnection()
-            print("✅ validateConnection: Success")
+            AppLogger.bridge.info("validateConnection: Success")
             self.isConnectionValidated = true
             connectionValidationSubject.send(.success)
         } catch {
-            print("❌ validateConnection: Error: \(error.localizedDescription)")
+            AppLogger.bridge.error("validateConnection: Error: \(error.localizedDescription, privacy: .public)")
             self.isConnectionValidated = false
             self.alertMessage = error.localizedDescription
             self.showAlert = true
@@ -535,17 +534,17 @@ public class BridgeManager: ObservableObject {
     public func getRooms(forceRefresh: Bool = false) async {
         // Demo mode: Return cached/demo data
         if isDemoMode {
-            print("🎭 getRooms: Demo mode - returning demo data")
+            AppLogger.bridge.debug("getRooms: Demo mode - returning demo data")
             let demoRooms = getDemoRooms()
             self.rooms = demoRooms
             sseProcessor.rebuildGroupedLightToRoomMap()
-            print("🎭 getRooms: Loaded \(demoRooms.count) demo rooms")
+            AppLogger.bridge.debug("getRooms: Loaded \(demoRooms.count, privacy: .public) demo rooms")
             return
         }
 
         // PROTECTION 1: Concurrent call protection
         guard !isRefreshingRooms else {
-            print("⏭️ getRooms: Already refreshing rooms, skipping duplicate call")
+            AppLogger.bridge.debug("getRooms: Already refreshing rooms, skipping duplicate call")
             return
         }
 
@@ -554,11 +553,11 @@ public class BridgeManager: ObservableObject {
             if let lastRefresh = lastRoomsRefreshTime,
                Date().timeIntervalSince(lastRefresh) < refreshDebounceInterval {
                 let timeRemaining = refreshDebounceInterval - Date().timeIntervalSince(lastRefresh)
-                print("⏭️ getRooms: Debounced - last refresh was \(Int(Date().timeIntervalSince(lastRefresh)))s ago, waiting \(Int(timeRemaining))s")
+                AppLogger.bridge.debug("getRooms: Debounced - last refresh was \(Int(Date().timeIntervalSince(lastRefresh)), privacy: .public)s ago, waiting \(Int(timeRemaining), privacy: .public)s")
                 return
             }
         } else {
-            print("🔓 getRooms: Force refresh - bypassing debounce")
+            AppLogger.bridge.debug("getRooms: Force refresh - bypassing debounce")
         }
 
         // Set loading state immediately
@@ -566,7 +565,7 @@ public class BridgeManager: ObservableObject {
         isRefreshing = true
 
         guard let bridge = currentConnectedBridge?.bridge else {
-            print("❌ getRooms: No connected bridge available")
+            AppLogger.bridge.error("getRooms: No connected bridge available")
             // PROTECTION 3: Only clear if no existing data
             if rooms.isEmpty {
                 rooms = []
@@ -580,7 +579,7 @@ public class BridgeManager: ObservableObject {
         isRefreshingRooms = true
         lastRoomsRefreshTime = Date()
 
-        print("🏠 getRooms: Requesting rooms from bridge")
+        AppLogger.bridge.debug("getRooms: Requesting rooms from bridge")
 
         do {
             // Fetch basic rooms list (without enrichment)
@@ -589,7 +588,7 @@ public class BridgeManager: ObservableObject {
             // Check for errors first
             if !response.errors.isEmpty {
                 let errorMessages = response.errors.map { $0.description }.joined(separator: ", ")
-                print("❌ getRooms: Hue API v2 errors: \(errorMessages)")
+                AppLogger.bridge.error("getRooms: Hue API v2 errors: \(errorMessages, privacy: .public)")
                 // PROTECTION 3: Keep existing data, set error instead
                 refreshError = "API Error: \(errorMessages)"
                 isLoadingRooms = false
@@ -598,7 +597,7 @@ public class BridgeManager: ObservableObject {
                 return
             }
 
-            print("✅ getRooms: Success - retrieved \(response.data.count) rooms")
+            AppLogger.bridge.info("getRooms: Success - retrieved \(response.data.count, privacy: .public) rooms")
 
             // Enrich rooms with grouped light status
             var enrichedRooms = response.data
@@ -607,7 +606,7 @@ public class BridgeManager: ObservableObject {
                    let groupedLightService = services.first(where: { $0.rtype == "grouped_light" }) {
                     if let groupedLight = await fetchGroupedLight(groupedLightId: groupedLightService.rid) {
                         enrichedRooms[index].groupedLights = [groupedLight]
-                        print("  ✓ Enriched room '\(room.metadata.name)' with grouped light status (brightness: \(groupedLight.dimming?.brightness ?? 0)%)")
+                        AppLogger.bridge.debug("Enriched room '\(room.metadata.name, privacy: .public)' with grouped light status (brightness: \(groupedLight.dimming?.brightness ?? 0, privacy: .public)%)")
                     }
                 }
             }
@@ -616,10 +615,10 @@ public class BridgeManager: ObservableObject {
             sseProcessor.rebuildGroupedLightToRoomMap()
             saveRoomsToStorage()  // Cache successful refresh
             refreshError = nil  // Clear any previous errors
-            print("🏠 getRooms: Completed with \(enrichedRooms.count) rooms")
+            AppLogger.bridge.debug("getRooms: Completed with \(enrichedRooms.count, privacy: .public) rooms")
 
         } catch {
-            print("❌ getRooms: Error: \(error.localizedDescription)")
+            AppLogger.bridge.error("getRooms: Error: \(error.localizedDescription, privacy: .public)")
             // PROTECTION 3: Keep existing data on error
             refreshError = "Error: \(error.localizedDescription)"
         }
@@ -642,17 +641,17 @@ public class BridgeManager: ObservableObject {
     public func getZones(forceRefresh: Bool = false) async {
         // Demo mode: Return cached/demo data
         if isDemoMode {
-            print("🎭 getZones: Demo mode - returning demo data")
+            AppLogger.bridge.debug("getZones: Demo mode - returning demo data")
             let demoZones = getDemoZones()
             self.zones = demoZones
             sseProcessor.rebuildGroupedLightToZoneMap()
-            print("🎭 getZones: Loaded \(demoZones.count) demo zones")
+            AppLogger.bridge.debug("getZones: Loaded \(demoZones.count, privacy: .public) demo zones")
             return
         }
 
         // PROTECTION 1: Concurrent call protection
         guard !isRefreshingZones else {
-            print("⏭️ getZones: Already refreshing zones, skipping duplicate call")
+            AppLogger.bridge.debug("getZones: Already refreshing zones, skipping duplicate call")
             return
         }
 
@@ -661,11 +660,11 @@ public class BridgeManager: ObservableObject {
             if let lastRefresh = lastZonesRefreshTime,
                Date().timeIntervalSince(lastRefresh) < refreshDebounceInterval {
                 let timeRemaining = refreshDebounceInterval - Date().timeIntervalSince(lastRefresh)
-                print("⏭️ getZones: Debounced - last refresh was \(Int(Date().timeIntervalSince(lastRefresh)))s ago, waiting \(Int(timeRemaining))s")
+                AppLogger.bridge.debug("getZones: Debounced - last refresh was \(Int(Date().timeIntervalSince(lastRefresh)), privacy: .public)s ago, waiting \(Int(timeRemaining), privacy: .public)s")
                 return
             }
         } else {
-            print("🔓 getZones: Force refresh - bypassing debounce")
+            AppLogger.bridge.debug("getZones: Force refresh - bypassing debounce")
         }
 
         // Set loading state immediately
@@ -673,7 +672,7 @@ public class BridgeManager: ObservableObject {
         isRefreshing = true
 
         guard let bridge = currentConnectedBridge?.bridge else {
-            print("❌ getZones: No connected bridge available")
+            AppLogger.bridge.error("getZones: No connected bridge available")
             // PROTECTION 3: Only clear if no existing data
             if zones.isEmpty {
                 zones = []
@@ -687,7 +686,7 @@ public class BridgeManager: ObservableObject {
         isRefreshingZones = true
         lastZonesRefreshTime = Date()
 
-        print("🏢 getZones: Requesting zones from bridge")
+        AppLogger.bridge.debug("getZones: Requesting zones from bridge")
 
         do {
             // Fetch basic zones list (without enrichment)
@@ -696,7 +695,7 @@ public class BridgeManager: ObservableObject {
             // Check for errors first
             if !response.errors.isEmpty {
                 let errorMessages = response.errors.map { $0.description }.joined(separator: ", ")
-                print("❌ getZones: Hue API v2 errors: \(errorMessages)")
+                AppLogger.bridge.error("getZones: Hue API v2 errors: \(errorMessages, privacy: .public)")
                 // PROTECTION 3: Keep existing data, set error instead
                 refreshError = "API Error: \(errorMessages)"
                 isLoadingZones = false
@@ -705,7 +704,7 @@ public class BridgeManager: ObservableObject {
                 return
             }
 
-            print("✅ getZones: Success - retrieved \(response.data.count) zones")
+            AppLogger.bridge.info("getZones: Success - retrieved \(response.data.count, privacy: .public) zones")
 
             // Enrich zones with grouped light status
             var enrichedZones = response.data
@@ -714,7 +713,7 @@ public class BridgeManager: ObservableObject {
                    let groupedLightService = services.first(where: { $0.rtype == "grouped_light" }) {
                     if let groupedLight = await fetchGroupedLight(groupedLightId: groupedLightService.rid) {
                         enrichedZones[index].groupedLights = [groupedLight]
-                        print("  ✓ Enriched zone '\(zone.metadata.name)' with grouped light status (brightness: \(groupedLight.dimming?.brightness ?? 0)%)")
+                        AppLogger.bridge.debug("Enriched zone '\(zone.metadata.name, privacy: .public)' with grouped light status (brightness: \(groupedLight.dimming?.brightness ?? 0, privacy: .public)%)")
                     }
                 }
             }
@@ -723,10 +722,10 @@ public class BridgeManager: ObservableObject {
             sseProcessor.rebuildGroupedLightToZoneMap()
             saveZonesToStorage()  // Cache successful refresh
             refreshError = nil  // Clear any previous errors
-            print("🏢 getZones: Completed with \(enrichedZones.count) zones")
+            AppLogger.bridge.debug("getZones: Completed with \(enrichedZones.count, privacy: .public) zones")
 
         } catch {
-            print("❌ getZones: Error: \(error.localizedDescription)")
+            AppLogger.bridge.error("getZones: Error: \(error.localizedDescription, privacy: .public)")
             // PROTECTION 3: Keep existing data on error
             refreshError = "Error: \(error.localizedDescription)"
         }
@@ -769,7 +768,7 @@ public class BridgeManager: ObservableObject {
     /// Now uses getRooms(), getZones(), and fetchScenes() which have built-in protections
     /// - Parameter forceRefresh: If true, bypasses debounce timer (for manual user-initiated refreshes)
     public func refreshAllData(forceRefresh: Bool = false) async {
-        print("🔄 Refreshing all data (rooms, zones, scenes) \(forceRefresh ? "[FORCED]" : "")")
+        AppLogger.bridge.debug("Refreshing all data (rooms, zones, scenes) \(forceRefresh ? "[FORCED]" : "", privacy: .public)")
 
         // Use the protected getRooms(), getZones(), and fetchScenes() functions which have:
         // - Concurrent call protection
@@ -784,20 +783,20 @@ public class BridgeManager: ObservableObject {
 
         // Update timestamp after successful refresh
         lastRefreshTimestamp = Date()
-        print("✅ Refresh completed at \(lastRefreshTimestamp!)")
+        AppLogger.bridge.info("Refresh completed at \(self.lastRefreshTimestamp!.description, privacy: .public)")
 
         // Check SSE connection status and attempt reconnection if needed
         if !isSSEConnected && isConnected {
-            print("🔌 SSE not connected after refresh - attempting reconnection")
+            AppLogger.sse.debug("SSE not connected after refresh - attempting reconnection")
             startListeningToSSEEvents()
 
             // Trigger the actual stream start
             Task {
                 do {
                     try await HueAPIService.shared.startEventStream()
-                    print("✅ SSE stream restarted successfully")
+                    AppLogger.sse.info("SSE stream restarted successfully")
                 } catch {
-                    print("❌ Failed to restart SSE stream: \(error.localizedDescription)")
+                    AppLogger.sse.error("Failed to restart SSE stream: \(error.localizedDescription, privacy: .public)")
                 }
             }
         }
@@ -807,11 +806,11 @@ public class BridgeManager: ObservableObject {
     public func startPeriodicRefresh() {
         // Check if timer is already running - prevent duplicate timers
         if refreshTimer != nil {
-            print("⏭️ Periodic refresh already running, skipping duplicate start")
+            AppLogger.bridge.debug("Periodic refresh already running, skipping duplicate start")
             return
         }
 
-        print("⏰ Starting periodic refresh (60 second interval)")
+        AppLogger.bridge.debug("Starting periodic refresh (60 second interval)")
 
         // Create timer that fires every 60 seconds
         refreshTimer = Timer.scheduledTimer(withTimeInterval: 60.0, repeats: true) { [weak self] _ in
@@ -832,7 +831,7 @@ public class BridgeManager: ObservableObject {
     public func stopPeriodicRefresh() {
         refreshTimer?.invalidate()
         refreshTimer = nil
-        print("⏹️ Stopped periodic refresh")
+        AppLogger.bridge.debug("Stopped periodic refresh")
     }
 
     // MARK: - Generic Smart Update Helpers
@@ -863,13 +862,13 @@ public class BridgeManager: ObservableObject {
             // Update existing item only if data has changed
             if collection[index] != item {
                 collection[index] = item
-                print("🔄 Updated \(T.apiGroupType): \(item.displayName)")
+                AppLogger.bridge.debug("Updated \(T.apiGroupType, privacy: .public): \(item.displayName, privacy: .public)")
                 save()
             }
         } else {
             // Item doesn't exist yet - append it
             collection.append(item)
-            print("➕ Added new \(T.apiGroupType): \(item.displayName)")
+            AppLogger.bridge.debug("Added new \(T.apiGroupType, privacy: .public): \(item.displayName, privacy: .public)")
             save()
         }
     }
@@ -900,7 +899,7 @@ public class BridgeManager: ObservableObject {
 
     /// Manual refresh trigger - can be called from UI when control actions occur
     func triggerManualRefresh() async {
-        print("🔄 Manual refresh triggered")
+        AppLogger.bridge.debug("Manual refresh triggered")
         await refreshAllData(forceRefresh: true)
     }
 
@@ -910,19 +909,19 @@ public class BridgeManager: ObservableObject {
     public func fetchScenes() async {
         // Demo mode: Return cached/demo data
         if isDemoMode {
-            print("🎭 fetchScenes: Demo mode - returning demo data")
+            AppLogger.bridge.debug("fetchScenes: Demo mode - returning demo data")
             let demoScenes = getDemoScenes()
             self.scenes = demoScenes
-            print("🎭 fetchScenes: Loaded \(demoScenes.count) demo scenes")
+            AppLogger.bridge.debug("fetchScenes: Loaded \(demoScenes.count, privacy: .public) demo scenes")
             return
         }
 
         guard currentConnectedBridge?.bridge != nil else {
-            print("❌ fetchScenes: No connected bridge available")
+            AppLogger.bridge.error("fetchScenes: No connected bridge available")
             return
         }
 
-        print("🎬 fetchScenes: Requesting scenes from bridge")
+        AppLogger.bridge.debug("fetchScenes: Requesting scenes from bridge")
 
         do {
             let response: HueScenesResponse = try await HueAPIService.shared.fetchScenes()
@@ -930,7 +929,7 @@ public class BridgeManager: ObservableObject {
             // Check for errors first
             if !response.errors.isEmpty {
                 let errorMessages = response.errors.map { $0.description }.joined(separator: ", ")
-                print("❌ fetchScenes: Hue API v2 errors: \(errorMessages)")
+                AppLogger.bridge.error("fetchScenes: Hue API v2 errors: \(errorMessages, privacy: .public)")
                 // Keep existing scenes data on error
                 refreshError = "API Error: \(errorMessages)"
                 return
@@ -941,9 +940,9 @@ public class BridgeManager: ObservableObject {
             saveScenesToStorage()
             scenePinning.validateAndCleanPinnedScenes(bridgeId: connectedBridge?.bridge.id, scenes: scenes)
             refreshError = nil
-            print("✅ fetchScenes: Success - retrieved \(response.data.count) scenes")
+            AppLogger.bridge.info("fetchScenes: Success - retrieved \(response.data.count, privacy: .public) scenes")
         } catch {
-            print("❌ fetchScenes: Error: \(error.localizedDescription)")
+            AppLogger.bridge.error("fetchScenes: Error: \(error.localizedDescription, privacy: .public)")
             // Keep existing scenes data on error
             refreshError = "Error: \(error.localizedDescription)"
         }
@@ -958,7 +957,7 @@ public class BridgeManager: ObservableObject {
 
         // Filter scenes by room ID
         let roomScenes = scenes.filter { $0.group.rid == roomId && $0.group.rtype == "room" }
-        print("🎬 fetchScenes(forRoomId): Found \(roomScenes.count) scenes for room \(roomId)")
+        AppLogger.bridge.debug("fetchScenes(forRoomId): Found \(roomScenes.count, privacy: .public) scenes for room \(roomId, privacy: .public)")
         return roomScenes
     }
 
@@ -971,7 +970,7 @@ public class BridgeManager: ObservableObject {
 
         // Filter scenes by zone ID
         let zoneScenes = scenes.filter { $0.group.rid == zoneId && $0.group.rtype == "zone" }
-        print("🎬 fetchScenes(forZoneId): Found \(zoneScenes.count) scenes for zone \(zoneId)")
+        AppLogger.bridge.debug("fetchScenes(forZoneId): Found \(zoneScenes.count, privacy: .public) scenes for zone \(zoneId, privacy: .public)")
         return zoneScenes
     }
 
@@ -981,21 +980,21 @@ public class BridgeManager: ObservableObject {
     public func activateScene(_ sceneId: String) async -> Result<Void, Error> {
         // Demo mode: Just return success without network call
         if isDemoMode {
-            print("🎭 activateScene: Demo mode - skipping network call")
+            AppLogger.bridge.debug("activateScene: Demo mode - skipping network call")
             return .success(())
         }
 
         guard currentConnectedBridge?.bridge != nil else {
-            print("❌ activateScene: No connected bridge available")
+            AppLogger.bridge.error("activateScene: No connected bridge available")
             return .failure(NSError(domain: "BridgeManager", code: -1, userInfo: [NSLocalizedDescriptionKey: "No bridge connection available"]))
         }
 
         do {
             try await HueAPIService.shared.activateScene(sceneId: sceneId)
-            print("✅ activateScene: Successfully activated scene \(sceneId)")
+            AppLogger.bridge.info("activateScene: Successfully activated scene \(sceneId, privacy: .public)")
             return .success(())
         } catch {
-            print("❌ activateScene: Error: \(error.localizedDescription)")
+            AppLogger.bridge.error("activateScene: Error: \(error.localizedDescription, privacy: .public)")
             return .failure(error)
         }
     }
@@ -1020,14 +1019,14 @@ public class BridgeManager: ObservableObject {
         }
 
         if !isSSEConnected {
-            print("🔄 SSE disconnected - refreshing after scene activation")
+            AppLogger.bridge.debug("SSE disconnected - refreshing after scene activation")
             if let roomId = roomId {
                 await refreshRoom(roomId: roomId)
             } else if let zoneId = zoneId {
                 await refreshZone(zoneId: zoneId)
             }
         } else {
-            print("✅ SSE connected - skipping refresh (will update via event stream)")
+            AppLogger.bridge.info("SSE connected - skipping refresh (will update via event stream)")
         }
 
         return result
@@ -1039,9 +1038,9 @@ public class BridgeManager: ObservableObject {
         let activeScene = roomScenes.first { $0.status?.active == "active" }
 
         if let scene = activeScene {
-            print("🎬 getActiveScene(forRoomId): Found active scene '\(scene.metadata.name)' for room \(roomId)")
+            AppLogger.bridge.debug("getActiveScene(forRoomId): Found active scene '\(scene.metadata.name, privacy: .public)' for room \(roomId, privacy: .public)")
         } else {
-            print("🎬 getActiveScene(forRoomId): No active scene for room \(roomId)")
+            AppLogger.bridge.debug("getActiveScene(forRoomId): No active scene for room \(roomId, privacy: .public)")
         }
 
         return activeScene
@@ -1053,9 +1052,9 @@ public class BridgeManager: ObservableObject {
         let activeScene = zoneScenes.first { $0.status?.active == "active" }
 
         if let scene = activeScene {
-            print("🎬 getActiveScene(forZoneId): Found active scene '\(scene.metadata.name)' for zone \(zoneId)")
+            AppLogger.bridge.debug("getActiveScene(forZoneId): Found active scene '\(scene.metadata.name, privacy: .public)' for zone \(zoneId, privacy: .public)")
         } else {
-            print("🎬 getActiveScene(forZoneId): No active scene for zone \(zoneId)")
+            AppLogger.bridge.debug("getActiveScene(forZoneId): No active scene for zone \(zoneId, privacy: .public)")
         }
 
         return activeScene
@@ -1090,7 +1089,7 @@ public class BridgeManager: ObservableObject {
     /// Extract average brightness from a scene's actions
     public func extractAverageBrightnessFromScene(_ scene: HueScene) -> Double? {
         guard let actions = scene.actions else {
-            print("⚠️ extractAverageBrightnessFromScene: Scene '\(scene.metadata.name)' has no actions")
+            AppLogger.bridge.warning("extractAverageBrightnessFromScene: Scene '\(scene.metadata.name, privacy: .public)' has no actions")
             return nil
         }
 
@@ -1099,12 +1098,12 @@ public class BridgeManager: ObservableObject {
         }
 
         guard !brightnesses.isEmpty else {
-            print("⚠️ extractAverageBrightnessFromScene: No brightness data in scene '\(scene.metadata.name)'")
+            AppLogger.bridge.warning("extractAverageBrightnessFromScene: No brightness data in scene '\(scene.metadata.name, privacy: .public)'")
             return nil
         }
 
         let average = brightnesses.reduce(0.0, +) / Double(brightnesses.count)
-        print("💡 extractAverageBrightnessFromScene: Average brightness for scene '\(scene.metadata.name)' is \(average)%")
+        AppLogger.bridge.debug("extractAverageBrightnessFromScene: Average brightness for scene '\(scene.metadata.name, privacy: .public)' is \(average, privacy: .public)%")
         return average
     }
 
@@ -1172,7 +1171,7 @@ public class BridgeManager: ObservableObject {
         save: () -> Void
     ) {
         guard let index = collection.firstIndex(where: { $0.id == groupId }) else {
-            print("⚠️ updateLocalGroupState: \(T.apiGroupType) \(groupId) not found in local cache")
+            AppLogger.bridge.warning("updateLocalGroupState: \(T.apiGroupType, privacy: .public) \(groupId, privacy: .public) not found in local cache")
             return
         }
 
@@ -1196,10 +1195,10 @@ public class BridgeManager: ObservableObject {
             updatedItem.groupedLights = updatedGroupedLights
 
             if let on = on {
-                print("🔄 updateLocalGroupState: Updated \(T.apiGroupType) '\(updatedItem.displayName)' on state to \(on)")
+                AppLogger.bridge.debug("updateLocalGroupState: Updated \(T.apiGroupType, privacy: .public) '\(updatedItem.displayName, privacy: .public)' on state to \(on, privacy: .public)")
             }
             if let brightness = brightness {
-                print("🔄 updateLocalGroupState: Updated \(T.apiGroupType) '\(updatedItem.displayName)' brightness to \(Int(brightness))%")
+                AppLogger.bridge.debug("updateLocalGroupState: Updated \(T.apiGroupType, privacy: .public) '\(updatedItem.displayName, privacy: .public)' brightness to \(Int(brightness), privacy: .public)%")
             }
         }
 
@@ -1243,7 +1242,7 @@ public class BridgeManager: ObservableObject {
             let response = try JSONDecoder().decode(HueGroupedLightsResponse.self, from: data)
             return response.data.first
         } catch {
-            print("❌ fetchGroupedLight: \(error.localizedDescription)")
+            AppLogger.bridge.error("fetchGroupedLight: \(error.localizedDescription, privacy: .public)")
             return nil
         }
     }
@@ -1259,7 +1258,7 @@ public class BridgeManager: ObservableObject {
     public func setGroupedLightPower(id: String, on: Bool) async -> Result<Void, Error> {
         // Demo mode: Just return success without network call
         if isDemoMode {
-            print("🎭 setGroupedLightPower: Demo mode - skipping network call")
+            AppLogger.bridge.debug("setGroupedLightPower: Demo mode - skipping network call")
             return .success(())
         }
 
@@ -1283,7 +1282,7 @@ public class BridgeManager: ObservableObject {
     public func setGroupedLightBrightness(id: String, brightness: Double) async -> Result<Void, Error> {
         // Demo mode: Just return success without network call
         if isDemoMode {
-            print("🎭 setGroupedLightBrightness: Demo mode - skipping network call")
+            AppLogger.bridge.debug("setGroupedLightBrightness: Demo mode - skipping network call")
             return .success(())
         }
 
@@ -1309,7 +1308,7 @@ public class BridgeManager: ObservableObject {
     public func setGroupedLightPowerAndBrightness(id: String, on: Bool, brightness: Double) async -> Result<Void, Error> {
         // Demo mode: Just return success without network call
         if isDemoMode {
-            print("🎭 setGroupedLightPowerAndBrightness: Demo mode - skipping network call")
+            AppLogger.bridge.debug("setGroupedLightPowerAndBrightness: Demo mode - skipping network call")
             return .success(())
         }
 
@@ -1343,7 +1342,7 @@ public class BridgeManager: ObservableObject {
     public func turnOffAllLights() async -> Result<Void, Error> {
         // Demo mode: Update local state only
         if isDemoMode {
-            print("🎭 turnOffAllLights: Demo mode - updating local state only")
+            AppLogger.bridge.debug("turnOffAllLights: Demo mode - updating local state only")
 
             // Update grouped lights in rooms to reflect off state
             for index in rooms.indices {
@@ -1386,7 +1385,7 @@ public class BridgeManager: ObservableObject {
             return .failure(NSError(domain: "BridgeManager", code: -1, userInfo: [NSLocalizedDescriptionKey: "No bridge connected"]))
         }
 
-        print("🔴 Turning off all lights...")
+        AppLogger.bridge.debug("Turning off all lights...")
 
         // Collect all grouped light IDs from rooms and zones
         var groupedLightIds: [String] = []
@@ -1402,12 +1401,12 @@ public class BridgeManager: ObservableObject {
         }
 
         guard !groupedLightIds.isEmpty else {
-            print("⚠️ No grouped lights found to turn off")
+            AppLogger.bridge.warning("No grouped lights found to turn off")
             return .success(())
         }
 
-        print("💡 Found \(groupedLightIds.count) grouped lights to turn off")
-        print("⏱️ Estimated time: ~\(groupedLightIds.count) seconds (1 group/sec)")
+        AppLogger.bridge.debug("Found \(groupedLightIds.count, privacy: .public) grouped lights to turn off")
+        AppLogger.bridge.debug("Estimated time: ~\(groupedLightIds.count, privacy: .public) seconds (1 group/sec)")
 
         // Turn off each grouped light using HueAPIService (rate limiting automatically enforced)
         var successCount = 0
@@ -1417,10 +1416,10 @@ public class BridgeManager: ObservableObject {
             do {
                 try await HueAPIService.shared.setPower(groupedLightId: groupedLightId, on: false)
                 successCount += 1
-                print("  ✓ Turned off grouped light \(groupedLightId.prefix(8))... (\(successCount)/\(groupedLightIds.count))")
+                AppLogger.bridge.debug("Turned off grouped light \(groupedLightId.prefix(8), privacy: .public)... (\(successCount, privacy: .public)/\(groupedLightIds.count, privacy: .public))")
             } catch {
                 failureCount += 1
-                print("  ✗ Failed to turn off grouped light \(groupedLightId.prefix(8))...: \(error.localizedDescription)")
+                AppLogger.bridge.error("Failed to turn off grouped light \(groupedLightId.prefix(8), privacy: .public)...: \(error.localizedDescription, privacy: .public)")
             }
         }
 
@@ -1460,7 +1459,7 @@ public class BridgeManager: ObservableObject {
         saveRoomsToStorage()
         saveZonesToStorage()
 
-        print("✅ All lights turned off: \(successCount) succeeded, \(failureCount) failed")
+        AppLogger.bridge.info("All lights turned off: \(successCount, privacy: .public) succeeded, \(failureCount, privacy: .public) failed")
         return .success(())
     }
 

@@ -8,6 +8,7 @@
 import Foundation
 import Combine
 import Network
+import os
 
 // MARK: - Bridge Discovery Service
 @MainActor
@@ -41,9 +42,9 @@ public class BridgeDiscoveryService: ObservableObject {
         // Try mDNS discovery first (works on local network)
         do {
             bridges = try await performHueBridgeDiscoveryWithMDNS()
-            print("Loaded bridges via mDNS")
+            AppLogger.discovery.info("Loaded bridges via mDNS")
         } catch {
-            print("mDNS discovery failed: \(error.localizedDescription), falling back to discovery endpoint")
+            AppLogger.discovery.error("mDNS discovery failed: \(error.localizedDescription, privacy: .public), falling back to discovery endpoint")
             bridges = [] // Ensure bridges is empty to trigger fallback
         }
          */
@@ -55,12 +56,12 @@ public class BridgeDiscoveryService: ObservableObject {
                 await MainActor.run {
                     discoveredBridges = fallbackBridges
                 }
-                print("Loaded bridges via Discovery endpoint fallback")
+                AppLogger.discovery.info("Loaded bridges via Discovery endpoint fallback")
             } catch {
                 await MainActor.run {
                     self.error = error
                 }
-                print("Failed to load bridges via both methods: \(error.localizedDescription)")
+                AppLogger.discovery.error("Failed to load bridges via both methods: \(error.localizedDescription, privacy: .public)")
             }
         } else {
             await MainActor.run {
@@ -78,7 +79,7 @@ public class BridgeDiscoveryService: ObservableObject {
     }
 
     public func cancelDiscovery() {
-        print("🛑 Manually cancelling bridge discovery")
+        AppLogger.discovery.info("Manually cancelling bridge discovery")
         activeBrowser?.cancel()
         activeBrowser = nil
         Task { @MainActor in
@@ -98,23 +99,23 @@ public class BridgeDiscoveryService: ObservableObject {
             let cacheAge = Date().timeIntervalSince(cacheTimestamp)
 
             if cacheAge < cacheExpirationInterval {
-                print("📦 Using cached bridge discovery data (age: \(Int(cacheAge/60)) minutes)")
+                AppLogger.discovery.debug("Using cached bridge discovery data (age: \(Int(cacheAge/60), privacy: .public) minutes)")
                 do {
                     let cachedBridges = try JSONDecoder().decode([BridgeInfo].self, from: cachedData)
                     return cachedBridges
                 } catch {
-                    print("⚠️ Failed to decode cached bridge data, fetching fresh data: \(error)")
+                    AppLogger.discovery.warning("Failed to decode cached bridge data, fetching fresh data: \(error.localizedDescription, privacy: .public)")
                     // Continue to fetch fresh data if cache is corrupted
                 }
             } else {
-                print("🕐 Cache expired (age: \(Int(cacheAge/60)) minutes), fetching fresh data")
+                AppLogger.discovery.debug("Cache expired (age: \(Int(cacheAge/60), privacy: .public) minutes), fetching fresh data")
             }
         } else {
-            print("📭 No cache found, fetching fresh data")
+            AppLogger.discovery.debug("No cache found, fetching fresh data")
         }
 
         // Fetch fresh data from the API
-        print("🌐 Fetching bridge discovery data from API")
+        AppLogger.discovery.debug("Fetching bridge discovery data from API")
         let url = URL(string: "https://discovery.meethue.com")!
         let (data, _) = try await URLSession.shared.data(from: url)
         let bridges = try JSONDecoder().decode([BridgeInfo].self, from: data)
@@ -122,13 +123,13 @@ public class BridgeDiscoveryService: ObservableObject {
         // Cache the fresh data
         UserDefaults.standard.set(data, forKey: cacheKey)
         UserDefaults.standard.set(Date(), forKey: cacheTimestampKey)
-        print("💾 Cached fresh bridge discovery data")
+        AppLogger.discovery.debug("Cached fresh bridge discovery data")
 
         return bridges
     }
 
     private func performHueBridgeDiscoveryWithMDNS() async throws -> [BridgeInfo] {
-        print("🔍 Starting mDNS discovery for _hue._tcp services...")
+        AppLogger.discovery.debug("Starting mDNS discovery for _hue._tcp services...")
 
         return try await withCheckedThrowingContinuation { continuation in
             var discoveredBridges: [BridgeInfo] = []
@@ -156,10 +157,10 @@ public class BridgeDiscoveryService: ObservableObject {
 
                 switch result {
                 case .success(let bridges):
-                    print("✅ mDNS discovery completed with \(bridges.count) bridge(s)")
+                    AppLogger.discovery.info("mDNS discovery completed with \(bridges.count, privacy: .public) bridge(s)")
                     continuation.resume(returning: bridges)
                 case .failure(let error):
-                    print("❌ mDNS discovery failed: \(error)")
+                    AppLogger.discovery.error("mDNS discovery failed: \(error.localizedDescription, privacy: .public)")
                     continuation.resume(throwing: error)
                 }
             }
@@ -173,7 +174,7 @@ public class BridgeDiscoveryService: ObservableObject {
 
                 // Create new debounced timer (1 second after last bridge added)
                 debounceTimer = DispatchWorkItem {
-                    print("⏱️ Debounce completed - found \(discoveredBridges.count) bridge(s)")
+                    AppLogger.discovery.debug("Debounce completed - found \(discoveredBridges.count) bridge(s)")
                     browser.cancel()
                 }
 
@@ -181,51 +182,51 @@ public class BridgeDiscoveryService: ObservableObject {
             }
 
             browser.stateUpdateHandler = { state in
-                print("📡 mDNS browser state changed to: \(state)")
+                AppLogger.discovery.debug("mDNS browser state changed to: \(String(describing: state), privacy: .public)")
                 switch state {
                 case .failed(let error):
-                    print("❌ mDNS browser failed: \(error)")
+                    AppLogger.discovery.error("mDNS browser failed: \(error.localizedDescription, privacy: .public)")
                     resumeOnce(with: .failure(error))
                 case .cancelled:
-                    print("⏹️ mDNS browser cancelled")
+                    AppLogger.discovery.debug("mDNS browser cancelled")
                     resumeOnce(with: .success(discoveredBridges))
                 case .ready:
-                    print("🟢 mDNS browser ready")
+                    AppLogger.discovery.debug("mDNS browser ready")
                 case .setup:
-                    print("⚙️ mDNS browser setting up")
+                    AppLogger.discovery.debug("mDNS browser setting up")
                 case .waiting(let error):
-                    print("⏳ mDNS browser waiting: \(error)")
+                    AppLogger.discovery.debug("mDNS browser waiting: \(error.localizedDescription, privacy: .public)")
                 @unknown default:
-                    print("❓ mDNS browser unknown state: \(state)")
+                    AppLogger.discovery.warning("mDNS browser unknown state: \(String(describing: state), privacy: .public)")
                 }
             }
 
             browser.browseResultsChangedHandler = { results, changes in
-                print("📋 mDNS results changed - Total results: \(results.count)")
+                AppLogger.discovery.debug("mDNS results changed - Total results: \(results.count, privacy: .public)")
 
                 for change in changes {
                     switch change {
                     case .added(let result):
-                        print("➕ Added service: \(result)")
+                        AppLogger.discovery.debug("Added service: \(String(describing: result), privacy: .public)")
                     case .removed(let result):
-                        print("➖ Removed service: \(result)")
+                        AppLogger.discovery.debug("Removed service: \(String(describing: result), privacy: .public)")
                     case .identical:
-                        print("🔄 Service identical")
+                        AppLogger.discovery.debug("Service identical")
                     @unknown default:
-                        print("❓ Unknown change: \(change)")
+                        AppLogger.discovery.warning("Unknown change: \(String(describing: change), privacy: .public)")
                     }
                 }
 
                 for result in results {
-                    print("🔍 Processing result: \(result)")
-                    print("   - Endpoint: \(result.endpoint)")
+                    AppLogger.discovery.debug("Processing result: \(String(describing: result), privacy: .public)")
+                    AppLogger.discovery.debug("   - Endpoint: \(String(describing: result.endpoint), privacy: .public)")
 
                     switch result.endpoint {
                     case .service(let name, let type, let domain, let interface):
-                        print("   - Service name: '\(name)'")
-                        print("   - Service type: '\(type)'")
-                        print("   - Service domain: '\(domain)'")
-                        print("   - Interface: \(String(describing: interface))")
+                        AppLogger.discovery.debug("   - Service name: '\(name, privacy: .public)'")
+                        AppLogger.discovery.debug("   - Service type: '\(type, privacy: .public)'")
+                        AppLogger.discovery.debug("   - Service domain: '\(domain, privacy: .public)'")
+                        AppLogger.discovery.debug("   - Interface: \(String(describing: interface), privacy: .public)")
 
                         // Try to extract bridge ID from TXT record metadata
                         var bridgeId: String?
@@ -242,7 +243,7 @@ public class BridgeDiscoveryService: ObservableObject {
                         connection.stateUpdateHandler = { state in
                             switch state {
                             case .ready:
-                                print("🔍 Raw connection ready state: \(state)")
+                                AppLogger.discovery.debug("Raw connection ready state: \(String(describing: state), privacy: .public)")
 
                                 // For now, generate a bridge ID from the service name
                                 // In a real implementation, you'd want to query the bridge's API
@@ -268,14 +269,14 @@ public class BridgeDiscoveryService: ObservableObject {
                                         } else {
                                             ipAddress = ipv6String
                                         }
-                                        print("   📍 Processed IPv6 address: \(ipv6String) -> \(ipAddress ?? "nil")")
+                                        AppLogger.discovery.debug("Processed IPv6 address: \(ipv6String, privacy: .private) -> \(ipAddress ?? "nil", privacy: .private)")
                                     default:
-                                        print("   ⚠️ Unsupported host type for \(name)")
+                                        AppLogger.discovery.warning("Unsupported host type for \(name, privacy: .public)")
                                         break
                                     }
 
                                     if let ip = ipAddress, let id = bridgeId {
-                                        print("   📍 Resolved IP: \(ip) for bridge ID: \(id)")
+                                        AppLogger.discovery.debug("Resolved IP: \(ip, privacy: .private) for bridge ID: \(id, privacy: .private)")
                                         let bridgeInfo = BridgeInfo(
                                             id: id,
                                             internalipaddress: ip,
@@ -286,33 +287,33 @@ public class BridgeDiscoveryService: ObservableObject {
                                         // Avoid duplicates
                                         if !discoveredBridges.contains(where: { $0.id == bridgeInfo.id }) {
                                             discoveredBridges.append(bridgeInfo)
-                                            print("   ➕ Added bridge to results: \(bridgeInfo)")
+                                            AppLogger.discovery.debug("Added bridge to results: \(bridgeInfo.displayName, privacy: .public)")
 
                                             // Schedule completion with debouncing
                                             scheduleCompletion()
                                         } else {
-                                            print("   🔁 Bridge already in results (duplicate)")
+                                            AppLogger.discovery.debug("Bridge already in results (duplicate)")
                                         }
                                     } else {
-                                        print("   ⚠️ Failed to extract IP address or bridge ID for \(name)")
+                                        AppLogger.discovery.warning("Failed to extract IP address or bridge ID for \(name, privacy: .public)")
                                     }
                                 } else {
-                                    print("   ⚠️ No remote endpoint available for \(name)")
+                                    AppLogger.discovery.warning("No remote endpoint available for \(name, privacy: .public)")
                                 }
                                 connection.cancel()
                             case .failed(let error):
-                                print("   ❌ Connection failed for service: \(name) - \(error)")
+                                AppLogger.discovery.error("Connection failed for service: \(name, privacy: .public) - \(error.localizedDescription, privacy: .public)")
                                 connection.cancel()
                             case .cancelled:
-                                print("   ⏹️ Connection cancelled for service: \(name)")
+                                AppLogger.discovery.debug("Connection cancelled for service: \(name, privacy: .public)")
                             case .waiting(let error):
-                                print("   ⏳ Connection waiting for service: \(name) - \(error)")
+                                AppLogger.discovery.debug("Connection waiting for service: \(name, privacy: .public) - \(error.localizedDescription, privacy: .public)")
                             case .preparing:
-                                print("   🔄 Connection preparing for service: \(name)")
+                                AppLogger.discovery.debug("Connection preparing for service: \(name, privacy: .public)")
                             case .setup:
-                                print("   ⚙️ Connection setup for service: \(name)")
+                                AppLogger.discovery.debug("Connection setup for service: \(name, privacy: .public)")
                             @unknown default:
-                                print("   ❓ Unknown connection state for service: \(name) - \(state)")
+                                AppLogger.discovery.warning("Unknown connection state for service: \(name, privacy: .public) - \(String(describing: state), privacy: .public)")
                             }
                         }
 
@@ -320,34 +321,34 @@ public class BridgeDiscoveryService: ObservableObject {
                         do {
                             connection.start(queue: .main)
                         } catch {
-                            print("   ❌ Failed to start connection for service: \(name) - \(error)")
+                            AppLogger.discovery.error("Failed to start connection for service: \(name, privacy: .public) - \(error.localizedDescription, privacy: .public)")
                             connection.cancel()
                         }
 
                     case .hostPort(let host, let port):
-                        print("   - Host/Port endpoint: \(host):\(port)")
+                        AppLogger.discovery.debug("Host/Port endpoint: \(String(describing: host), privacy: .private):\(String(describing: port), privacy: .public)")
                     case .unix(let path):
-                        print("   - Unix socket: \(path)")
+                        AppLogger.discovery.debug("Unix socket: \(path, privacy: .public)")
                     case .url(let url):
-                        print("   - URL endpoint: \(url)")
+                        AppLogger.discovery.debug("URL endpoint: \(String(describing: url), privacy: .private)")
                     @unknown default:
-                        print("   - Unknown endpoint type: \(result.endpoint)")
+                        AppLogger.discovery.warning("Unknown endpoint type: \(String(describing: result.endpoint), privacy: .public)")
                     }
                 }
             }
 
             // Start browsing
-            print("🚀 Starting mDNS browser...")
+            AppLogger.discovery.debug("Starting mDNS browser...")
             browser.start(queue: .main)
 
             // Fallback timeout - stop browsing after 10 seconds if no bridges found
             DispatchQueue.main.asyncAfter(deadline: .now() + 10) {
                 if discoveredBridges.count == 0 && browser.state != .cancelled {
-                    print("⏰ 10-second fallback timeout reached, cancelling mDNS browser...")
+                    AppLogger.discovery.debug("10-second fallback timeout reached, cancelling mDNS browser...")
                     browser.cancel()
                     // The cancellation will trigger the state handler which will resume
                 } else {
-                    print("⏰ 10-second fallback timeout reached, but mDNS browser already cancelled...")
+                    AppLogger.discovery.debug("10-second fallback timeout reached, but mDNS browser already cancelled...")
                 }
             }
         }

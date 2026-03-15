@@ -7,6 +7,7 @@
 
 import Foundation
 import Combine
+import os
 
 // MARK: - Bridge Registration Service
 @MainActor
@@ -61,7 +62,7 @@ public class BridgeRegistrationService: ObservableObject {
 
         do {
             let registrationResult = try await performBridgeRegistration(bridge: bridge)
-            print("Registration successful: \(registrationResult)")
+            AppLogger.registration.info("Registration successful")
             await MainActor.run {
                 registrationResponse = registrationResult
                 successfulBridge = bridge
@@ -107,7 +108,7 @@ public class BridgeRegistrationService: ObservableObject {
             "generateclientkey": true
         ]
 
-        print("Payload: \(payload)")
+        AppLogger.registration.debug("Registration payload prepared for bridge \(bridge.displayName, privacy: .public)")
 
         request.httpBody = try JSONSerialization.data(withJSONObject: payload)
 
@@ -119,23 +120,23 @@ public class BridgeRegistrationService: ObservableObject {
 
         // Log the response for debugging
         if let responseString = String(data: data, encoding: .utf8) {
-            print("Raw response: \(responseString)")
+            AppLogger.registration.debug("Raw response: \(responseString, privacy: .private)")
         }
 
         // Parse the JSON response
         guard let jsonArray = try JSONSerialization.jsonObject(with: data) as? [[String: Any]] else {
-            print("Failed to parse JSON response as array")
+            AppLogger.registration.error("Failed to parse JSON response as array")
             throw BridgeRegistrationError.bridgeError("Invalid JSON response format")
         }
 
-        print("Parsed JSON array with \(jsonArray.count) items")
+        AppLogger.registration.debug("Parsed JSON array with \(jsonArray.count, privacy: .public) items")
 
         // Check if the first response contains an error
         if let firstResponse = jsonArray.first,
            let errorData = firstResponse["error"] as? [String: Any] {
             let errorType = errorData["type"] as? Int ?? 0
             let description = errorData["description"] as? String ?? "Unknown error"
-            print("Bridge returned error - Type: \(errorType), Description: \(description)")
+            AppLogger.registration.warning("Bridge returned error - Type: \(errorType, privacy: .public), Description: \(description, privacy: .public)")
 
             if errorType == 101 {
                 // This is the "link button not pressed" error
@@ -148,17 +149,17 @@ public class BridgeRegistrationService: ObservableObject {
         // Look for success response
         if let firstResponse = jsonArray.first,
            let successData = firstResponse["success"] as? [String: Any] {
-            print("Success data received: \(successData)")
+            AppLogger.registration.info("Success data received")
             let successJson = try JSONSerialization.data(withJSONObject: successData)
             let registrationResponse = try JSONDecoder().decode(BridgeRegistrationResponse.self, from: successJson)
             #if DEBUG
-            print("Parsed registration response - Username: \(registrationResponse.username), ClientKey: \(registrationResponse.clientkey ?? "nil")")
+            AppLogger.registration.debug("Parsed registration response - Username: \(registrationResponse.username, privacy: .private), ClientKey: \(registrationResponse.clientkey ?? "nil", privacy: .private)")
             #endif
             return registrationResponse
         }
 
         // If we get here, it's an unexpected response format
-        print("Unexpected response format. First response: \(jsonArray.first ?? [:])")
+        AppLogger.registration.error("Unexpected response format")
         throw BridgeRegistrationError.bridgeError("Unexpected response format: expected success or error response")
     }
 }
