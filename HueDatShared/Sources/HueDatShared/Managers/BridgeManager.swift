@@ -9,6 +9,7 @@ import SwiftUI
 import Foundation
 import Combine
 import Security
+import os
 
 // MARK: - Connection Validation Result
 public enum ConnectionValidationResult {
@@ -32,7 +33,10 @@ public class BridgeManager: ObservableObject {
     @Published public var isDemoMode: Bool = false  // Demo mode flag for offline demonstration
     @Published public var isRefreshing: Bool = false  // Combined refresh state for UI feedback
 
-    // Scene pinning: [bridgeId: [groupId: [sceneIds]]]
+    // Scene pinning - delegated to ScenePinningManager
+    public let scenePinning = ScenePinningManager()
+
+    /// Published proxy so existing views that observe `pinnedSceneIds` continue to work.
     @Published public private(set) var pinnedSceneIds: [String: [String: [String]]] = [:]
 
     // Event broadcasting for connection validation
@@ -41,12 +45,10 @@ public class BridgeManager: ObservableObject {
         connectionValidationSubject.eraseToAnyPublisher()
     }
 
-    // SSE event handling
-    private var eventSubscription: AnyCancellable?
-    private var streamStateSubscription: AnyCancellable?
+    // SSE event processing - delegated to SSEEventProcessor
+    public private(set) lazy var sseProcessor: SSEEventProcessor = SSEEventProcessor(bridgeManager: self)
     @Published public var isSSEConnected: Bool = false
     public var reconnectAttempts = 0  // Public so ContentView can reset on successful connection
-    private let maxReconnectAttempts = 5
 
     private let userDefaults = UserDefaults.standard
     private let connectedBridgeKey = "ConnectedBridge"
@@ -54,7 +56,9 @@ public class BridgeManager: ObservableObject {
     private let cachedZonesKey = "CachedZones"
     private let cachedScenesKey = "CachedScenes"
     private let demoModeKey = "DemoMode"
-    private let pinnedScenesKey = "PinnedScenes"
+
+    /// Combine subscription to forward ScenePinningManager changes to local proxy.
+    private var pinningSubscription: AnyCancellable?
 
     // Refresh state management (concurrent call protection)
     private var isRefreshingRooms: Bool = false
@@ -81,12 +85,19 @@ public class BridgeManager: ObservableObject {
         // Clean up old lights cache (migration)
         if userDefaults.object(forKey: "CachedLights") != nil {
             userDefaults.removeObject(forKey: "CachedLights")
-            print("🧹 Cleaned up old lights cache")
+            AppLogger.bridge.debug("Cleaned up old lights cache")
         }
         loadRoomsFromStorage()
         loadZonesFromStorage()
         loadScenesFromStorage()
-        loadPinnedScenesFromStorage()
+
+        // Sync pinning state from ScenePinningManager
+        pinnedSceneIds = scenePinning.pinnedSceneIds
+        pinningSubscription = scenePinning.$pinnedSceneIds
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] newValue in
+                self?.pinnedSceneIds = newValue
+            }
     }
     
     public func saveConnection(bridge: BridgeInfo, registrationResponse: BridgeRegistrationResponse) {
@@ -94,8 +105,8 @@ public class BridgeManager: ObservableObject {
         if bridge.internalipaddress == "127.0.0.1" ||
            bridge.internalipaddress == "localhost" ||
            bridge.internalipaddress == "::1" {
-            print("❌ Refusing to save bridge with localhost IP: \(bridge.internalipaddress)")
-            print("  - Bridge must be on local network (e.g., 192.168.x.x or 10.0.x.x)")
+            AppLogger.bridge.error("Refusing to save bridge with localhost IP: \(bridge.internalipaddress, privacy: .private)")
+            AppLogger.bridge.error("Bridge must be on local network (e.g., 192.168.x.x or 10.0.x.x)")
             return
         }
 
@@ -114,32 +125,31 @@ public class BridgeManager: ObservableObject {
             userDefaults.set(data, forKey: connectedBridgeKey)
 
             connectedBridge = connectionInfo
-            print("✅ Bridge connection saved successfully:")
-            print("  - Bridge: \(bridge.displayName) (\(bridge.shortId))")
-            print("  - IP Address: \(bridge.internalipaddress)")
+            AppLogger.bridge.info("Bridge connection saved successfully")
+            AppLogger.bridge.debug("Bridge: \(bridge.displayName, privacy: .public) (\(bridge.shortId, privacy: .private))")
+            AppLogger.bridge.debug("IP Address: \(bridge.internalipaddress, privacy: .private)")
             #if DEBUG
-            print("  - Username: \(registrationResponse.username)")
-            print("  - ClientKey: \(registrationResponse.clientkey ?? "nil")")
+            AppLogger.bridge.debug("Username: \(registrationResponse.username, privacy: .private)")
+            AppLogger.bridge.debug("ClientKey: \(registrationResponse.clientkey ?? "nil", privacy: .private)")
             #endif
-            print("  - Connected Date: \(connectionInfo.connectedDate)")
-            print("  - Data size: \(data.count) bytes")
+            AppLogger.bridge.debug("Connected Date: \(connectionInfo.connectedDate.description, privacy: .public)")
+            AppLogger.bridge.debug("Data size: \(data.count, privacy: .public) bytes")
 
             // Verify the save by immediately reading it back
             if let verifyData = userDefaults.data(forKey: connectedBridgeKey) {
-                print("✅ Verification: Data successfully retrieved from UserDefaults (\(verifyData.count) bytes)")
+                AppLogger.bridge.info("Verification: Data successfully retrieved from UserDefaults (\(verifyData.count, privacy: .public) bytes)")
             } else {
-                print("❌ Verification failed: Could not retrieve data from UserDefaults")
+                AppLogger.bridge.error("Verification failed: Could not retrieve data from UserDefaults")
             }
         } catch {
-            print("❌ Failed to save bridge connection: \(error)")
+            AppLogger.bridge.error("Failed to save bridge connection: \(error.localizedDescription, privacy: .public)")
         }
     }
     
     public func disconnectBridge() {
         // Remove bridge-specific pinned scenes and Keychain credentials before clearing connection
         if let bridgeId = connectedBridge?.bridge.id {
-            pinnedSceneIds[bridgeId] = nil
-            savePinnedScenesToStorage()
+            scenePinning.clearPinnedScenes(forBridgeId: bridgeId)
             deleteFromKeychain(key: "\(bridgeId)_username")
             deleteFromKeychain(key: "\(bridgeId)_clientkey")
         }
@@ -153,9 +163,9 @@ public class BridgeManager: ObservableObject {
         rooms = []
         zones = []
         scenes = []
-        rebuildGroupedLightToRoomMap()
-        rebuildGroupedLightToZoneMap()
-        print("🔌 Bridge disconnected and cleared from storage")
+        sseProcessor.rebuildGroupedLightToRoomMap()
+        sseProcessor.rebuildGroupedLightToZoneMap()
+        AppLogger.bridge.info("Bridge disconnected and cleared from storage")
     }
 
     // MARK: - Demo Mode Management
@@ -164,7 +174,7 @@ public class BridgeManager: ObservableObject {
     private func loadDemoModeState() {
         isDemoMode = userDefaults.bool(forKey: demoModeKey)
         if isDemoMode {
-            print("🎭 Demo mode is ENABLED")
+            AppLogger.bridge.debug("Demo mode is ENABLED")
         }
     }
 
@@ -172,14 +182,14 @@ public class BridgeManager: ObservableObject {
     public func enableDemoMode() {
         isDemoMode = true
         userDefaults.set(true, forKey: demoModeKey)
-        print("🎭 Demo mode ENABLED")
+        AppLogger.bridge.debug("Demo mode ENABLED")
     }
 
     /// Disable demo mode and return to normal operation
     public func disableDemoMode() {
         isDemoMode = false
         userDefaults.set(false, forKey: demoModeKey)
-        print("🎭 Demo mode DISABLED")
+        AppLogger.bridge.debug("Demo mode DISABLED")
     }
 
     /// Get demo data - uses cached data if available, otherwise returns hardcoded demo data
@@ -312,288 +322,21 @@ public class BridgeManager: ObservableObject {
         ]
     }
 
-    // MARK: - SSE Event Processing
-
-    /// Cached map: grouped_light ID -> room ID for fast lookup
-    private var groupedLightToRoomMap: [String: String] = [:]
-
-    /// Cached map: grouped_light ID -> zone ID for fast lookup
-    private var groupedLightToZoneMap: [String: String] = [:]
-
-    /// Rebuild a grouped-light-to-group-ID map from a collection of GroupedLightContainers
-    private func rebuildGroupedLightMap<T: GroupedLightContainer>(from groups: [T]) -> [String: String] {
-        var map: [String: String] = [:]
-        for group in groups {
-            if let services = group.services,
-               let groupedLightService = services.first(where: { $0.rtype == "grouped_light" }) {
-                map[groupedLightService.rid] = group.id
-            }
-        }
-        return map
-    }
-
-    /// Rebuild the groupedLightToRoomMap from current rooms
-    private func rebuildGroupedLightToRoomMap() {
-        groupedLightToRoomMap = rebuildGroupedLightMap(from: rooms)
-    }
-
-    /// Rebuild the groupedLightToZoneMap from current zones
-    private func rebuildGroupedLightToZoneMap() {
-        groupedLightToZoneMap = rebuildGroupedLightMap(from: zones)
-    }
+    // MARK: - SSE Event Processing (delegated to SSEEventProcessor)
 
     /// Start listening to SSE events from HueAPIService
     public func startListeningToSSEEvents() {
-        // Demo mode: Skip SSE event listening
-        if isDemoMode {
-            print("🎭 startListeningToSSEEvents: Demo mode - skipping SSE")
-            return
-        }
-
-        // Prevent duplicate subscriptions
-        if eventSubscription != nil && streamStateSubscription != nil {
-            print("⚠️ SSE event listeners already running - skipping duplicate start")
-            return
-        }
-
-        print("📡 Starting SSE event listener")
-
-        // Cancel any existing subscriptions first to prevent memory leaks
-        eventSubscription?.cancel()
-        streamStateSubscription?.cancel()
-
-        // Use Task to access actor-isolated properties
-        Task {
-            let service = HueAPIService.shared
-
-            // Subscribe to event publisher using Combine
-            await MainActor.run {
-                eventSubscription = service.eventPublisher
-                    .receive(on: DispatchQueue.main)
-                    .sink { [weak self] events in
-                        guard let self = self else { return }
-                        Task {
-                            await self.processSSEEvents(events)
-                        }
-                    }
-
-                // Subscribe to stream state changes using Combine
-                streamStateSubscription = service.streamStateSubject
-                    .receive(on: DispatchQueue.main)
-                    .sink { [weak self] state in
-                        guard let self = self else { return }
-
-                        // Update connection status
-                        self.isSSEConnected = (state == .connected)
-
-                        // Handle disconnections with auto-reconnect
-                        if case .disconnected = state, self.reconnectAttempts < self.maxReconnectAttempts {
-                            // Detach from MainActor to prevent UI blocking during reconnection delay
-                            Task.detached { [weak self] in
-                                guard let self = self else { return }
-                                await self.handleReconnection()
-                            }
-                        }
-                    }
-            }
-        }
+        sseProcessor.startListeningToSSEEvents()
     }
 
     /// Stop listening to SSE events
     public func stopListeningToSSEEvents() {
-        print("🛑 Stopping SSE event listener")
-        eventSubscription?.cancel()
-        streamStateSubscription?.cancel()
-        eventSubscription = nil
-        streamStateSubscription = nil
-        isSSEConnected = false
-        reconnectAttempts = 0  // Reset reconnection counter
+        sseProcessor.stopListeningToSSEEvents()
     }
 
     /// Manually reconnect SSE stream (for user-initiated reconnection)
     public func reconnectSSE() async {
-        // Only reconnect if we have a connected bridge
-        guard isConnected else {
-            print("⚠️ Cannot reconnect SSE - no bridge connected")
-            return
-        }
-
-        // Don't reconnect if already connected
-        if isSSEConnected {
-            print("ℹ️ SSE already connected - skipping reconnection")
-            return
-        }
-
-        print("🔄 Manually reconnecting SSE stream...")
-
-        // Stop existing connection if any
-        stopListeningToSSEEvents()
-
-        // Reset reconnection counter for fresh attempts
-        reconnectAttempts = 0
-
-        // Start fresh connection
-        startListeningToSSEEvents()
-
-        // Trigger the actual stream start
-        do {
-            try await HueAPIService.shared.startEventStream()
-            print("✅ SSE stream reconnected successfully")
-        } catch {
-            print("❌ Failed to reconnect SSE stream: \(error.localizedDescription)")
-        }
-    }
-
-    /// Process incoming SSE events and update local state
-    private func processSSEEvents(_ events: [SSEEvent]) async {
-        let relevantUpdates = events.relevantUpdates
-
-        guard !relevantUpdates.isEmpty else { return }
-
-        print("🔄 Processing \(relevantUpdates.count) relevant event(s)")
-
-        for eventData in relevantUpdates {
-            switch eventData.resourceType {
-            case .groupedLight:
-                await handleGroupedLightUpdate(eventData)
-            case .room:
-                await handleRoomUpdate(eventData)
-            case .zone:
-                await handleZoneUpdate(eventData)
-            case .scene:
-                await handleSceneUpdate(eventData)
-            default:
-                break
-            }
-        }
-    }
-
-    /// Handle grouped_light update event
-    private func handleGroupedLightUpdate(_ data: SSEEventData) async {
-        print("💡 Grouped light update: \(data.debugDescription)")
-
-        let groupedLightId = data.id
-
-        // Check if this grouped light belongs to a room
-        if let roomId = groupedLightToRoomMap[groupedLightId] {
-            // Extract state changes
-            let on = data.on?.on
-            let brightness = data.dimming?.brightness
-
-            // Update local room state
-            await MainActor.run {
-                updateLocalRoomState(roomId: roomId, on: on, brightness: brightness)
-            }
-            print("  ✓ Updated room \(roomId)")
-        }
-
-        // Check if this grouped light belongs to a zone
-        if let zoneId = groupedLightToZoneMap[groupedLightId] {
-            // Extract state changes
-            let on = data.on?.on
-            let brightness = data.dimming?.brightness
-
-            // Update local zone state
-            await MainActor.run {
-                updateLocalZoneState(zoneId: zoneId, on: on, brightness: brightness)
-            }
-            print("  ✓ Updated zone \(zoneId)")
-        }
-    }
-
-    /// Handle metadata update event for any GroupedLightContainer (room or zone)
-    private func handleGroupMetadataUpdate<T: GroupedLightContainer>(
-        _ data: SSEEventData,
-        in collection: inout [T],
-        label: String
-    ) {
-        let groupId = data.id
-
-        // Check if we need to update metadata
-        if let metadata = data.metadata, let name = metadata.name {
-            if let index = collection.firstIndex(where: { $0.id == groupId }) {
-                var updatedItem = collection[index]
-                // Create new metadata with updated values
-                let archetype = metadata.archetype ?? updatedItem.metadata.archetype
-                updatedItem.metadata = GroupMetadata(name: name, archetype: archetype)
-                collection[index] = updatedItem
-                print("  \u{2713} Updated \(label) '\(name)' metadata")
-            }
-        }
-    }
-
-    /// Handle room metadata update event
-    private func handleRoomUpdate(_ data: SSEEventData) async {
-        print("🏠 Room update: \(data.debugDescription)")
-        await MainActor.run {
-            handleGroupMetadataUpdate(data, in: &rooms, label: "room")
-        }
-    }
-
-    /// Handle zone metadata update event
-    private func handleZoneUpdate(_ data: SSEEventData) async {
-        print("🗺️ Zone update: \(data.debugDescription)")
-        await MainActor.run {
-            handleGroupMetadataUpdate(data, in: &zones, label: "zone")
-        }
-    }
-
-    /// Handle scene status update event
-    private func handleSceneUpdate(_ data: SSEEventData) async {
-        print("🎬 Scene update: \(data.debugDescription)")
-
-        // Log scene activation/deactivation for debugging
-        if let status = data.status?.active {
-            print("  ✓ Scene \(data.id.prefix(8)) is now: \(status)")
-        }
-    }
-
-    /// Handle auto-reconnection with exponential backoff
-    /// Note: This function is called from a detached Task to prevent blocking MainActor
-    private func handleReconnection() async {
-        // Don't attempt reconnection if we're in demo mode or not connected to a bridge
-        let shouldSkip = await MainActor.run {
-            isDemoMode || connectedBridge == nil
-        }
-
-        if shouldSkip {
-            print("⚠️ Skipping SSE reconnection - no active bridge connection")
-            return
-        }
-
-        // Increment attempts and calculate delay on MainActor
-        let (currentAttempt, delay) = await MainActor.run { () -> (Int, Double) in
-            reconnectAttempts += 1
-            let delay = min(pow(2.0, Double(reconnectAttempts - 1)), 32.0) // 1s, 2s, 4s, 8s, 16s, 32s max
-            return (reconnectAttempts, delay)
-        }
-
-        print("🔄 SSE disconnected. Reconnecting in \(Int(delay))s (attempt \(currentAttempt)/\(maxReconnectAttempts))")
-
-        // Sleep without blocking MainActor (we're already detached)
-        try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
-
-        // Check again before reconnecting (bridge might have been disconnected during sleep)
-        let bridgeStillConnected = await MainActor.run {
-            connectedBridge != nil
-        }
-
-        guard bridgeStillConnected else {
-            print("⚠️ Bridge disconnected during reconnection delay - aborting")
-            return
-        }
-
-        // Restart the SSE stream
-        do {
-            try await HueAPIService.shared.startEventStream()
-            print("✅ SSE stream reconnected")
-            await MainActor.run {
-                reconnectAttempts = 0  // Reset on success
-            }
-        } catch {
-            print("❌ Failed to reconnect SSE stream: \(error)")
-            // Don't retry here - the stream state subscription will trigger another reconnection attempt
-        }
+        await sseProcessor.reconnectSSE()
     }
 
     private func loadConnectedBridge() {
@@ -671,7 +414,7 @@ public class BridgeManager: ObservableObject {
 
         do {
             rooms = try JSONDecoder().decode([HueRoom].self, from: data)
-            rebuildGroupedLightToRoomMap()
+            sseProcessor.rebuildGroupedLightToRoomMap()
             print("✅ Loaded \(rooms.count) cached rooms from storage")
         } catch {
             print("❌ Failed to load cached rooms: \(error)")
@@ -698,7 +441,7 @@ public class BridgeManager: ObservableObject {
 
         do {
             zones = try JSONDecoder().decode([HueZone].self, from: data)
-            rebuildGroupedLightToZoneMap()
+            sseProcessor.rebuildGroupedLightToZoneMap()
             print("✅ Loaded \(zones.count) cached zones from storage")
         } catch {
             print("❌ Failed to load cached zones: \(error)")
@@ -740,36 +483,6 @@ public class BridgeManager: ObservableObject {
             print("💾 Saved \(scenes.count) scenes to storage (\(data.count) bytes)")
         } catch {
             print("❌ Failed to save scenes to storage: \(error)")
-        }
-    }
-
-    // MARK: - Pinned Scenes Storage
-
-    private func loadPinnedScenesFromStorage() {
-        guard let data = userDefaults.data(forKey: pinnedScenesKey) else {
-            print("📂 No pinned scenes found")
-            return
-        }
-
-        do {
-            pinnedSceneIds = try JSONDecoder().decode([String: [String: [String]]].self, from: data)
-            let totalPins = pinnedSceneIds.values.flatMap { $0.values }.reduce(0) { $0 + $1.count }
-            print("✅ Loaded \(totalPins) pinned scenes from storage")
-        } catch {
-            print("❌ Failed to load pinned scenes: \(error)")
-            // Clean up corrupted data
-            userDefaults.removeObject(forKey: pinnedScenesKey)
-        }
-    }
-
-    private func savePinnedScenesToStorage() {
-        do {
-            let data = try JSONEncoder().encode(pinnedSceneIds)
-            userDefaults.set(data, forKey: pinnedScenesKey)
-            let totalPins = pinnedSceneIds.values.flatMap { $0.values }.reduce(0) { $0 + $1.count }
-            print("💾 Saved \(totalPins) pinned scenes to storage (\(data.count) bytes)")
-        } catch {
-            print("❌ Failed to save pinned scenes to storage: \(error)")
         }
     }
 
@@ -825,7 +538,7 @@ public class BridgeManager: ObservableObject {
             print("🎭 getRooms: Demo mode - returning demo data")
             let demoRooms = getDemoRooms()
             self.rooms = demoRooms
-            rebuildGroupedLightToRoomMap()
+            sseProcessor.rebuildGroupedLightToRoomMap()
             print("🎭 getRooms: Loaded \(demoRooms.count) demo rooms")
             return
         }
@@ -900,7 +613,7 @@ public class BridgeManager: ObservableObject {
             }
 
             self.rooms = enrichedRooms
-            rebuildGroupedLightToRoomMap()
+            sseProcessor.rebuildGroupedLightToRoomMap()
             saveRoomsToStorage()  // Cache successful refresh
             refreshError = nil  // Clear any previous errors
             print("🏠 getRooms: Completed with \(enrichedRooms.count) rooms")
@@ -932,7 +645,7 @@ public class BridgeManager: ObservableObject {
             print("🎭 getZones: Demo mode - returning demo data")
             let demoZones = getDemoZones()
             self.zones = demoZones
-            rebuildGroupedLightToZoneMap()
+            sseProcessor.rebuildGroupedLightToZoneMap()
             print("🎭 getZones: Loaded \(demoZones.count) demo zones")
             return
         }
@@ -1007,7 +720,7 @@ public class BridgeManager: ObservableObject {
             }
 
             self.zones = enrichedZones
-            rebuildGroupedLightToZoneMap()
+            sseProcessor.rebuildGroupedLightToZoneMap()
             saveZonesToStorage()  // Cache successful refresh
             refreshError = nil  // Clear any previous errors
             print("🏢 getZones: Completed with \(enrichedZones.count) zones")
@@ -1030,94 +743,16 @@ public class BridgeManager: ObservableObject {
         await getZones()
     }
 
-    // MARK: - Color Conversion Utilities
+    // MARK: - Color Conversion (delegated to ColorConverter)
 
-    /// Convert CIE XY color space to RGB
-    /// Uses simplified conversion algorithm suitable for visual effects
+    /// Convert CIE XY color space to RGB (backward-compatible wrapper)
     func xyToRGB(x: Double, y: Double, brightness: Double) -> Color {
-        // Clamp values to valid ranges
-        let x = max(0.0, min(1.0, x))
-        let y = max(0.0, min(1.0, y))
-        let brightness = max(0.0, min(100.0, brightness)) / 100.0
-
-        // Avoid division by zero
-        guard y > 0.0001 else {
-            // Default to white if Y is too small
-            return Color(red: brightness, green: brightness, blue: brightness)
-        }
-
-        // Calculate XYZ from xy
-        let z = 1.0 - x - y
-        let Y = brightness
-        let X = (Y / y) * x
-        let Z = (Y / y) * z
-
-        // Convert XYZ to RGB using simplified sRGB matrix
-        var r = X * 1.656492 - Y * 0.354851 - Z * 0.255038
-        var g = -X * 0.707196 + Y * 1.655397 + Z * 0.036152
-        var b = X * 0.051713 - Y * 0.121364 + Z * 1.011530
-
-        // Apply gamma correction (simplified)
-        r = r <= 0.0031308 ? 12.92 * r : (1.0 + 0.055) * pow(r, (1.0 / 2.4)) - 0.055
-        g = g <= 0.0031308 ? 12.92 * g : (1.0 + 0.055) * pow(g, (1.0 / 2.4)) - 0.055
-        b = b <= 0.0031308 ? 12.92 * b : (1.0 + 0.055) * pow(b, (1.0 / 2.4)) - 0.055
-
-        // Clamp to valid RGB range
-        r = max(0.0, min(1.0, r))
-        g = max(0.0, min(1.0, g))
-        b = max(0.0, min(1.0, b))
-
-        return Color(red: r, green: g, blue: b)
+        ColorConverter.xyToRGB(x: x, y: y, brightness: brightness)
     }
 
-    /// Convert color temperature (mirek) to RGB
-    /// Mirek = 1,000,000 / Kelvin
+    /// Convert color temperature (mirek) to RGB (backward-compatible wrapper)
     func mirekToRGB(mirek: Int, brightness: Double) -> Color {
-        // Convert mirek to Kelvin
-        let kelvin = 1_000_000.0 / Double(mirek)
-        let brightness = max(0.0, min(100.0, brightness)) / 100.0
-
-        // Simplified color temperature to RGB
-        // Based on approximate blackbody radiation
-        var r: Double, g: Double, b: Double
-
-        // Red calculation
-        if kelvin <= 6600 {
-            r = 1.0
-        } else {
-            let temp = kelvin / 100.0 - 60.0
-            r = 329.698727446 * pow(temp, -0.1332047592)
-            r = max(0.0, min(255.0, r)) / 255.0
-        }
-
-        // Green calculation
-        if kelvin <= 6600 {
-            let temp = kelvin / 100.0
-            g = 99.4708025861 * log(temp) - 161.1195681661
-            g = max(0.0, min(255.0, g)) / 255.0
-        } else {
-            let temp = kelvin / 100.0 - 60.0
-            g = 288.1221695283 * pow(temp, -0.0755148492)
-            g = max(0.0, min(255.0, g)) / 255.0
-        }
-
-        // Blue calculation
-        if kelvin >= 6600 {
-            b = 1.0
-        } else if kelvin <= 1900 {
-            b = 0.0
-        } else {
-            let temp = kelvin / 100.0 - 10.0
-            b = 138.5177312231 * log(temp) - 305.0447927307
-            b = max(0.0, min(255.0, b)) / 255.0
-        }
-
-        // Apply brightness
-        r = r * brightness
-        g = g * brightness
-        b = b * brightness
-
-        return Color(red: r, green: g, blue: b)
+        ColorConverter.mirekToRGB(mirek: mirek, brightness: brightness)
     }
 
     /// Extract a displayable color from a HueLight
@@ -1242,7 +877,7 @@ public class BridgeManager: ObservableObject {
     /// Smart update rooms array - only update changed items to minimize UI flicker
     private func smartUpdateRooms(with newRooms: [HueRoom]) {
         smartUpdate(&rooms, with: newRooms)
-        rebuildGroupedLightToRoomMap()
+        sseProcessor.rebuildGroupedLightToRoomMap()
         saveRoomsToStorage()
     }
 
@@ -1254,7 +889,7 @@ public class BridgeManager: ObservableObject {
     /// Smart update zones array - only update changed items to minimize UI flicker
     private func smartUpdateZones(with newZones: [HueZone]) {
         smartUpdate(&zones, with: newZones)
-        rebuildGroupedLightToZoneMap()
+        sseProcessor.rebuildGroupedLightToZoneMap()
         saveZonesToStorage()
     }
 
@@ -1304,7 +939,7 @@ public class BridgeManager: ObservableObject {
             // If no errors, update scenes
             self.scenes = response.data
             saveScenesToStorage()
-            validateAndCleanPinnedScenes()
+            scenePinning.validateAndCleanPinnedScenes(bridgeId: connectedBridge?.bridge.id, scenes: scenes)
             refreshError = nil
             print("✅ fetchScenes: Success - retrieved \(response.data.count) scenes")
         } catch {
@@ -1473,198 +1108,56 @@ public class BridgeManager: ObservableObject {
         return average
     }
 
-    // MARK: - Scene Pinning
+    // MARK: - Scene Pinning (delegated to ScenePinningManager)
 
     /// Pin a scene to a specific room or zone
-    /// - Parameters:
-    ///   - sceneId: The scene ID to pin
-    ///   - groupId: The room or zone ID (matches scene.group.rid)
     public func pinScene(sceneId: String, forGroupId groupId: String) {
-        guard let bridgeId = connectedBridge?.bridge.id else {
-            print("⚠️ pinScene: No connected bridge - operation skipped")
-            return
-        }
-
-        // Initialize bridge dictionary if needed
-        if pinnedSceneIds[bridgeId] == nil {
-            pinnedSceneIds[bridgeId] = [:]
-        }
-
-        // Initialize group array if needed
-        if pinnedSceneIds[bridgeId]?[groupId] == nil {
-            pinnedSceneIds[bridgeId]?[groupId] = []
-        }
-
-        // Check if already pinned
-        if let scenes = pinnedSceneIds[bridgeId]?[groupId], scenes.contains(sceneId) {
-            print("📌 pinScene: Scene \(sceneId) already pinned to group \(groupId)")
-            return
-        }
-
-        // Add to pinned list
-        pinnedSceneIds[bridgeId]?[groupId]?.append(sceneId)
-        savePinnedScenesToStorage()
-        print("📌 pinScene: Pinned scene \(sceneId) to group \(groupId)")
+        scenePinning.pinScene(sceneId: sceneId, forGroupId: groupId, bridgeId: connectedBridge?.bridge.id)
     }
 
     /// Unpin a scene from a specific room or zone
-    /// - Parameters:
-    ///   - sceneId: The scene ID to unpin
-    ///   - groupId: The room or zone ID
     public func unpinScene(sceneId: String, forGroupId groupId: String) {
-        guard let bridgeId = connectedBridge?.bridge.id else {
-            print("⚠️ unpinScene: No connected bridge - operation skipped")
-            return
-        }
-
-        guard var groupScenes = pinnedSceneIds[bridgeId]?[groupId] else {
-            print("⚠️ unpinScene: No pinned scenes for group \(groupId)")
-            return
-        }
-
-        groupScenes.removeAll { $0 == sceneId }
-
-        // Update storage
-        if groupScenes.isEmpty {
-            pinnedSceneIds[bridgeId]?[groupId] = nil
-        } else {
-            pinnedSceneIds[bridgeId]?[groupId] = groupScenes
-        }
-
-        savePinnedScenesToStorage()
-        print("📌 unpinScene: Unpinned scene \(sceneId) from group \(groupId)")
+        scenePinning.unpinScene(sceneId: sceneId, forGroupId: groupId, bridgeId: connectedBridge?.bridge.id)
     }
 
     /// Toggle pin state for a scene
-    /// - Parameters:
-    ///   - sceneId: The scene ID to toggle
-    ///   - groupId: The room or zone ID
     public func toggleScenePin(sceneId: String, forGroupId groupId: String) {
-        if isScenePinned(sceneId: sceneId, forGroupId: groupId) {
-            unpinScene(sceneId: sceneId, forGroupId: groupId)
-        } else {
-            pinScene(sceneId: sceneId, forGroupId: groupId)
-        }
+        scenePinning.toggleScenePin(sceneId: sceneId, forGroupId: groupId, bridgeId: connectedBridge?.bridge.id)
     }
 
     /// Check if a scene is pinned
-    /// - Parameters:
-    ///   - sceneId: The scene ID to check
-    ///   - groupId: The room or zone ID
-    /// - Returns: True if the scene is pinned for this group
     public func isScenePinned(sceneId: String, forGroupId groupId: String) -> Bool {
-        guard let bridgeId = connectedBridge?.bridge.id else {
-            return false
-        }
-
-        return pinnedSceneIds[bridgeId]?[groupId]?.contains(sceneId) ?? false
+        scenePinning.isScenePinned(sceneId: sceneId, forGroupId: groupId, bridgeId: connectedBridge?.bridge.id)
     }
 
     /// Get all pinned scenes for a specific group (room or zone)
-    /// - Parameter groupId: The room or zone ID
-    /// - Returns: Array of HueScene objects that are pinned (filtered from cached scenes), in pinned order
     public func getPinnedScenes(forGroupId groupId: String) -> [HueScene] {
-        guard let bridgeId = connectedBridge?.bridge.id else {
-            return []
-        }
-
-        guard let pinnedIds = pinnedSceneIds[bridgeId]?[groupId] else {
-            return []
-        }
-
-        // Return scenes in pinned order
-        let pinnedScenes = pinnedIds.compactMap { sceneId -> HueScene? in
-            scenes.first { scene in
-                scene.id == sceneId && scene.group.rid == groupId
-            }
-        }
-
-        return pinnedScenes
+        scenePinning.getPinnedScenes(forGroupId: groupId, bridgeId: connectedBridge?.bridge.id, scenes: scenes)
     }
 
-    /// Get all pinned scenes for a specific room (backward-compatible wrapper)
-    /// - Parameter roomId: The room ID
-    /// - Returns: Array of HueScene objects that are pinned (filtered from cached scenes)
+    /// Get all pinned scenes for a specific room
     public func getPinnedScenes(forRoomId roomId: String) -> [HueScene] {
         getPinnedScenes(forGroupId: roomId)
     }
 
-    /// Get all pinned scenes for a specific zone (backward-compatible wrapper)
-    /// - Parameter zoneId: The zone ID
-    /// - Returns: Array of HueScene objects that are pinned (filtered from cached scenes)
+    /// Get all pinned scenes for a specific zone
     public func getPinnedScenes(forZoneId zoneId: String) -> [HueScene] {
         getPinnedScenes(forGroupId: zoneId)
     }
 
     /// Get count of pinned scenes for a group
-    /// - Parameter groupId: The room or zone ID
-    /// - Returns: Number of pinned scenes
     public func getPinnedSceneCount(forGroupId groupId: String) -> Int {
-        guard let bridgeId = connectedBridge?.bridge.id else {
-            return 0
-        }
-
-        return pinnedSceneIds[bridgeId]?[groupId]?.count ?? 0
+        scenePinning.getPinnedSceneCount(forGroupId: groupId, bridgeId: connectedBridge?.bridge.id)
     }
 
     /// Clear all pinned scenes for a specific group
-    /// - Parameter groupId: The room or zone ID
     public func clearPinnedScenes(forGroupId groupId: String) {
-        guard let bridgeId = connectedBridge?.bridge.id else {
-            print("⚠️ clearPinnedScenes: No connected bridge - operation skipped")
-            return
-        }
-
-        pinnedSceneIds[bridgeId]?[groupId] = nil
-        savePinnedScenesToStorage()
-        print("📌 clearPinnedScenes: Cleared all pinned scenes for group \(groupId)")
+        scenePinning.clearPinnedScenes(forGroupId: groupId, bridgeId: connectedBridge?.bridge.id)
     }
 
     /// Clear ALL pinned scenes across all bridges
     public func clearAllPinnedScenes() {
-        pinnedSceneIds = [:]
-        savePinnedScenesToStorage()
-        print("📌 clearAllPinnedScenes: Cleared all pinned scenes")
-    }
-
-    /// Validate and clean up stale pinned scenes
-    /// Removes scene IDs that no longer exist in the current scenes array
-    private func validateAndCleanPinnedScenes() {
-        guard let bridgeId = connectedBridge?.bridge.id else {
-            return
-        }
-
-        guard var bridgePins = pinnedSceneIds[bridgeId] else {
-            return
-        }
-
-        var didClean = false
-
-        for (groupId, sceneIds) in bridgePins {
-            // Get current valid scene IDs for this group
-            let groupScenes = scenes.filter { $0.group.rid == groupId }
-            let validSceneIds = Set(groupScenes.map { $0.id })
-
-            // Filter out stale pins (maintain order with filter, not Set operations)
-            let validPins = sceneIds.filter { validSceneIds.contains($0) }
-
-            if validPins.count != sceneIds.count {
-                let removed = sceneIds.count - validPins.count
-                print("🧹 validateAndCleanPinnedScenes: Cleaned \(removed) stale pinned scene(s) for group \(groupId)")
-
-                if validPins.isEmpty {
-                    bridgePins[groupId] = nil
-                } else {
-                    bridgePins[groupId] = validPins
-                }
-                didClean = true
-            }
-        }
-
-        if didClean {
-            pinnedSceneIds[bridgeId] = bridgePins
-            savePinnedScenesToStorage()
-        }
+        scenePinning.clearAllPinnedScenes()
     }
 
     // MARK: - Local State Updates
