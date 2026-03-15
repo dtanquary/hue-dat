@@ -36,7 +36,7 @@ struct ScenePickerView: View {
                 }
                 .listRowInsets(.init(top: 0, leading: 0, bottom: 0, trailing: 0))
             }
-            .navigationTitle("Scenes (\(scenes.lazy.count))")
+            .navigationTitle("Scenes (\(scenes.count))")
             .navigationBarTitleDisplayMode(.automatic)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -62,7 +62,7 @@ struct SceneRowView: View {
                 // Scene name
                 Text(scene.metadata.name)
                     .font(.subheadline)
-                    .foregroundColor(.white)
+                    .foregroundStyle(.white)
             }
 
             Spacer()
@@ -70,7 +70,7 @@ struct SceneRowView: View {
             // Active indicator
             if isActive {
                 Image(systemName: "checkmark.circle.fill")
-                    .foregroundColor(.green)
+                    .foregroundStyle(.green)
                     .font(.title3)
             }
         }

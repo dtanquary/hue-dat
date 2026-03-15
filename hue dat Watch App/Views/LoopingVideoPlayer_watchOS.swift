@@ -62,6 +62,10 @@ struct LoopingVideoPlayer_watchOS: View {
 
         let tempURL = FileManager.default.temporaryDirectory.appendingPathComponent("\(name).mp4")
 
+        if FileManager.default.fileExists(atPath: tempURL.path) {
+            return tempURL
+        }
+
         do {
             try asset.data.write(to: tempURL)
             return tempURL

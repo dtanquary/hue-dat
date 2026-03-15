@@ -41,10 +41,10 @@ struct SearchResultsOverlay: View {
         VStack(spacing: 12) {
             Image(systemName: "magnifyingglass")
                 .font(.system(size: 48))
-                .foregroundColor(.secondary)
+                .foregroundStyle(.secondary)
             Text("Search for rooms, zones, or scenes")
                 .font(.headline)
-                .foregroundColor(.secondary)
+                .foregroundStyle(.secondary)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .padding(.top, 100)
@@ -54,10 +54,10 @@ struct SearchResultsOverlay: View {
         VStack(spacing: 12) {
             Image(systemName: "magnifyingglass")
                 .font(.system(size: 48))
-                .foregroundColor(.secondary)
+                .foregroundStyle(.secondary)
             Text("No results for '\(searchQuery)'")
                 .font(.headline)
-                .foregroundColor(.secondary)
+                .foregroundStyle(.secondary)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .padding(.top, 100)
@@ -82,7 +82,7 @@ struct SearchResultsOverlay: View {
         VStack(alignment: .leading, spacing: 8) {
             Text("ROOMS (\(searchResults.rooms.count))")
                 .font(.caption)
-                .foregroundColor(.secondary)
+                .foregroundStyle(.secondary)
                 .padding(.horizontal, 4)
 
             ForEach(searchResults.rooms) { room in
@@ -90,21 +90,21 @@ struct SearchResultsOverlay: View {
                     onRoomTap(room)
                 } label: {
                     HStack {
-                        Image(systemName: roomIcon(for: room.metadata.archetype))
-                            .foregroundColor(.blue)
+                        Image(systemName: iconForArchetype(room.metadata.archetype))
+                            .foregroundStyle(.blue)
                             .frame(width: 24)
 
                         HighlightedText(
                             text: room.metadata.name,
                             highlight: searchQuery
                         )
-                        .foregroundColor(.primary)
+                        .foregroundStyle(.primary)
 
                         Spacer()
 
                         Image(systemName: "chevron.right")
                             .font(.caption)
-                            .foregroundColor(.secondary)
+                            .foregroundStyle(.secondary)
                     }
                     .padding(.vertical, 12)
                     .padding(.horizontal, 16)
@@ -120,7 +120,7 @@ struct SearchResultsOverlay: View {
         VStack(alignment: .leading, spacing: 8) {
             Text("ZONES (\(searchResults.zones.count))")
                 .font(.caption)
-                .foregroundColor(.secondary)
+                .foregroundStyle(.secondary)
                 .padding(.horizontal, 4)
 
             ForEach(searchResults.zones) { zone in
@@ -129,20 +129,20 @@ struct SearchResultsOverlay: View {
                 } label: {
                     HStack {
                         Image(systemName: "square.grid.2x2")
-                            .foregroundColor(.purple)
+                            .foregroundStyle(.purple)
                             .frame(width: 24)
 
                         HighlightedText(
                             text: zone.metadata.name,
                             highlight: searchQuery
                         )
-                        .foregroundColor(.primary)
+                        .foregroundStyle(.primary)
 
                         Spacer()
 
                         Image(systemName: "chevron.right")
                             .font(.caption)
-                            .foregroundColor(.secondary)
+                            .foregroundStyle(.secondary)
                     }
                     .padding(.vertical, 12)
                     .padding(.horizontal, 16)
@@ -158,7 +158,7 @@ struct SearchResultsOverlay: View {
         VStack(alignment: .leading, spacing: 8) {
             Text("SCENES (\(searchResults.scenes.count))")
                 .font(.caption)
-                .foregroundColor(.secondary)
+                .foregroundStyle(.secondary)
                 .padding(.horizontal, 4)
 
             ForEach(searchResults.scenes) { sceneResult in
@@ -167,7 +167,7 @@ struct SearchResultsOverlay: View {
                 } label: {
                     HStack {
                         Image(systemName: "lightbulb.fill")
-                            .foregroundColor(.yellow)
+                            .foregroundStyle(.yellow)
                             .frame(width: 24)
 
                         VStack(alignment: .leading, spacing: 2) {
@@ -175,12 +175,12 @@ struct SearchResultsOverlay: View {
                                 text: sceneResult.scene.metadata.name,
                                 highlight: searchQuery
                             )
-                            .foregroundColor(.primary)
+                            .foregroundStyle(.primary)
 
                             if let context = sceneResult.contextDescription {
                                 Text(context)
                                     .font(.caption)
-                                    .foregroundColor(.secondary)
+                                    .foregroundStyle(.secondary)
                             }
                         }
 
@@ -188,7 +188,7 @@ struct SearchResultsOverlay: View {
 
                         Image(systemName: "wand.and.stars")
                             .font(.caption)
-                            .foregroundColor(.secondary)
+                            .foregroundStyle(.secondary)
                     }
                     .padding(.vertical, 12)
                     .padding(.horizontal, 16)
@@ -200,24 +200,6 @@ struct SearchResultsOverlay: View {
         }
     }
 
-    private func roomIcon(for archetype: String) -> String {
-        switch archetype.lowercased() {
-        case "living_room": return "sofa"
-        case "bedroom": return "bed.double"
-        case "kitchen": return "fork.knife"
-        case "bathroom": return "drop"
-        case "office": return "desktopcomputer"
-        case "dining": return "fork.knife"
-        case "hallway": return "door.left.hand.open"
-        case "toilet": return "drop"
-        case "garage": return "car"
-        case "terrace", "balcony": return "sun.max"
-        case "garden": return "leaf"
-        case "gym": return "figure.run"
-        case "recreation": return "gamecontroller"
-        default: return "lightbulb.led.fill"
-        }
-    }
 }
 
 #Preview {

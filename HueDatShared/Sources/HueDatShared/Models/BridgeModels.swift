@@ -15,7 +15,6 @@ public struct BridgeInfo: Codable, Identifiable, Equatable {
     public let serviceName: String?
 
     public var displayAddress: String {
-        /*return "\(internalipaddress):\(port)"*/
         return "\(internalipaddress)"
     }
 
@@ -42,11 +41,40 @@ public struct BridgeConnectionInfo: Codable, Equatable {
     public let clientkey: String?
     public let connectedDate: Date
 
+    // All keys are decoded (for migration from old UserDefaults data),
+    // but credentials are NOT encoded — they are stored in Keychain instead.
+    private enum CodingKeys: String, CodingKey {
+        case bridge, username, clientkey, connectedDate
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        bridge = try container.decode(BridgeInfo.self, forKey: .bridge)
+        connectedDate = try container.decode(Date.self, forKey: .connectedDate)
+        // Decode credentials if present (for migration from old UserDefaults format)
+        username = (try? container.decode(String.self, forKey: .username)) ?? ""
+        clientkey = try? container.decode(String.self, forKey: .clientkey)
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(bridge, forKey: .bridge)
+        try container.encode(connectedDate, forKey: .connectedDate)
+        // Credentials intentionally omitted from encoding — stored in Keychain
+    }
+
     public init(bridge: BridgeInfo, registrationResponse: BridgeRegistrationResponse) {
         self.bridge = bridge
         self.username = registrationResponse.username
         self.clientkey = registrationResponse.clientkey
         self.connectedDate = Date()
+    }
+
+    public init(bridge: BridgeInfo, username: String, clientkey: String?, connectedDate: Date) {
+        self.bridge = bridge
+        self.username = username
+        self.clientkey = clientkey
+        self.connectedDate = connectedDate
     }
 }
 

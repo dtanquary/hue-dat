@@ -21,8 +21,8 @@ struct MenuBarPanelView: View {
         ZStack {
             if let roomId = selectedRoomId {
                 // Room detail view
-                RoomDetailView_macOS(
-                    roomId: roomId,
+                GroupDetailView_macOS<HueRoom>(
+                    groupId: roomId,
                     onBack: {
                         withAnimation(.easeInOut(duration: 0.2)) {
                             selectedRoomId = nil
@@ -35,8 +35,8 @@ struct MenuBarPanelView: View {
                 ))
             } else if let zoneId = selectedZoneId {
                 // Zone detail view
-                ZoneDetailView_macOS(
-                    zoneId: zoneId,
+                GroupDetailView_macOS<HueZone>(
+                    groupId: zoneId,
                     onBack: {
                         withAnimation(.easeInOut(duration: 0.2)) {
                             selectedZoneId = nil
@@ -107,7 +107,7 @@ struct MenuBarPanelView: View {
         VStack(spacing: 20) {
             Image(systemName: "lightbulb.slash")
                 .font(.system(size: 60))
-                .foregroundColor(.secondary)
+                .foregroundStyle(.secondary)
 
             Text("No Bridge Connected")
                 .font(.title2)
@@ -115,7 +115,7 @@ struct MenuBarPanelView: View {
 
             Text("Connect to a Philips Hue bridge to control your lights")
                 .font(.body)
-                .foregroundColor(.secondary)
+                .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
                 .padding(.horizontal)
 

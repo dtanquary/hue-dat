@@ -2,7 +2,7 @@
 //  HueDatiOSApp.swift
 //  hue dat iOS
 //
-//  Created by Claude Code
+//  Created by Hue Dat
 //
 
 import SwiftUI

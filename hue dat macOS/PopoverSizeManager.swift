@@ -9,8 +9,8 @@ import Foundation
 import AppKit
 
 /// Manages popover size persistence.
-/// Note: Not marked @MainActor to allow safe access from NSView callbacks.
-/// All operations (UserDefaults, NSScreen) are thread-safe.
+/// Marked @MainActor because NSScreen.main requires main thread access.
+@MainActor
 class PopoverSizeManager {
     static let shared = PopoverSizeManager()
 

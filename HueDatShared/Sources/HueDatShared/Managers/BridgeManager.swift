@@ -8,6 +8,7 @@
 import SwiftUI
 import Foundation
 import Combine
+import Security
 
 // MARK: - Connection Validation Result
 public enum ConnectionValidationResult {
@@ -100,22 +101,29 @@ public class BridgeManager: ObservableObject {
 
         let connectionInfo = BridgeConnectionInfo(bridge: bridge, registrationResponse: registrationResponse)
 
+        // Save credentials to Keychain
+        let bridgeId = bridge.id
+        saveToKeychain(key: "\(bridgeId)_username", value: registrationResponse.username)
+        if let clientkey = registrationResponse.clientkey {
+            saveToKeychain(key: "\(bridgeId)_clientkey", value: clientkey)
+        }
+
+        // Save non-sensitive bridge info to UserDefaults (without credentials)
         do {
             let data = try JSONEncoder().encode(connectionInfo)
             userDefaults.set(data, forKey: connectedBridgeKey)
-
-            // Force synchronize to ensure data is written immediately
-            userDefaults.synchronize()
 
             connectedBridge = connectionInfo
             print("✅ Bridge connection saved successfully:")
             print("  - Bridge: \(bridge.displayName) (\(bridge.shortId))")
             print("  - IP Address: \(bridge.internalipaddress)")
+            #if DEBUG
             print("  - Username: \(registrationResponse.username)")
             print("  - ClientKey: \(registrationResponse.clientkey ?? "nil")")
+            #endif
             print("  - Connected Date: \(connectionInfo.connectedDate)")
             print("  - Data size: \(data.count) bytes")
-            
+
             // Verify the save by immediately reading it back
             if let verifyData = userDefaults.data(forKey: connectedBridgeKey) {
                 print("✅ Verification: Data successfully retrieved from UserDefaults (\(verifyData.count) bytes)")
@@ -128,22 +136,25 @@ public class BridgeManager: ObservableObject {
     }
     
     public func disconnectBridge() {
-        // Remove bridge-specific pinned scenes before clearing connection
+        // Remove bridge-specific pinned scenes and Keychain credentials before clearing connection
         if let bridgeId = connectedBridge?.bridge.id {
             pinnedSceneIds[bridgeId] = nil
             savePinnedScenesToStorage()
+            deleteFromKeychain(key: "\(bridgeId)_username")
+            deleteFromKeychain(key: "\(bridgeId)_clientkey")
         }
 
         userDefaults.removeObject(forKey: connectedBridgeKey)
         userDefaults.removeObject(forKey: cachedRoomsKey)
         userDefaults.removeObject(forKey: cachedZonesKey)
         userDefaults.removeObject(forKey: cachedScenesKey)
-        userDefaults.synchronize()
         connectedBridge = nil
         isConnectionValidated = false
         rooms = []
         zones = []
         scenes = []
+        rebuildGroupedLightToRoomMap()
+        rebuildGroupedLightToZoneMap()
         print("🔌 Bridge disconnected and cleared from storage")
     }
 
@@ -161,7 +172,6 @@ public class BridgeManager: ObservableObject {
     public func enableDemoMode() {
         isDemoMode = true
         userDefaults.set(true, forKey: demoModeKey)
-        userDefaults.synchronize()
         print("🎭 Demo mode ENABLED")
     }
 
@@ -169,7 +179,6 @@ public class BridgeManager: ObservableObject {
     public func disableDemoMode() {
         isDemoMode = false
         userDefaults.set(false, forKey: demoModeKey)
-        userDefaults.synchronize()
         print("🎭 Demo mode DISABLED")
     }
 
@@ -305,28 +314,32 @@ public class BridgeManager: ObservableObject {
 
     // MARK: - SSE Event Processing
 
-    /// Maps grouped_light ID to room ID for fast lookup
-    private var groupedLightToRoomMap: [String: String] {
+    /// Cached map: grouped_light ID -> room ID for fast lookup
+    private var groupedLightToRoomMap: [String: String] = [:]
+
+    /// Cached map: grouped_light ID -> zone ID for fast lookup
+    private var groupedLightToZoneMap: [String: String] = [:]
+
+    /// Rebuild a grouped-light-to-group-ID map from a collection of GroupedLightContainers
+    private func rebuildGroupedLightMap<T: GroupedLightContainer>(from groups: [T]) -> [String: String] {
         var map: [String: String] = [:]
-        for room in rooms {
-            if let services = room.services,
+        for group in groups {
+            if let services = group.services,
                let groupedLightService = services.first(where: { $0.rtype == "grouped_light" }) {
-                map[groupedLightService.rid] = room.id
+                map[groupedLightService.rid] = group.id
             }
         }
         return map
     }
 
-    /// Maps grouped_light ID to zone ID for fast lookup
-    private var groupedLightToZoneMap: [String: String] {
-        var map: [String: String] = [:]
-        for zone in zones {
-            if let services = zone.services,
-               let groupedLightService = services.first(where: { $0.rtype == "grouped_light" }) {
-                map[groupedLightService.rid] = zone.id
-            }
-        }
-        return map
+    /// Rebuild the groupedLightToRoomMap from current rooms
+    private func rebuildGroupedLightToRoomMap() {
+        groupedLightToRoomMap = rebuildGroupedLightMap(from: rooms)
+    }
+
+    /// Rebuild the groupedLightToZoneMap from current zones
+    private func rebuildGroupedLightToZoneMap() {
+        groupedLightToZoneMap = rebuildGroupedLightMap(from: zones)
     }
 
     /// Start listening to SSE events from HueAPIService
@@ -488,45 +501,40 @@ public class BridgeManager: ObservableObject {
         }
     }
 
-    /// Handle room metadata update event
-    private func handleRoomUpdate(_ data: SSEEventData) async {
-        print("🏠 Room update: \(data.debugDescription)")
-
-        let roomId = data.id
+    /// Handle metadata update event for any GroupedLightContainer (room or zone)
+    private func handleGroupMetadataUpdate<T: GroupedLightContainer>(
+        _ data: SSEEventData,
+        in collection: inout [T],
+        label: String
+    ) {
+        let groupId = data.id
 
         // Check if we need to update metadata
         if let metadata = data.metadata, let name = metadata.name {
-            await MainActor.run {
-                if let index = rooms.firstIndex(where: { $0.id == roomId }) {
-                    var updatedRoom = rooms[index]
-                    // Create new metadata with updated values
-                    let archetype = metadata.archetype ?? updatedRoom.metadata.archetype
-                    updatedRoom.metadata = HueRoom.RoomMetadata(name: name, archetype: archetype)
-                    rooms[index] = updatedRoom
-                    print("  ✓ Updated room '\(name)' metadata")
-                }
+            if let index = collection.firstIndex(where: { $0.id == groupId }) {
+                var updatedItem = collection[index]
+                // Create new metadata with updated values
+                let archetype = metadata.archetype ?? updatedItem.metadata.archetype
+                updatedItem.metadata = GroupMetadata(name: name, archetype: archetype)
+                collection[index] = updatedItem
+                print("  \u{2713} Updated \(label) '\(name)' metadata")
             }
+        }
+    }
+
+    /// Handle room metadata update event
+    private func handleRoomUpdate(_ data: SSEEventData) async {
+        print("🏠 Room update: \(data.debugDescription)")
+        await MainActor.run {
+            handleGroupMetadataUpdate(data, in: &rooms, label: "room")
         }
     }
 
     /// Handle zone metadata update event
     private func handleZoneUpdate(_ data: SSEEventData) async {
         print("🗺️ Zone update: \(data.debugDescription)")
-
-        let zoneId = data.id
-
-        // Check if we need to update metadata
-        if let metadata = data.metadata, let name = metadata.name {
-            await MainActor.run {
-                if let index = zones.firstIndex(where: { $0.id == zoneId }) {
-                    var updatedZone = zones[index]
-                    // Create new metadata with updated values
-                    let archetype = metadata.archetype ?? updatedZone.metadata.archetype
-                    updatedZone.metadata = HueZone.ZoneMetadata(name: name, archetype: archetype)
-                    zones[index] = updatedZone
-                    print("  ✓ Updated zone '\(name)' metadata")
-                }
-            }
+        await MainActor.run {
+            handleGroupMetadataUpdate(data, in: &zones, label: "zone")
         }
     }
 
@@ -590,43 +598,64 @@ public class BridgeManager: ObservableObject {
 
     private func loadConnectedBridge() {
         print("🔍 Loading bridge connection from UserDefaults...")
-        
+
         guard let data = userDefaults.data(forKey: connectedBridgeKey) else {
             print("❌ No saved bridge connection found")
             return
         }
-        
-        print("📊 Found saved data: \(data.count) bytes")
-        
-        do {
-            connectedBridge = try JSONDecoder().decode(BridgeConnectionInfo.self, from: data)
-            if let connection = connectedBridge {
-                print("✅ Loaded saved bridge connection:")
-                print("  - Bridge: \(connection.bridge.shortId)")
-                print("  - Address: \(connection.bridge.displayAddress)")
-                print("  - Internal IP: \(connection.bridge.internalipaddress)")
-                print("  - Username: \(connection.username)")
-                print("  - ClientKey: \(connection.clientkey ?? "nil")")
-                print("  - Connected Date: \(connection.connectedDate)")
 
-                // Validate that the bridge IP is not localhost (corrupted data)
-                if connection.bridge.internalipaddress == "127.0.0.1" ||
-                   connection.bridge.internalipaddress == "localhost" ||
-                   connection.bridge.internalipaddress == "::1" {
-                    print("❌ Invalid bridge IP detected (localhost) - clearing corrupted connection")
-                    userDefaults.removeObject(forKey: connectedBridgeKey)
-                    userDefaults.synchronize()
-                    connectedBridge = nil
-                    isConnectionValidated = false
-                    print("🧹 Cleared localhost connection - please re-discover your bridge")
+        print("📊 Found saved data: \(data.count) bytes")
+
+        do {
+            var connection = try JSONDecoder().decode(BridgeConnectionInfo.self, from: data)
+
+            // Try Keychain first for credentials, fall back to UserDefaults (migration)
+            let bridgeId = connection.bridge.id
+            if let keychainUsername = loadFromKeychain(key: "\(bridgeId)_username") {
+                // Credentials found in Keychain - use them
+                let keychainClientkey = loadFromKeychain(key: "\(bridgeId)_clientkey")
+                connection = BridgeConnectionInfo(
+                    bridge: connection.bridge,
+                    username: keychainUsername,
+                    clientkey: keychainClientkey,
+                    connectedDate: connection.connectedDate
+                )
+                print("🔑 Loaded credentials from Keychain")
+            } else if !connection.username.isEmpty {
+                // Migrate credentials from UserDefaults to Keychain
+                saveToKeychain(key: "\(bridgeId)_username", value: connection.username)
+                if let clientkey = connection.clientkey {
+                    saveToKeychain(key: "\(bridgeId)_clientkey", value: clientkey)
                 }
+                print("🔑 Migrated credentials from UserDefaults to Keychain")
+            }
+
+            connectedBridge = connection
+            print("✅ Loaded saved bridge connection:")
+            print("  - Bridge: \(connection.bridge.shortId)")
+            print("  - Address: \(connection.bridge.displayAddress)")
+            print("  - Internal IP: \(connection.bridge.internalipaddress)")
+            #if DEBUG
+            print("  - Username: \(connection.username)")
+            print("  - ClientKey: \(connection.clientkey ?? "nil")")
+            #endif
+            print("  - Connected Date: \(connection.connectedDate)")
+
+            // Validate that the bridge IP is not localhost (corrupted data)
+            if connection.bridge.internalipaddress == "127.0.0.1" ||
+               connection.bridge.internalipaddress == "localhost" ||
+               connection.bridge.internalipaddress == "::1" {
+                print("❌ Invalid bridge IP detected (localhost) - clearing corrupted connection")
+                userDefaults.removeObject(forKey: connectedBridgeKey)
+                connectedBridge = nil
+                isConnectionValidated = false
+                print("🧹 Cleared localhost connection - please re-discover your bridge")
             }
         } catch {
             print("❌ Failed to load bridge connection: \(error)")
             print("  - Error details: \(error.localizedDescription)")
             // Clean up corrupted data
             userDefaults.removeObject(forKey: connectedBridgeKey)
-            userDefaults.synchronize()
             isConnectionValidated = false
             print("🧹 Cleaned up corrupted data")
         }
@@ -642,6 +671,7 @@ public class BridgeManager: ObservableObject {
 
         do {
             rooms = try JSONDecoder().decode([HueRoom].self, from: data)
+            rebuildGroupedLightToRoomMap()
             print("✅ Loaded \(rooms.count) cached rooms from storage")
         } catch {
             print("❌ Failed to load cached rooms: \(error)")
@@ -668,6 +698,7 @@ public class BridgeManager: ObservableObject {
 
         do {
             zones = try JSONDecoder().decode([HueZone].self, from: data)
+            rebuildGroupedLightToZoneMap()
             print("✅ Loaded \(zones.count) cached zones from storage")
         } catch {
             print("❌ Failed to load cached zones: \(error)")
@@ -735,82 +766,12 @@ public class BridgeManager: ObservableObject {
         do {
             let data = try JSONEncoder().encode(pinnedSceneIds)
             userDefaults.set(data, forKey: pinnedScenesKey)
-            userDefaults.synchronize()
             let totalPins = pinnedSceneIds.values.flatMap { $0.values }.reduce(0) { $0 + $1.count }
             print("💾 Saved \(totalPins) pinned scenes to storage (\(data.count) bytes)")
         } catch {
             print("❌ Failed to save pinned scenes to storage: \(error)")
         }
     }
-
-    /*
-    // MARK: - Hue API Response Models
-    private struct HueAPIV2Response: Decodable {
-        let errors: [HueAPIV2Error]
-        let data: [HueAPIV2Data]
-    }
-    
-    private struct HueAPIV2Error: Decodable {
-        let description: String
-    }
-    
-    private struct HueAPIV2Data: Decodable {
-        // The data array can contain various resource types
-        // For validation purposes, we just need to know if data is present
-    }
-    
-    // MARK: - Room API Response Models
-    private struct HueRoomsResponse: Decodable {
-        let errors: [HueAPIV2Error]
-        let data: [HueRoom]
-    }
-    
-    // MARK: - Individual Room Response Models
-    private struct HueRoomDetailResponse: Decodable {
-        let errors: [HueAPIV2Error]
-        let data: [HueRoomDetail]
-    }
-    
-    private struct HueRoomDetail: Decodable {
-        let id: String
-        let type: String
-        let metadata: HueRoom.RoomMetadata
-        let children: [HueRoom.HueRoomChild]?
-        let services: [HueRoom.HueRoomService]?
-    }
-    
-    // MARK: - Grouped Light API Response Models
-    private struct HueGroupedLightResponse: Decodable {
-        let errors: [HueAPIV2Error]
-        let data: [HueGroupedLight]
-    }
-
-
-    // MARK: - Individual Light API Response Models
-    private struct HueLightResponse: Decodable {
-        let errors: [HueAPIV2Error]
-        let data: [HueLight]
-    }
-    
-    // MARK: - Zone API Response Models
-    private struct HueZonesResponse: Decodable {
-        let errors: [HueAPIV2Error]
-        let data: [HueZone]
-    }
-    
-
-    // MARK: - Light API Response Models
-    private struct HueLightsResponse: Decodable {
-        let errors: [HueAPIV2Error]
-        let data: [HueLight]
-    }
-
-    // MARK: - Device API Response Models
-    private struct HueDeviceResponse: Decodable {
-        let errors: [HueAPIV2Error]
-        let data: [HueDevice]
-    }
-     */
 
     public var isConnected: Bool {
         connectedBridge != nil
@@ -864,6 +825,7 @@ public class BridgeManager: ObservableObject {
             print("🎭 getRooms: Demo mode - returning demo data")
             let demoRooms = getDemoRooms()
             self.rooms = demoRooms
+            rebuildGroupedLightToRoomMap()
             print("🎭 getRooms: Loaded \(demoRooms.count) demo rooms")
             return
         }
@@ -905,12 +867,6 @@ public class BridgeManager: ObservableObject {
         isRefreshingRooms = true
         lastRoomsRefreshTime = Date()
 
-        let delegate = InsecureURLSessionDelegate()
-        let config = URLSessionConfiguration.default
-        config.timeoutIntervalForRequest = 10.0  // 10 second timeout for local network
-        config.timeoutIntervalForResource = 30.0
-        let session = URLSession(configuration: config, delegate: delegate, delegateQueue: nil)
-
         print("🏠 getRooms: Requesting rooms from bridge")
 
         do {
@@ -944,6 +900,7 @@ public class BridgeManager: ObservableObject {
             }
 
             self.rooms = enrichedRooms
+            rebuildGroupedLightToRoomMap()
             saveRoomsToStorage()  // Cache successful refresh
             refreshError = nil  // Clear any previous errors
             print("🏠 getRooms: Completed with \(enrichedRooms.count) rooms")
@@ -975,6 +932,7 @@ public class BridgeManager: ObservableObject {
             print("🎭 getZones: Demo mode - returning demo data")
             let demoZones = getDemoZones()
             self.zones = demoZones
+            rebuildGroupedLightToZoneMap()
             print("🎭 getZones: Loaded \(demoZones.count) demo zones")
             return
         }
@@ -1016,12 +974,6 @@ public class BridgeManager: ObservableObject {
         isRefreshingZones = true
         lastZonesRefreshTime = Date()
 
-        let delegate = InsecureURLSessionDelegate()
-        let config = URLSessionConfiguration.default
-        config.timeoutIntervalForRequest = 10.0  // 10 second timeout for local network
-        config.timeoutIntervalForResource = 30.0
-        let session = URLSession(configuration: config, delegate: delegate, delegateQueue: nil)
-
         print("🏢 getZones: Requesting zones from bridge")
 
         do {
@@ -1055,6 +1007,7 @@ public class BridgeManager: ObservableObject {
             }
 
             self.zones = enrichedZones
+            rebuildGroupedLightToZoneMap()
             saveZonesToStorage()  // Cache successful refresh
             refreshError = nil  // Clear any previous errors
             print("🏢 getZones: Completed with \(enrichedZones.count) zones")
@@ -1247,200 +1200,67 @@ public class BridgeManager: ObservableObject {
         print("⏹️ Stopped periodic refresh")
     }
 
-    /// Refresh rooms data using smart update logic
-    private func refreshRoomsData() async {
-        guard let bridge = currentConnectedBridge?.bridge else { return }
+    // MARK: - Generic Smart Update Helpers
 
-        let delegate = InsecureURLSessionDelegate()
-        let session = URLSession(configuration: .default, delegate: delegate, delegateQueue: nil)
+    /// Smart update a collection of GroupedLightContainers - only update changed items to minimize UI flicker
+    private func smartUpdate<T: GroupedLightContainer>(_ existing: inout [T], with new: [T]) {
+        for newItem in new {
+            if let index = existing.firstIndex(where: { $0.id == newItem.id }) {
+                // Update existing item only if data has changed (uses custom == on the type)
+                if existing[index] != newItem {
+                    existing[index] = newItem
+                }
+            } else {
+                // New item - append it
+                existing.append(newItem)
+            }
+        }
 
-        let urlString = "https://\(bridge.internalipaddress)/clip/v2/resource/room"
-        guard let url = URL(string: urlString) else { return }
-
-        var request = URLRequest(url: url)
-        request.httpMethod = "GET"
-        request.setValue(currentConnectedBridge?.username, forHTTPHeaderField: "hue-application-key")
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-
-        do {
-            let (data, _) = try await session.data(for: request)
-            let response = try JSONDecoder().decode(HueRoomsResponse.self, from: data)
-
-            guard response.errors.isEmpty else { return }
-
-            // Rooms from API already include children and services
-            // Smart update - merge with existing data
-            smartUpdateRooms(with: response.data)
-
-        } catch {
-            print("❌ refreshRoomsData: \(error.localizedDescription)")
+        // Remove items that no longer exist
+        existing.removeAll { item in
+            !new.contains { $0.id == item.id }
         }
     }
 
-    /// Refresh zones data using smart update logic
-    private func refreshZonesData() async {
-        guard let bridge = currentConnectedBridge?.bridge else { return }
-
-        let delegate = InsecureURLSessionDelegate()
-        let session = URLSession(configuration: .default, delegate: delegate, delegateQueue: nil)
-
-        let urlString = "https://\(bridge.internalipaddress)/clip/v2/resource/zone"
-        guard let url = URL(string: urlString) else { return }
-
-        var request = URLRequest(url: url)
-        request.httpMethod = "GET"
-        request.setValue(currentConnectedBridge?.username, forHTTPHeaderField: "hue-application-key")
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-
-        do {
-            let (data, _) = try await session.data(for: request)
-            let response = try JSONDecoder().decode(HueZonesResponse.self, from: data)
-
-            guard response.errors.isEmpty else { return }
-
-            // Zones from API already include children and services
-            // Smart update - merge with existing data
-            smartUpdateZones(with: response.data)
-
-        } catch {
-            print("❌ refreshZonesData: \(error.localizedDescription)")
+    /// Update a single GroupedLightContainer in a collection without affecting other items
+    private func updateSingle<T: GroupedLightContainer>(_ item: T, in collection: inout [T], save: () -> Void) {
+        if let index = collection.firstIndex(where: { $0.id == item.id }) {
+            // Update existing item only if data has changed
+            if collection[index] != item {
+                collection[index] = item
+                print("🔄 Updated \(T.apiGroupType): \(item.displayName)")
+                save()
+            }
+        } else {
+            // Item doesn't exist yet - append it
+            collection.append(item)
+            print("➕ Added new \(T.apiGroupType): \(item.displayName)")
+            save()
         }
     }
 
     /// Smart update rooms array - only update changed items to minimize UI flicker
     private func smartUpdateRooms(with newRooms: [HueRoom]) {
-        var updatedArray = rooms
-
-        for newRoom in newRooms {
-            if let index = updatedArray.firstIndex(where: { $0.id == newRoom.id }) {
-                // Update existing room only if data has changed
-                if !areRoomsEqual(updatedArray[index], newRoom) {
-                    updatedArray[index] = newRoom
-                }
-            } else {
-                // New room - append it
-                updatedArray.append(newRoom)
-            }
-        }
-
-        // Remove rooms that no longer exist
-        updatedArray.removeAll { existingRoom in
-            !newRooms.contains { $0.id == existingRoom.id }
-        }
-
-        rooms = updatedArray
+        smartUpdate(&rooms, with: newRooms)
+        rebuildGroupedLightToRoomMap()
         saveRoomsToStorage()
     }
 
     /// Update a single room in the array without affecting other rooms
     private func updateSingleRoom(_ room: HueRoom) {
-        if let index = rooms.firstIndex(where: { $0.id == room.id }) {
-            // Update existing room only if data has changed
-            if !areRoomsEqual(rooms[index], room) {
-                rooms[index] = room
-                print("🔄 Updated room: \(room.metadata.name)")
-                saveRoomsToStorage()
-            }
-        } else {
-            // Room doesn't exist yet - append it
-            rooms.append(room)
-            print("➕ Added new room: \(room.metadata.name)")
-            saveRoomsToStorage()
-        }
+        updateSingle(room, in: &rooms, save: saveRoomsToStorage)
     }
 
     /// Smart update zones array - only update changed items to minimize UI flicker
     private func smartUpdateZones(with newZones: [HueZone]) {
-        var updatedArray = zones
-
-        for newZone in newZones {
-            if let index = updatedArray.firstIndex(where: { $0.id == newZone.id }) {
-                // Update existing zone only if data has changed
-                if !areZonesEqual(updatedArray[index], newZone) {
-                    updatedArray[index] = newZone
-                }
-            } else {
-                // New zone - append it
-                updatedArray.append(newZone)
-            }
-        }
-
-        // Remove zones that no longer exist
-        updatedArray.removeAll { existingZone in
-            !newZones.contains { $0.id == existingZone.id }
-        }
-
-        zones = updatedArray
+        smartUpdate(&zones, with: newZones)
+        rebuildGroupedLightToZoneMap()
         saveZonesToStorage()
     }
 
     /// Update a single zone in the array without affecting other zones
     private func updateSingleZone(_ zone: HueZone) {
-        if let index = zones.firstIndex(where: { $0.id == zone.id }) {
-            // Update existing zone only if data has changed
-            if !areZonesEqual(zones[index], zone) {
-                zones[index] = zone
-                print("🔄 Updated zone: \(zone.metadata.name)")
-                saveZonesToStorage()
-            }
-        } else {
-            // Zone doesn't exist yet - append it
-            zones.append(zone)
-            print("➕ Added new zone: \(zone.metadata.name)")
-            saveZonesToStorage()
-        }
-    }
-
-    /// Compare two rooms to check if they have changed
-    private func areRoomsEqual(_ room1: HueRoom, _ room2: HueRoom) -> Bool {
-        guard room1.id == room2.id else { return false }
-        guard room1.metadata.name == room2.metadata.name else { return false }
-
-        // Compare grouped lights
-        let lights1 = room1.groupedLights ?? []
-        let lights2 = room2.groupedLights ?? []
-
-        guard lights1.count == lights2.count else { return false }
-
-        for i in 0..<lights1.count {
-            if !areGroupedLightsEqual(lights1[i], lights2[i]) {
-                return false
-            }
-        }
-
-        return true
-    }
-
-    /// Compare two zones to check if they have changed
-    private func areZonesEqual(_ zone1: HueZone, _ zone2: HueZone) -> Bool {
-        guard zone1.id == zone2.id else { return false }
-        guard zone1.metadata.name == zone2.metadata.name else { return false }
-
-        // Compare grouped lights
-        let lights1 = zone1.groupedLights ?? []
-        let lights2 = zone2.groupedLights ?? []
-
-        guard lights1.count == lights2.count else { return false }
-
-        for i in 0..<lights1.count {
-            if !areGroupedLightsEqual(lights1[i], lights2[i]) {
-                return false
-            }
-        }
-
-        return true
-    }
-
-    /// Compare two grouped lights to check if they have changed
-    private func areGroupedLightsEqual(_ light1: HueGroupedLight, _ light2: HueGroupedLight) -> Bool {
-        guard light1.id == light2.id else { return false }
-        guard light1.on?.on == light2.on?.on else { return false }
-        guard light1.dimming?.brightness == light2.dimming?.brightness else { return false }
-        guard light1.color_temperature?.mirek == light2.color_temperature?.mirek else { return false }
-        guard light1.color?.xy?.x == light2.color?.xy?.x else { return false }
-        guard light1.color?.xy?.y == light2.color?.xy?.y else { return false }
-
-        return true
+        updateSingle(zone, in: &zones, save: saveZonesToStorage)
     }
 
     /// Manual refresh trigger - can be called from UI when control actions occur
@@ -1464,7 +1284,6 @@ public class BridgeManager: ObservableObject {
 
         guard currentConnectedBridge?.bridge != nil else {
             print("❌ fetchScenes: No connected bridge available")
-            scenes = []
             return
         }
 
@@ -1477,7 +1296,8 @@ public class BridgeManager: ObservableObject {
             if !response.errors.isEmpty {
                 let errorMessages = response.errors.map { $0.description }.joined(separator: ", ")
                 print("❌ fetchScenes: Hue API v2 errors: \(errorMessages)")
-                self.scenes = []
+                // Keep existing scenes data on error
+                refreshError = "API Error: \(errorMessages)"
                 return
             }
 
@@ -1485,10 +1305,12 @@ public class BridgeManager: ObservableObject {
             self.scenes = response.data
             saveScenesToStorage()
             validateAndCleanPinnedScenes()
+            refreshError = nil
             print("✅ fetchScenes: Success - retrieved \(response.data.count) scenes")
         } catch {
             print("❌ fetchScenes: Error: \(error.localizedDescription)")
-            self.scenes = []
+            // Keep existing scenes data on error
+            refreshError = "Error: \(error.localizedDescription)"
         }
     }
 
@@ -1738,48 +1560,40 @@ public class BridgeManager: ObservableObject {
         return pinnedSceneIds[bridgeId]?[groupId]?.contains(sceneId) ?? false
     }
 
-    /// Get all pinned scenes for a specific room
-    /// - Parameter roomId: The room ID
-    /// - Returns: Array of HueScene objects that are pinned (filtered from cached scenes)
-    public func getPinnedScenes(forRoomId roomId: String) -> [HueScene] {
+    /// Get all pinned scenes for a specific group (room or zone)
+    /// - Parameter groupId: The room or zone ID
+    /// - Returns: Array of HueScene objects that are pinned (filtered from cached scenes), in pinned order
+    public func getPinnedScenes(forGroupId groupId: String) -> [HueScene] {
         guard let bridgeId = connectedBridge?.bridge.id else {
             return []
         }
 
-        guard let pinnedIds = pinnedSceneIds[bridgeId]?[roomId] else {
+        guard let pinnedIds = pinnedSceneIds[bridgeId]?[groupId] else {
             return []
         }
 
         // Return scenes in pinned order
         let pinnedScenes = pinnedIds.compactMap { sceneId -> HueScene? in
             scenes.first { scene in
-                scene.id == sceneId && scene.group.rid == roomId && scene.group.rtype == "room"
+                scene.id == sceneId && scene.group.rid == groupId
             }
         }
 
         return pinnedScenes
     }
 
-    /// Get all pinned scenes for a specific zone
+    /// Get all pinned scenes for a specific room (backward-compatible wrapper)
+    /// - Parameter roomId: The room ID
+    /// - Returns: Array of HueScene objects that are pinned (filtered from cached scenes)
+    public func getPinnedScenes(forRoomId roomId: String) -> [HueScene] {
+        getPinnedScenes(forGroupId: roomId)
+    }
+
+    /// Get all pinned scenes for a specific zone (backward-compatible wrapper)
     /// - Parameter zoneId: The zone ID
     /// - Returns: Array of HueScene objects that are pinned (filtered from cached scenes)
     public func getPinnedScenes(forZoneId zoneId: String) -> [HueScene] {
-        guard let bridgeId = connectedBridge?.bridge.id else {
-            return []
-        }
-
-        guard let pinnedIds = pinnedSceneIds[bridgeId]?[zoneId] else {
-            return []
-        }
-
-        // Return scenes in pinned order
-        let pinnedScenes = pinnedIds.compactMap { sceneId -> HueScene? in
-            scenes.first { scene in
-                scene.id == sceneId && scene.group.rid == zoneId && scene.group.rtype == "zone"
-            }
-        }
-
-        return pinnedScenes
+        getPinnedScenes(forGroupId: zoneId)
     }
 
     /// Get count of pinned scenes for a group
@@ -1853,23 +1667,26 @@ public class BridgeManager: ObservableObject {
         }
     }
 
-    // MARK: - Light Cache Management
-
-    /// Fetch all lights in a single API call and cache them
     // MARK: - Local State Updates
 
-    /// Update local room state optimistically after a successful control action
-    /// This ensures the list view reflects changes immediately without waiting for a full refresh
-    public func updateLocalRoomState(roomId: String, on: Bool? = nil, brightness: Double? = nil) {
-        guard let index = rooms.firstIndex(where: { $0.id == roomId }) else {
-            print("⚠️ updateLocalRoomState: Room \(roomId) not found in local cache")
+    /// Generic local state update for any GroupedLightContainer
+    /// Updates grouped lights optimistically after a successful control action
+    private func updateLocalGroupState<T: GroupedLightContainer>(
+        groupId: String,
+        in collection: inout [T],
+        on: Bool?,
+        brightness: Double?,
+        save: () -> Void
+    ) {
+        guard let index = collection.firstIndex(where: { $0.id == groupId }) else {
+            print("⚠️ updateLocalGroupState: \(T.apiGroupType) \(groupId) not found in local cache")
             return
         }
 
-        var updatedRoom = rooms[index]
+        var updatedItem = collection[index]
 
         // Update grouped lights by recreating the structs (they're immutable)
-        if let groupedLights = updatedRoom.groupedLights, !groupedLights.isEmpty {
+        if let groupedLights = updatedItem.groupedLights, !groupedLights.isEmpty {
             let updatedGroupedLights = groupedLights.map { light in
                 let newOn = on != nil ? HueGroupedLight.GroupedLightOn(on: on!) : light.on
                 let newDimming = brightness != nil ? HueGroupedLight.GroupedLightDimming(brightness: brightness!) : light.dimming
@@ -1883,63 +1700,33 @@ public class BridgeManager: ObservableObject {
                     color: light.color
                 )
             }
-            updatedRoom.groupedLights = updatedGroupedLights
+            updatedItem.groupedLights = updatedGroupedLights
 
             if let on = on {
-                print("🔄 updateLocalRoomState: Updated room '\(updatedRoom.metadata.name)' on state to \(on)")
+                print("🔄 updateLocalGroupState: Updated \(T.apiGroupType) '\(updatedItem.displayName)' on state to \(on)")
             }
             if let brightness = brightness {
-                print("🔄 updateLocalRoomState: Updated room '\(updatedRoom.metadata.name)' brightness to \(Int(brightness))%")
+                print("🔄 updateLocalGroupState: Updated \(T.apiGroupType) '\(updatedItem.displayName)' brightness to \(Int(brightness))%")
             }
         }
 
-        // Update the room in the array
-        rooms[index] = updatedRoom
+        // Update the item in the array
+        collection[index] = updatedItem
 
         // Save to cache
-        saveRoomsToStorage()
+        save()
+    }
+
+    /// Update local room state optimistically after a successful control action
+    /// This ensures the list view reflects changes immediately without waiting for a full refresh
+    public func updateLocalRoomState(roomId: String, on: Bool? = nil, brightness: Double? = nil) {
+        updateLocalGroupState(groupId: roomId, in: &rooms, on: on, brightness: brightness, save: saveRoomsToStorage)
     }
 
     /// Update local zone state optimistically after a successful control action
     /// This ensures the list view reflects changes immediately without waiting for a full refresh
     public func updateLocalZoneState(zoneId: String, on: Bool? = nil, brightness: Double? = nil) {
-        guard let index = zones.firstIndex(where: { $0.id == zoneId }) else {
-            print("⚠️ updateLocalZoneState: Zone \(zoneId) not found in local cache")
-            return
-        }
-
-        var updatedZone = zones[index]
-
-        // Update grouped lights by recreating the structs (they're immutable)
-        if let groupedLights = updatedZone.groupedLights, !groupedLights.isEmpty {
-            let updatedGroupedLights = groupedLights.map { light in
-                let newOn = on != nil ? HueGroupedLight.GroupedLightOn(on: on!) : light.on
-                let newDimming = brightness != nil ? HueGroupedLight.GroupedLightDimming(brightness: brightness!) : light.dimming
-
-                return HueGroupedLight(
-                    id: light.id,
-                    type: light.type,
-                    on: newOn,
-                    dimming: newDimming,
-                    color_temperature: light.color_temperature,
-                    color: light.color
-                )
-            }
-            updatedZone.groupedLights = updatedGroupedLights
-
-            if let on = on {
-                print("🔄 updateLocalZoneState: Updated zone '\(updatedZone.metadata.name)' on state to \(on)")
-            }
-            if let brightness = brightness {
-                print("🔄 updateLocalZoneState: Updated zone '\(updatedZone.metadata.name)' brightness to \(Int(brightness))%")
-            }
-        }
-
-        // Update the zone in the array
-        zones[index] = updatedZone
-
-        // Save to cache
-        saveZonesToStorage()
+        updateLocalGroupState(groupId: zoneId, in: &zones, on: on, brightness: brightness, save: saveZonesToStorage)
     }
 
     /// Fetch the current state of a grouped light from the bridge
@@ -2182,6 +1969,46 @@ public class BridgeManager: ObservableObject {
 
         print("✅ All lights turned off: \(successCount) succeeded, \(failureCount) failed")
         return .success(())
+    }
+
+    // MARK: - Keychain Helpers
+
+    private static let keychainService = "com.huedat.bridge"
+
+    private func saveToKeychain(key: String, value: String) {
+        let data = Data(value.utf8)
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: Self.keychainService,
+            kSecAttrAccount as String: key,
+        ]
+        SecItemDelete(query as CFDictionary)
+        var addQuery = query
+        addQuery[kSecValueData as String] = data
+        SecItemAdd(addQuery as CFDictionary, nil)
+    }
+
+    private func loadFromKeychain(key: String) -> String? {
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: Self.keychainService,
+            kSecAttrAccount as String: key,
+            kSecReturnData as String: true,
+            kSecMatchLimit as String: kSecMatchLimitOne,
+        ]
+        var result: AnyObject?
+        let status = SecItemCopyMatching(query as CFDictionary, &result)
+        guard status == errSecSuccess, let data = result as? Data else { return nil }
+        return String(data: data, encoding: .utf8)
+    }
+
+    private func deleteFromKeychain(key: String) {
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: Self.keychainService,
+            kSecAttrAccount as String: key,
+        ]
+        SecItemDelete(query as CFDictionary)
     }
 
 }

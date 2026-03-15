@@ -43,39 +43,25 @@ struct AboutView_macOS: View {
                     HStack(alignment: .top, spacing: 4) {
                         Text("Version \(appVersion)")
                             .font(.subheadline)
-                            .foregroundColor(.secondary)
+                            .foregroundStyle(.secondary)
 
                         Text("(Build \(appBuild))")
                             .font(.caption)
-                            .foregroundColor(.secondary)
+                            .foregroundStyle(.secondary)
                     }
                     .padding(.bottom, 20)
 
                     // Description
                     Text("HueDat is a native macOS and watchOS app for controlling Philips Hue lights. Control your lights directly from your menu bar without requiring the official Hue app.")
                         .font(.body)
-                        .foregroundColor(.secondary)
+                        .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
-//                        .padding(.bottom, 20)
-                    
-//                    Button(action: {
-//                        onClose?()
-//                    }) {
-//                        HStack {
-//                            Text("Ok")
-//                                .padding(6)
-//                        }
-//                        .frame(maxWidth: .infinity)
-//                    }
-//                    .buttonStyle(.bordered)
-//                    .glassEffect()
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
         .padding(30)
         .frame(width: 500)
-        //.glassBackground()  // Use NSGlassEffectView with variant 0-19
     }
 
     // App version from bundle info

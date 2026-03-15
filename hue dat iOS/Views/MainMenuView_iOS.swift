@@ -112,24 +112,6 @@ struct MainMenuView_iOS: View {
                 }
                 .matchedTransitionSource(id: "About", in: animation)
             }
-            
-//            ToolbarItem(placement: .topBarTrailing) {
-//                Button("Add A Bridge", systemImage: "plus"){
-//                    showManualEntry = true
-//                }
-//                .matchedTransitionSource(id: "BridgeManualEntry", in: animation)
-//            }
-//            
-//            ToolbarItem(placement: .topBarTrailing) {
-//                Button("Find Bridges On My Network", systemImage: "magnifyingglass") {
-//                    Task {
-//                        await discoveryService.discoverBridges()
-//                        if !discoveryService.discoveredBridges.isEmpty {
-//                            showBridgesList = true
-//                        }
-//                    }
-//                }
-//            }
         }
         .sheet(isPresented: $showAboutSheet) {
             AboutView_iOS().navigationTransition(.zoom(sourceID: "About", in: animation))
@@ -260,7 +242,7 @@ struct MainMenuView_iOS: View {
 
         // Load video from asset catalog
         let videoURL = await MainActor.run {
-            let videoName = colorScheme == .light ? "light" : "light-lightTheme"
+            let videoName = colorScheme == .light ? "light-lightTheme" : "light"
             return LoopingVideoPlayer.loadVideoURL(named: videoName)
         }
 

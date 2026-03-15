@@ -24,7 +24,6 @@ class LaunchAtLoginManager {
         }
         set {
             userDefaults.set(newValue, forKey: launchAtLoginKey)
-            userDefaults.synchronize()
         }
     }
 

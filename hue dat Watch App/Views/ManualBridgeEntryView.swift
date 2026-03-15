@@ -25,7 +25,7 @@ struct ManualBridgeEntryView: View {
                     VStack(alignment: .leading, spacing: 4) {
                         Text("IP Address")
                             .font(.caption)
-                            .foregroundColor(.secondary)
+                            .foregroundStyle(.secondary)
 
                         TextField("192.168.1.2", text: $ipAddress)
                             .onChange(of: ipAddress) { _, _ in
@@ -37,7 +37,7 @@ struct ManualBridgeEntryView: View {
                     VStack(alignment: .leading, spacing: 4) {
                         Text("Name (Optional)")
                             .font(.caption)
-                            .foregroundColor(.secondary)
+                            .foregroundStyle(.secondary)
 
                         TextField("My Bridge", text: $bridgeName)
                     }
@@ -46,7 +46,7 @@ struct ManualBridgeEntryView: View {
                     if showValidationError {
                         Text("Please enter a valid IP address")
                             .font(.caption2)
-                            .foregroundColor(.red)
+                            .foregroundStyle(.red)
                     }
 
                     // Add button

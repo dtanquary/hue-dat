@@ -49,7 +49,6 @@ struct AboutView_iOS: View {
             appInfoSection
             featuresSection
             limitationsSection
-            // footerSection
         }
         .padding(.horizontal, 20)
         .padding(.top, 24)
@@ -110,7 +109,7 @@ private extension AboutView_iOS {
                     .font(.largeTitle)
                     .fontWeight(.bold)
                 
-                Text("Version 1.0.0 (Build 1)")
+                Text("Version \(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "Unknown") (Build \(Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "Unknown"))")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
             }
@@ -142,7 +141,6 @@ private extension AboutView_iOS {
         }
         .frame(width: 100, height: 100)
         .shadow(color: .black.opacity(0.1), radius: 10, y: 5)
-        // iOS 26+ Liquid Glass effect (commented for backward compatibility)
         .glassEffect(in: .rect(cornerRadius: 22))
     }
 }
@@ -184,10 +182,6 @@ private extension AboutView_iOS {
                     icon: "sparkles",
                     text: "Gives you a MacOS, WatchOS, and iOS app all in one."
                 )
-//                FeatureRow(
-//                    icon: "apple.logo",
-//                    text: "Native versions of this application are also available for WatchOS and MacOS"
-//                )
             }
         }
     }
@@ -207,10 +201,6 @@ private extension AboutView_iOS {
                     icon: "lightbulb.slash.fill",
                     text: "Cannot configure your Philips Hue lights. Use the official app for any adjustments to lights, rooms, or zones."
                 )
-//                FeatureRow(
-//                    icon: "applewatch",
-//                    text: "Apple watch version is not just a companion app, its a stand alone version that does not require an iPhone nearby to function."
-//                )
                 FeatureRow(
                     icon: "person.2.slash.fill",
                     text: "Does not share data with third parties"
@@ -236,26 +226,12 @@ private extension AboutView_iOS {
             Divider()
                 .padding(.horizontal, isCompact ? 0 : 20)
             
-            VStack(spacing: 8) {
-                Link(destination: URL(string: "https://example.com/privacy")!) {
-                    Label("Privacy Policy", systemImage: "hand.raised.fill")
-                        .font(.subheadline)
-                }
-                
-                Link(destination: URL(string: "https://example.com/terms")!) {
-                    Label("Terms of Service", systemImage: "doc.text.fill")
-                        .font(.subheadline)
-                }
-                
-                Link(destination: URL(string: "https://example.com/support")!) {
-                    Label("Support & Feedback", systemImage: "questionmark.circle.fill")
-                        .font(.subheadline)
-                }
-            }
-            .buttonStyle(.plain)
-            .foregroundStyle(.blue)
-            
-            Text("© 2025 Your Company Name")
+            // TODO: Add links when URLs are configured
+            // - Privacy Policy
+            // - Terms of Service
+            // - Support & Feedback
+
+            Text("© 2026 Hue Dat Contributors")
                 .font(.caption)
                 .foregroundStyle(.tertiary)
                 .padding(.top, 8)
@@ -286,8 +262,6 @@ struct AboutCardView<Content: View>: View {
             RoundedRectangle(cornerRadius: 16, style: .continuous)
                 .fill(.ultraThinMaterial)
         }
-        // iOS 26+ Liquid Glass alternative:
-//        .glassEffect(.regular, in: .rect(cornerRadius: 16))
     }
 }
 

@@ -35,10 +35,10 @@ struct ContentView: View {
                     }
                 }
                 .navigationDestination(for: HueRoom.self) { room in
-                    RoomDetailView(roomId: room.id, bridgeManager: bridgeManager)
+                    GroupDetailView<HueRoom>(groupId: room.id, bridgeManager: bridgeManager)
                 }
                 .navigationDestination(for: HueZone.self) { zone in
-                    ZoneDetailView(zoneId: zone.id, bridgeManager: bridgeManager)
+                    GroupDetailView<HueZone>(groupId: zone.id, bridgeManager: bridgeManager)
                 }
         }
         .onAppear {

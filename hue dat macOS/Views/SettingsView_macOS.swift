@@ -28,7 +28,9 @@ struct SettingsView_macOS: View {
                     }
                 }
                 .buttonStyle(.accessoryBar)
-                .glassEffect()
+                .background(.ultraThinMaterial)
+                .clipShape(RoundedRectangle(cornerRadius: 8))
+                .shadow(color: Color.black.opacity(0.1), radius: 4, x: 0, y: 2)
 
                 Spacer()
 
@@ -64,7 +66,7 @@ struct SettingsView_macOS: View {
                         }
                         .padding()
                         .background(Color.primary.opacity(0.05))
-                        .cornerRadius(8)
+                        .clipShape(RoundedRectangle(cornerRadius: 8))
                     }
 
                     // Bridge Connection Section
@@ -82,7 +84,7 @@ struct SettingsView_macOS: View {
                             }
                             .padding()
                             .background(Color.primary.opacity(0.05))
-                            .cornerRadius(8)
+                            .clipShape(RoundedRectangle(cornerRadius: 8))
 
                             // Disconnect button
                             Button(action: {
@@ -96,7 +98,9 @@ struct SettingsView_macOS: View {
                             }
                             .buttonStyle(.bordered)
                             .tint(.red)
-                            .glassEffect()
+                            .background(.ultraThinMaterial)
+                            .clipShape(RoundedRectangle(cornerRadius: 8))
+                            .shadow(color: Color.black.opacity(0.1), radius: 4, x: 0, y: 2)
                         }
                     } else {
                         VStack(alignment: .leading, spacing: 12) {
@@ -105,11 +109,11 @@ struct SettingsView_macOS: View {
 
                             Text("No bridge connected")
                                 .font(.body)
-                                .foregroundColor(.secondary)
+                                .foregroundStyle(.secondary)
                                 .padding()
                                 .frame(maxWidth: .infinity, alignment: .leading)
                                 .background(Color.primary.opacity(0.05))
-                                .cornerRadius(8)
+                                .clipShape(RoundedRectangle(cornerRadius: 8))
                         }
                     }
                 }
@@ -137,22 +141,19 @@ struct SettingsView_macOS: View {
         HStack {
             Text(label)
                 .font(.body)
-                .foregroundColor(.secondary)
+                .foregroundStyle(.secondary)
 
             Spacer()
 
             Text(value)
                 .font(.body)
-                .foregroundColor(.primary)
+                .foregroundStyle(.primary)
                 .textSelection(.enabled)
         }
     }
 
     private func formattedDate(_ date: Date) -> String {
-        let formatter = DateFormatter()
-        formatter.dateStyle = .medium
-        formatter.timeStyle = .short
-        return formatter.string(from: date)
+        date.formatted(date: .abbreviated, time: .shortened)
     }
 }
 

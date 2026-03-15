@@ -5,7 +5,6 @@
 //  Created by David Tanquary on 10/29/25.
 //
 
-import SwiftUI
 import Foundation
 import Combine
 
@@ -152,7 +151,9 @@ public class BridgeRegistrationService: ObservableObject {
             print("Success data received: \(successData)")
             let successJson = try JSONSerialization.data(withJSONObject: successData)
             let registrationResponse = try JSONDecoder().decode(BridgeRegistrationResponse.self, from: successJson)
+            #if DEBUG
             print("Parsed registration response - Username: \(registrationResponse.username), ClientKey: \(registrationResponse.clientkey ?? "nil")")
+            #endif
             return registrationResponse
         }
 

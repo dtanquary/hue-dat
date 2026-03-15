@@ -28,6 +28,10 @@ struct ContentView: View {
     private let idleTimeoutThreshold: TimeInterval = 5 * 60  // 5 minutes
     @State private var lastBackgroundTimestamp: Date?
 
+    // NotificationCenter observer tokens
+    @State private var roomNavObserver: NSObjectProtocol?
+    @State private var zoneNavObserver: NSObjectProtocol?
+
     var body: some View {
         ZStack {
             NavigationStack(path: $navigationPath) {
@@ -39,11 +43,11 @@ struct ContentView: View {
                     }
                 }
                 .navigationDestination(for: HueRoom.self) { room in
-                    RoomDetailView_iOS(roomId: room.id)
+                    GroupDetailView_iOS<HueRoom>(groupId: room.id)
                         .environmentObject(bridgeManager)
                 }
                 .navigationDestination(for: HueZone.self) { zone in
-                    ZoneDetailView_iOS(zoneId: zone.id)
+                    GroupDetailView_iOS<HueZone>(groupId: zone.id)
                         .environmentObject(bridgeManager)
                 }
             }
@@ -67,7 +71,7 @@ struct ContentView: View {
         .animation(.easeInOut(duration: 0.3), value: isValidatingConnection)
         .onAppear {
             // Listen for navigation notifications from search
-            NotificationCenter.default.addObserver(
+            roomNavObserver = NotificationCenter.default.addObserver(
                 forName: NSNotification.Name("NavigateToRoom"),
                 object: nil,
                 queue: .main
@@ -77,7 +81,7 @@ struct ContentView: View {
                 }
             }
 
-            NotificationCenter.default.addObserver(
+            zoneNavObserver = NotificationCenter.default.addObserver(
                 forName: NSNotification.Name("NavigateToZone"),
                 object: nil,
                 queue: .main
@@ -120,6 +124,16 @@ struct ContentView: View {
             } else {
                 // No bridge connected - skip validation loading
                 isValidatingConnection = false
+            }
+        }
+        .onDisappear {
+            if let obs = roomNavObserver {
+                NotificationCenter.default.removeObserver(obs)
+                roomNavObserver = nil
+            }
+            if let obs = zoneNavObserver {
+                NotificationCenter.default.removeObserver(obs)
+                zoneNavObserver = nil
             }
         }
         .onChange(of: scenePhase) { oldPhase, newPhase in
@@ -352,10 +366,6 @@ struct ContentView: View {
         await bridgeManager.refreshAllData(forceRefresh: false)
     }
 
-    /// Update refresh timestamp after successful data operations
-    private func updateRefreshTimestamp() {
-        UserDefaults.standard.set(Date(), forKey: lastRefreshKey)
-    }
 }
 
 #Preview {

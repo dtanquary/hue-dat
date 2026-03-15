@@ -33,13 +33,6 @@ struct LoopingVideoPlayer: UIViewRepresentable {
         }
     }
 
-    func makeCoordinator() -> Coordinator {
-        Coordinator()
-    }
-
-    class Coordinator {
-    }
-
     // Static helper to load video from asset catalog
     static func loadVideoURL(named name: String) -> URL? {
         guard let asset = NSDataAsset(name: name) else {
@@ -48,6 +41,10 @@ struct LoopingVideoPlayer: UIViewRepresentable {
         }
 
         let tempURL = FileManager.default.temporaryDirectory.appendingPathComponent("\(name).mp4")
+
+        if FileManager.default.fileExists(atPath: tempURL.path) {
+            return tempURL
+        }
 
         do {
             try asset.data.write(to: tempURL)

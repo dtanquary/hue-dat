@@ -54,7 +54,7 @@ struct RoomsAndZonesListView: View {
                         Section("Rooms") {
                             ForEach(bridgeManager.rooms) { room in
                                 NavigationLink(value: room) {
-                                    RoomRowView(room: room, isLoading: isRefreshing)
+                                    GroupRowView(group: room, isLoading: isRefreshing)
                                 }
                                 .disabled(isRefreshing)
                             }
@@ -66,7 +66,7 @@ struct RoomsAndZonesListView: View {
                         Section("Zones") {
                             ForEach(bridgeManager.zones) { zone in
                                 NavigationLink(value: zone) {
-                                    ZoneRowView(zone: zone, isLoading: isRefreshing)
+                                    GroupRowView(group: zone, isLoading: isRefreshing)
                                 }
                                 .disabled(isRefreshing)
                             }
@@ -244,7 +244,8 @@ struct RoomsAndZonesListView: View {
         hasLoadedData = true
 
         // Reset haptic flags after a delay
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+        Task {
+            try? await Task.sleep(for: .seconds(1.5))
             hasGivenRefreshInitialHaptic = false
             hasGivenRefreshFinalHaptic = false
         }
@@ -278,16 +279,17 @@ struct RoomsAndZonesListView: View {
         isTurningOffLights = false
 
         // Reset haptic flags after a delay
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+        Task {
+            try? await Task.sleep(for: .seconds(1.5))
             hasGivenInitialHaptic = false
             hasGivenFinalHaptic = false
         }
     }
 }
 
-// MARK: - Room Row View
-struct RoomRowView: View {
-    let room: HueRoom
+// MARK: - Group Row View (unified for rooms and zones)
+struct GroupRowView<T: GroupedLightContainer>: View {
+    let group: T
     var isLoading: Bool = false
 
     // Dynamic Type scaled metrics
@@ -299,7 +301,7 @@ struct RoomRowView: View {
     @ScaledMetric(relativeTo: .headline) private var verticalPadding: CGFloat = 2
 
     private var lightStatus: (isOn: Bool, brightness: Double?) {
-        guard let lights = room.groupedLights, !lights.isEmpty else {
+        guard let lights = group.groupedLights, !lights.isEmpty else {
             return (false, nil)
         }
 
@@ -309,93 +311,23 @@ struct RoomRowView: View {
         return (anyOn, averageBrightness)
     }
 
-    var body: some View {
-        HStack(spacing: rowSpacing) {
-            Image(systemName: iconForArchetype(room.metadata.archetype))
-                .font(.headline)
-                .foregroundStyle(lightStatus.isOn ? .yellow : .secondary)
-
-            VStack(alignment: .leading, spacing: nameSpacing) {
-                Text(room.metadata.name)
-                    .font(.subheadline)
-            }
-
-            Spacer()
-
-            VStack(alignment: .trailing, spacing: statusSpacing) {
-                HStack(spacing: statusDotSpacing) {
-                    Circle()
-                        .fill(lightStatus.isOn ? Color.green : Color.secondary)
-                        .frame(width: statusDotSize, height: statusDotSize)
-                    Text(lightStatus.isOn ? "On" : "Off")
-                        .font(.caption)
-                        .foregroundStyle(lightStatus.isOn ? .primary : .secondary)
-                }
-
-                if let brightness = lightStatus.brightness {
-                    
-                    Text("\(Int(brightness))%")
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                }
-            }
+    /// Icon for the row: rooms use archetype-based icons, zones use a grid icon
+    private var iconName: String {
+        if T.isRoom {
+            return iconForArchetype(group.metadata.archetype)
+        } else {
+            return "square.grid.2x2"
         }
-        .padding(.vertical, verticalPadding)
-        .skeletonLoader(isActive: isLoading)
-    }
-
-    private func iconForArchetype(_ archetype: String) -> String {
-        switch archetype.lowercased() {
-        case "living_room": return "sofa"
-        case "bedroom": return "bed.double"
-        case "kitchen": return "fork.knife"
-        case "bathroom": return "drop"
-        case "office": return "desktopcomputer"
-        case "dining": return "fork.knife"
-        case "hallway": return "door.left.hand.open"
-        case "toilet": return "drop"
-        case "garage": return "car"
-        case "terrace", "balcony": return "sun.max"
-        case "garden": return "leaf"
-        case "gym": return "figure.run"
-        case "recreation": return "gamecontroller"
-        default: return "lightbulb.led.fill"
-        }
-    }
-}
-
-// MARK: - Zone Row View
-struct ZoneRowView: View {
-    let zone: HueZone
-    var isLoading: Bool = false
-
-    // Dynamic Type scaled metrics
-    @ScaledMetric(relativeTo: .headline) private var rowSpacing: CGFloat = 12
-    @ScaledMetric(relativeTo: .headline) private var nameSpacing: CGFloat = 2
-    @ScaledMetric(relativeTo: .caption) private var statusSpacing: CGFloat = 2
-    @ScaledMetric(relativeTo: .caption) private var statusDotSpacing: CGFloat = 4
-    @ScaledMetric(relativeTo: .caption) private var statusDotSize: CGFloat = 6
-    @ScaledMetric(relativeTo: .headline) private var verticalPadding: CGFloat = 2
-
-    private var lightStatus: (isOn: Bool, brightness: Double?) {
-        guard let lights = zone.groupedLights, !lights.isEmpty else {
-            return (false, nil)
-        }
-
-        let anyOn = lights.contains { $0.on?.on == true }
-        let averageBrightness = lights.compactMap { $0.dimming?.brightness }.average()
-
-        return (anyOn, averageBrightness)
     }
 
     var body: some View {
         HStack(spacing: rowSpacing) {
-            Image(systemName: "square.grid.2x2")
+            Image(systemName: iconName)
                 .font(.headline)
                 .foregroundStyle(lightStatus.isOn ? .yellow : .secondary)
 
             VStack(alignment: .leading, spacing: nameSpacing) {
-                Text(zone.metadata.name)
+                Text(group.metadata.name)
                     .font(.subheadline)
             }
 

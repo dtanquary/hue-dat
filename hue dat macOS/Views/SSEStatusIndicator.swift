@@ -62,7 +62,7 @@ struct SSEStatusIndicator: View {
                     : .default,
                 value: isAnimating
             )
-            .onChange(of: streamState) { newState in
+            .onChange(of: streamState) { _, newState in
                 if case .connecting = newState {
                     isAnimating = true
                 } else {

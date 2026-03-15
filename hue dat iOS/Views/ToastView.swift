@@ -20,7 +20,7 @@ struct ToastModifier: ViewModifier {
                     Spacer()
                     HStack {
                         Image(systemName: "checkmark.circle.fill")
-                            .foregroundColor(.green)
+                            .foregroundStyle(.green)
                         Text(message)
                             .font(.body)
                     }
@@ -37,7 +37,8 @@ struct ToastModifier: ViewModifier {
         .onChange(of: isShowing) { _, newValue in
             if newValue {
                 // Auto-dismiss after 2 seconds
-                DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+                Task { @MainActor in
+                    try? await Task.sleep(for: .seconds(2))
                     withAnimation {
                         isShowing = false
                     }

@@ -5,10 +5,9 @@
 //  Created by David Tanquary on 10/29/25.
 //
 
-import SwiftUI
-import Network
 import Foundation
 import Combine
+import Network
 
 // MARK: - Bridge Discovery Service
 @MainActor
@@ -126,21 +125,6 @@ public class BridgeDiscoveryService: ObservableObject {
         print("💾 Cached fresh bridge discovery data")
 
         return bridges
-
-        /*
-        // Simulate network delay
-        try await Task.sleep(nanoseconds: 1_000_000_000) // 1 second
-
-        // Mocked payload for development
-        let json = """
-        [
-            {"id":"001788fffe4ffdfb","internalipaddress":"192.168.1.124","port":443,"serviceName":null},
-            {"id":"001788fffe123456","internalipaddress":"192.168.1.125","port":443,"serviceName":null}
-        ]
-        """.data(using: .utf8)!
-
-        return try JSONDecoder().decode([BridgeInfo].self, from: json)
-         */
     }
 
     private func performHueBridgeDiscoveryWithMDNS() async throws -> [BridgeInfo] {

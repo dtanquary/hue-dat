@@ -1,5 +1,5 @@
 //
-//  RoomDetailView.swift
+//  GroupDetailView.swift
 //  hue dat Watch App
 //
 //  Created by David Tanquary on 10/31/25.
@@ -8,8 +8,8 @@
 import SwiftUI
 import HueDatShared
 
-struct RoomDetailView: View {
-    let roomId: String
+struct GroupDetailView<T: GroupedLightContainer>: View {
+    let groupId: String
     @ObservedObject var bridgeManager: BridgeManager
 
     // Tunable parameter for crown brightness adjustment sensitivity
@@ -24,12 +24,12 @@ struct RoomDetailView: View {
     // Brightness control state
     @State private var isSettingBrightness = false
     @State private var brightness: Double = 0
-    @State private var brightnessThrottleTimer: Timer?
+    @State private var brightnessThrottleTask: Task<Void, Never>?
     @State private var isAdjustingBrightness = false
-    @State private var brightnessPopoverTimer: Timer?
+    @State private var brightnessPopoverTask: Task<Void, Never>?
     @State private var hasGivenInitialBrightnessHaptic = false
     @State private var hasGivenFinalBrightnessHaptic = false
-    @State private var brightnessHapticResetTimer: Timer?
+    @State private var brightnessHapticResetTask: Task<Void, Never>?
     @State private var hasCompletedInitialLoad = false
     @FocusState private var isBrightnessFocused: Bool
 
@@ -40,35 +40,26 @@ struct RoomDetailView: View {
 
     // Brightness optimistic state for instant UI updates
     @State private var optimisticBrightness: Double?
-    @State private var previousBrightness: Double?
-
 
     // Scene picker state
     @State private var availableScenes: [HueScene] = []
     @State private var activeSceneId: String?
     @State private var showScenePicker: Bool = false
-    @State private var backgroundUpdateTrigger: UUID = UUID()
-    @State private var optimisticSceneColors: [Color]? = nil  // For instant orb updates when scene selected
     @State private var hasFetchedScenes: Bool = false  // Guard to prevent duplicate fetchScenes calls
     @State private var isApplyingScene: Bool = false  // Guard to prevent onChange from firing during scene activation
 
-    // Computed property to get live room data
-    private var room: HueRoom? {
-        bridgeManager.rooms.first(where: { $0.id == roomId })
+    // Computed property to get live group data
+    private var group: T? {
+        if T.isRoom {
+            return bridgeManager.rooms.first(where: { $0.id == groupId }) as? T
+        } else {
+            return bridgeManager.zones.first(where: { $0.id == groupId }) as? T
+        }
     }
 
-    private var lightStatus: Double? {
-        guard let room = room,
-              let lights = room.groupedLights, !lights.isEmpty else {
-            return optimisticBrightness
-        }
-
-        let actualBrightness = lights.compactMap { $0.dimming?.brightness }.average()
-
-        // Prefer optimistic state for instant UI updates
-        let brightness = optimisticBrightness ?? actualBrightness
-
-        return brightness
+    /// Label for logging and UI text
+    private var groupTypeLabel: String {
+        T.isRoom ? "room" : "zone"
     }
 
     // Computed property for orb opacity (0.0 to 1.0)
@@ -78,25 +69,34 @@ struct RoomDetailView: View {
 
     var body: some View {
         Group {
-            if let room = room {
-                roomContent(for: room)
+            if let group = group {
+                groupContent(for: group)
             } else {
                 VStack {
                     ProgressView()
-                    Text("Loading room...")
+                    Text("Loading \(groupTypeLabel)...")
                         .font(.caption)
                         .foregroundStyle(.secondary)
+                }
+                .onAppear {
+                    // If group is not found, try to refresh
+                    if !T.isRoom {
+                        Task {
+                            print("⚠️ \(groupTypeLabel.capitalized) \(groupId) not found, refreshing \(groupTypeLabel)s...")
+                            await bridgeManager.getZones()
+                        }
+                    }
                 }
             }
         }
     }
 
     @ViewBuilder
-    private func roomContent(for room: HueRoom) -> some View {
+    private func groupContent(for group: T) -> some View {
         GeometryReader { outerGeometry in
             ZStack {
                 // Layer 1: Brightness-controlled orange/grey orb background
-                let groupedLight = room.groupedLights?.first
+                let groupedLight = group.groupedLights?.first
                 let isOn = groupedLight?.on?.on ?? false
                 let currentBrightness = groupedLight?.dimming?.brightness ?? 0.0
 
@@ -104,7 +104,6 @@ struct RoomDetailView: View {
                     .opacity(orbOpacity)
                     .animation(.easeInOut(duration: 0.3), value: orbOpacity)
                     .zIndex(0)
-                    .id(backgroundUpdateTrigger) // Force re-render when trigger changes
 
                 // Layer 2: Centered power icon with limited tap area
                 VStack {
@@ -155,7 +154,7 @@ struct RoomDetailView: View {
                             }) {
                                 Image(systemName: "wand.and.stars")
                                     .font(.system(size: 16))
-                                    .foregroundColor(.white)
+                                    .foregroundStyle(.white)
                                     .background(Color.clear)
                             }
                             .buttonStyle(.borderless)
@@ -233,20 +232,24 @@ struct RoomDetailView: View {
                 isAdjustingBrightness = true
             }
 
-            // Reset timer for hiding popover
-            brightnessPopoverTimer?.invalidate()
-            brightnessPopoverTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: false) { _ in
+            // Reset task for hiding popover
+            brightnessPopoverTask?.cancel()
+            brightnessPopoverTask = Task {
+                try? await Task.sleep(for: .seconds(1.0))
+                guard !Task.isCancelled else { return }
                 withAnimation(.easeInOut(duration: 0.3)) {
                     isAdjustingBrightness = false
                 }
             }
 
-            // Reset timer for haptic flag - wait longer to ensure user is done adjusting
-            brightnessHapticResetTimer?.invalidate()
-            brightnessHapticResetTimer = Timer.scheduledTimer(withTimeInterval: 1.5, repeats: false) { _ in
+            // Reset task for haptic flag - wait longer to ensure user is done adjusting
+            brightnessHapticResetTask?.cancel()
+            brightnessHapticResetTask = Task {
+                try? await Task.sleep(for: .seconds(1.5))
+                guard !Task.isCancelled else { return }
                 // Reset flags so next adjustment session gets haptics again
-                self.hasGivenInitialBrightnessHaptic = false
-                self.hasGivenFinalBrightnessHaptic = false
+                hasGivenInitialBrightnessHaptic = false
+                hasGivenFinalBrightnessHaptic = false
             }
 
             // Throttle brightness updates - send immediately if gate is open, otherwise accumulate
@@ -261,33 +264,34 @@ struct RoomDetailView: View {
                 }
 
                 // Open the gate after throttle period
-                brightnessThrottleTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: false) { _ in
-                    self.canSendBrightnessUpdate = true
+                brightnessThrottleTask?.cancel()
+                brightnessThrottleTask = Task {
+                    try? await Task.sleep(for: .seconds(0.5))
+                    guard !Task.isCancelled else { return }
+                    canSendBrightnessUpdate = true
 
                     // If there's accumulated delta, send it now
-                    if self.accumulatedDelta != 0 {
-                        let deltaToSend = self.accumulatedDelta
-                        self.accumulatedDelta = 0
-                        self.canSendBrightnessUpdate = false
+                    if accumulatedDelta != 0 {
+                        let deltaToSend = accumulatedDelta
+                        accumulatedDelta = 0
+                        canSendBrightnessUpdate = false
 
-                        Task {
-                            await self.adjustBrightnessWithThrottle(delta: deltaToSend)
-                        }
+                        await adjustBrightnessWithThrottle(delta: deltaToSend)
 
-                        // Schedule another timer to re-open the gate
-                        self.brightnessThrottleTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: false) { _ in
-                            self.canSendBrightnessUpdate = true
-                        }
+                        // Re-open the gate after another throttle period
+                        try? await Task.sleep(for: .seconds(0.5))
+                        guard !Task.isCancelled else { return }
+                        canSendBrightnessUpdate = true
                     }
                 }
             }
-            // If gate is closed, delta is already accumulated above, just wait for timer
+            // If gate is closed, delta is already accumulated above, just wait for task
         }
-        .navigationTitle(room.metadata.name)
+        .navigationTitle(group.metadata.name)
         .navigationBarTitleDisplayMode(.inline)
         .onAppear {
             // Initialize UI from cached data only (no API call)
-            if let lights = room.groupedLights, !lights.isEmpty {
+            if let lights = group.groupedLights, !lights.isEmpty {
                 let actualOn = lights.contains { $0.on?.on == true }
                 displayIsOn = actualOn
 
@@ -301,7 +305,10 @@ struct RoomDetailView: View {
                     }
 
                     // Auto-hide after 1 second
-                    brightnessPopoverTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: false) { _ in
+                    brightnessPopoverTask?.cancel()
+                    brightnessPopoverTask = Task {
+                        try? await Task.sleep(for: .seconds(1.0))
+                        guard !Task.isCancelled else { return }
                         withAnimation(.easeInOut(duration: 0.3)) {
                             isAdjustingBrightness = false
                         }
@@ -309,26 +316,34 @@ struct RoomDetailView: View {
                 }
             }
 
-            // Load scenes for this room (guard against duplicate calls)
+            // Load scenes for this group (guard against duplicate calls)
             Task {
                 guard !hasFetchedScenes else {
-                    print("⏭️ RoomDetailView: Skipping duplicate fetchScenes call")
+                    print("⏭️ GroupDetailView<\(T.apiGroupType)>: Skipping duplicate fetchScenes call")
                     return
                 }
                 hasFetchedScenes = true
 
                 // Fetch scenes
-                availableScenes = await bridgeManager.fetchScenes(forRoomId: roomId)
+                if T.isRoom {
+                    availableScenes = await bridgeManager.fetchScenes(forRoomId: groupId)
+                } else {
+                    availableScenes = await bridgeManager.fetchScenes(forZoneId: groupId)
+                }
             }
 
             // Mark initial load as complete AFTER a brief delay to ensure programmatic brightness changes don't trigger haptics
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+            Task {
+                try? await Task.sleep(for: .seconds(0.1))
                 hasCompletedInitialLoad = true
             }
         }
     }
 
+    // MARK: - Power Control
+
     private func togglePower() async {
+        let label = groupTypeLabel
         print("🔘 togglePower() called - displayIsOn: \(displayIsOn), isTogglingPower: \(isTogglingPower), isSettingBrightness: \(isSettingBrightness)")
 
         // Don't allow toggling power while brightness is being set
@@ -337,9 +352,9 @@ struct RoomDetailView: View {
             return
         }
 
-        guard let currentRoom = room,
-              let groupedLight = currentRoom.groupedLights?.first else {
-            print("❌ togglePower blocked: room=\(room != nil), groupedLights=\(room?.groupedLights != nil), count=\(room?.groupedLights?.count ?? 0)")
+        guard let currentGroup = group,
+              let groupedLight = currentGroup.groupedLights?.first else {
+            print("❌ togglePower blocked: \(label)=\(group != nil), groupedLights=\(group?.groupedLights != nil), count=\(group?.groupedLights?.count ?? 0)")
             return
         }
 
@@ -355,9 +370,6 @@ struct RoomDetailView: View {
         displayIsOn = !displayIsOn
         isTogglingPower = true
 
-        // Clear scene colors since user is manually controlling the lights
-        optimisticSceneColors = nil
-
         // Send API request directly to HueAPIService - only revert on network failure
         do {
             try await HueAPIService.shared.setPower(groupedLightId: groupedLight.id, on: displayIsOn)
@@ -372,17 +384,17 @@ struct RoomDetailView: View {
                         withAnimation(.easeInOut(duration: 0.3)) {
                             brightness = currentBrightness
                         }
-                        bridgeManager.updateLocalRoomState(roomId: roomId, on: displayIsOn, brightness: currentBrightness)
+                        updateLocalState(on: displayIsOn, brightness: currentBrightness)
                     } else {
-                        bridgeManager.updateLocalRoomState(roomId: roomId, on: displayIsOn)
+                        updateLocalState(on: displayIsOn)
                     }
                 } else {
                     // Fetch failed, just update on state
-                    bridgeManager.updateLocalRoomState(roomId: roomId, on: displayIsOn)
+                    updateLocalState(on: displayIsOn)
                 }
             } else {
                 // Light was turned OFF, just update the on state
-                bridgeManager.updateLocalRoomState(roomId: roomId, on: displayIsOn)
+                updateLocalState(on: displayIsOn)
             }
 
             // Give success haptic
@@ -401,13 +413,15 @@ struct RoomDetailView: View {
         isTogglingPower = false
 
         // Reset haptic flags after a delay
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
-            self.hasGivenInitialPowerHaptic = false
-            self.hasGivenFinalPowerHaptic = false
+        Task {
+            try? await Task.sleep(for: .seconds(1.5))
+            hasGivenInitialPowerHaptic = false
+            hasGivenFinalPowerHaptic = false
         }
     }
 
     private func turnOff() async {
+        let label = groupTypeLabel
         print("🔘 turnOff() called via long press - isTogglingPower: \(isTogglingPower), isSettingBrightness: \(isSettingBrightness)")
 
         // Don't allow turning off while brightness is being set
@@ -416,9 +430,9 @@ struct RoomDetailView: View {
             return
         }
 
-        guard let currentRoom = room,
-              let groupedLight = currentRoom.groupedLights?.first else {
-            print("❌ turnOff blocked: room=\(room != nil), groupedLights=\(room?.groupedLights != nil), count=\(room?.groupedLights?.count ?? 0)")
+        guard let currentGroup = group,
+              let groupedLight = currentGroup.groupedLights?.first else {
+            print("❌ turnOff blocked: \(label)=\(group != nil), groupedLights=\(group?.groupedLights != nil), count=\(group?.groupedLights?.count ?? 0)")
             return
         }
 
@@ -434,16 +448,13 @@ struct RoomDetailView: View {
         displayIsOn = false
         isTogglingPower = true
 
-        // Clear scene colors since user is manually controlling the lights
-        optimisticSceneColors = nil
-
         // Send API request to turn off
         do {
             try await HueAPIService.shared.setPower(groupedLightId: groupedLight.id, on: false)
             print("✅ Power off succeeded")
 
             // Update local state
-            bridgeManager.updateLocalRoomState(roomId: roomId, on: false)
+            updateLocalState(on: false)
 
             // Give success haptic
             if !hasGivenFinalPowerHaptic {
@@ -454,7 +465,7 @@ struct RoomDetailView: View {
             // Network failure - revert UI state if it was on before
             print("❌ Power off failed: \(error.localizedDescription)")
             // Check if light was actually on before we tried to turn it off
-            if let lights = room?.groupedLights, !lights.isEmpty {
+            if let lights = group?.groupedLights, !lights.isEmpty {
                 displayIsOn = lights.contains { $0.on?.on == true }
             }
             WKInterfaceDevice.current().play(.failure)
@@ -464,21 +475,21 @@ struct RoomDetailView: View {
         isTogglingPower = false
 
         // Reset haptic flags after a delay
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
-            self.hasGivenInitialPowerHaptic = false
-            self.hasGivenFinalPowerHaptic = false
+        Task {
+            try? await Task.sleep(for: .seconds(1.5))
+            hasGivenInitialPowerHaptic = false
+            hasGivenFinalPowerHaptic = false
         }
     }
 
+    // MARK: - Brightness Control
+
     private func adjustBrightnessWithThrottle(delta: Double) async {
-        guard let currentRoom = room,
-              let groupedLight = currentRoom.groupedLights?.first else { return }
+        guard let currentGroup = group,
+              let groupedLight = currentGroup.groupedLights?.first else { return }
 
         isSettingBrightness = true
         defer { isSettingBrightness = false }
-
-        // Clear scene colors since user is manually controlling the lights
-        optimisticSceneColors = nil
 
         // Apply the multiplier to the delta
         let scaledDelta = delta * crownBrightnessDeltaMultiplier
@@ -506,14 +517,15 @@ struct RoomDetailView: View {
     }
 
     private func setBrightness(_ value: Double) async {
-        guard let currentRoom = room,
-              let groupedLight = currentRoom.groupedLights?.first else { return }
+        guard let currentGroup = group,
+              let groupedLight = currentGroup.groupedLights?.first else { return }
 
         isSettingBrightness = true
         defer { isSettingBrightness = false }
 
-        // Clear scene colors since user is manually controlling the lights
-        optimisticSceneColors = nil
+        // Save previous state for rollback on failure
+        let previousDisplayIsOn = displayIsOn
+        let previousOptimisticBrightness = optimisticBrightness
 
         // If light is OFF, we need to turn it ON first with the target brightness
         if !displayIsOn {
@@ -521,36 +533,63 @@ struct RoomDetailView: View {
             displayIsOn = true
             optimisticBrightness = value
 
-            // Use combined method - assume success
-            _ = await bridgeManager.setGroupedLightPowerAndBrightness(id: groupedLight.id, on: true, brightness: value)
+            let result = await bridgeManager.setGroupedLightPowerAndBrightness(id: groupedLight.id, on: true, brightness: value)
 
-            // Update local state in BridgeManager so list view reflects the change
-            bridgeManager.updateLocalRoomState(roomId: roomId, on: true, brightness: value)
+            switch result {
+            case .success:
+                // Update local state in BridgeManager so list view reflects the change
+                updateLocalState(on: true, brightness: value)
 
-            // Clear optimistic state
-            optimisticBrightness = nil
-            // Success haptic
-            if !hasGivenFinalBrightnessHaptic {
-                WKInterfaceDevice.current().play(.success)
-                hasGivenFinalBrightnessHaptic = true
+                // Clear optimistic state
+                optimisticBrightness = nil
+                // Success haptic
+                if !hasGivenFinalBrightnessHaptic {
+                    WKInterfaceDevice.current().play(.success)
+                    hasGivenFinalBrightnessHaptic = true
+                }
+            case .failure(let error):
+                print("❌ setBrightness (power+brightness) failed: \(error.localizedDescription)")
+                // Rollback optimistic state
+                displayIsOn = previousDisplayIsOn
+                optimisticBrightness = previousOptimisticBrightness
+                WKInterfaceDevice.current().play(.failure)
             }
         } else {
             // Light is already ON, just set brightness
             // Optimistic update
             optimisticBrightness = value
 
-            _ = await bridgeManager.setGroupedLightBrightness(id: groupedLight.id, brightness: value)
+            let result = await bridgeManager.setGroupedLightBrightness(id: groupedLight.id, brightness: value)
 
-            // Update local state in BridgeManager so list view reflects the change
-            bridgeManager.updateLocalRoomState(roomId: roomId, brightness: value)
+            switch result {
+            case .success:
+                // Update local state in BridgeManager so list view reflects the change
+                updateLocalState(brightness: value)
 
-            // Clear optimistic state
-            optimisticBrightness = nil
-            // Success haptic
-            if !hasGivenFinalBrightnessHaptic {
-                WKInterfaceDevice.current().play(.success)
-                hasGivenFinalBrightnessHaptic = true
+                // Clear optimistic state
+                optimisticBrightness = nil
+                // Success haptic
+                if !hasGivenFinalBrightnessHaptic {
+                    WKInterfaceDevice.current().play(.success)
+                    hasGivenFinalBrightnessHaptic = true
+                }
+            case .failure(let error):
+                print("❌ setBrightness failed: \(error.localizedDescription)")
+                // Rollback optimistic state
+                optimisticBrightness = previousOptimisticBrightness
+                WKInterfaceDevice.current().play(.failure)
             }
+        }
+    }
+
+    // MARK: - Local State Update Helper
+
+    /// Routes local state updates to the correct BridgeManager method based on group type
+    private func updateLocalState(on: Bool? = nil, brightness: Double? = nil) {
+        if T.isRoom {
+            bridgeManager.updateLocalRoomState(roomId: groupId, on: on, brightness: brightness)
+        } else {
+            bridgeManager.updateLocalZoneState(zoneId: groupId, on: on, brightness: brightness)
         }
     }
 
@@ -616,14 +655,6 @@ struct RoomDetailView: View {
     private func activateScene(_ scene: HueScene) async {
         print("🎬 Activating scene: \(scene.metadata.name)")
 
-        // Update orb colors immediately using scene data (no need to wait for network)
-        let sceneColors = bridgeManager.extractColorsFromScene(scene)
-        if !sceneColors.isEmpty {
-            withAnimation(.easeInOut(duration: 0.3)) {
-                optimisticSceneColors = sceneColors
-            }
-        }
-
         // Extract scene brightness before making API call
         let sceneBrightness = bridgeManager.extractAverageBrightnessFromScene(scene)
 
@@ -649,7 +680,8 @@ struct RoomDetailView: View {
                 print("💡 Updated brightness slider to scene value: \(sceneBrightness)%")
 
                 // Reset flag after a short delay to allow onChange to complete
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                Task {
+                    try? await Task.sleep(for: .seconds(0.1))
                     isApplyingScene = false
                 }
             }

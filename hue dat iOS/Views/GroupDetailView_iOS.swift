@@ -1,15 +1,16 @@
 //
-//  RoomDetailView_iOS.swift
+//  GroupDetailView_iOS.swift
 //  hue dat iOS
 //
-//  Room control view with native iOS controls
+//  Unified room/zone control view with native iOS controls.
+//  Replaces RoomDetailView_iOS and ZoneDetailView_iOS.
 //
 
 import SwiftUI
 import HueDatShared
 
-struct RoomDetailView_iOS: View {
-    let roomId: String
+struct GroupDetailView_iOS<T: GroupedLightContainer>: View {
+    let groupId: String
 
     @EnvironmentObject var bridgeManager: BridgeManager
 
@@ -28,18 +29,22 @@ struct RoomDetailView_iOS: View {
     @State private var brightnessTask: Task<Void, Never>?
     @State private var sceneTask: Task<Void, Never>?
     @State private var powerTask: Task<Void, Never>?
-    @State private var sceneResetWorkItem: DispatchWorkItem?
+    @State private var sceneResetTask: Task<Void, Never>?
 
-    private var room: HueRoom? {
-        bridgeManager.rooms.first(where: { $0.id == roomId })
+    private var group: T? {
+        if T.isRoom {
+            return bridgeManager.rooms.first(where: { $0.id == groupId }) as? T
+        } else {
+            return bridgeManager.zones.first(where: { $0.id == groupId }) as? T
+        }
     }
 
     private var groupedLight: HueGroupedLight? {
-        room?.groupedLights?.first
+        group?.groupedLights?.first
     }
 
     private var groupedLightId: String? {
-        room?.services?.first(where: { $0.rtype == "grouped_light" })?.rid
+        group?.services?.first(where: { $0.rtype == "grouped_light" })?.rid
     }
 
     private var displayIsOn: Bool {
@@ -48,6 +53,22 @@ struct RoomDetailView_iOS: View {
 
     private var displayBrightness: Double {
         optimisticBrightness ?? brightness
+    }
+
+    private var groupScenes: [HueScene] {
+        bridgeManager.scenes.filter { $0.group.rid == groupId }
+    }
+
+    private var groupIcon: String {
+        if T.isRoom {
+            return iconForArchetype(group?.metadata.archetype ?? "")
+        } else {
+            return "square.grid.2x2"
+        }
+    }
+
+    private var unknownLabel: String {
+        T.isRoom ? "Unknown Room" : "Unknown Zone"
     }
 
     var body: some View {
@@ -67,7 +88,7 @@ struct RoomDetailView_iOS: View {
                     // Brightness percentage display
                     Text(displayBrightness.truncatingRemainder(dividingBy: 1) == 0 ? "\(Int(displayBrightness))%" : String(format: "%.1f%%", displayBrightness))
                         .font(.title.bold())
-                        .foregroundColor(.white)
+                        .foregroundStyle(.white)
                         .padding(.horizontal, 20)
                         .padding(.vertical, 10)
                         .background(Color.black.opacity(0.6))
@@ -82,7 +103,7 @@ struct RoomDetailView_iOS: View {
                     }) {
                         Image(systemName: displayIsOn ? "power.circle.fill" : "power.circle")
                             .font(.system(size: 80))
-                            .foregroundColor(displayIsOn ? .white : .gray)
+                            .foregroundStyle(displayIsOn ? .white : .gray)
                             .shadow(color: .black.opacity(0.3), radius: 4)
                     }
                     .buttonStyle(.plain)
@@ -92,7 +113,7 @@ struct RoomDetailView_iOS: View {
                     // Brightness slider
                     HStack(spacing: 16) {
                         Image(systemName: "sun.min")
-                            .foregroundColor(.white.opacity(0.8))
+                            .foregroundStyle(.white.opacity(0.8))
                             .font(.title2)
 
                         Slider(value: Binding(
@@ -105,7 +126,7 @@ struct RoomDetailView_iOS: View {
                         .tint(.white)
 
                         Image(systemName: "sun.max.fill")
-                            .foregroundColor(.white.opacity(0.8))
+                            .foregroundStyle(.white.opacity(0.8))
                             .font(.title2)
                     }
                     .padding(.horizontal, 24)
@@ -114,7 +135,7 @@ struct RoomDetailView_iOS: View {
                 .frame(height: 350)
 
                 // Scenes section
-                if !bridgeManager.scenes.filter({ $0.group.rid == roomId }).isEmpty {
+                if !groupScenes.isEmpty {
                     Divider()
 
                     ScrollView {
@@ -124,9 +145,9 @@ struct RoomDetailView_iOS: View {
                                 Text("Scenes")
                                     .font(.headline)
                                 Spacer()
-                                Text("\(bridgeManager.scenes.filter({ $0.group.rid == roomId }).count)")
+                                Text("\(groupScenes.count)")
                                     .font(.caption)
-                                    .foregroundColor(.secondary)
+                                    .foregroundStyle(.secondary)
                                     .padding(.horizontal, 8)
                                     .padding(.vertical, 4)
                                     .background(Color.secondary.opacity(0.15))
@@ -138,8 +159,8 @@ struct RoomDetailView_iOS: View {
                                 GridItem(.flexible(), spacing: 12),
                                 GridItem(.flexible(), spacing: 12)
                             ], spacing: 12) {
-                                ForEach(bridgeManager.scenes.filter({ $0.group.rid == roomId })) { scene in
-                                    sceneCard(for: scene, groupId: roomId)
+                                ForEach(groupScenes) { scene in
+                                    sceneCard(for: scene, groupId: groupId)
                                 }
                             }
                         }
@@ -149,23 +170,23 @@ struct RoomDetailView_iOS: View {
                 }
             }
         }
-        .navigationTitle(room?.metadata.name ?? "Unknown Room")
+        .navigationTitle(group?.metadata.name ?? unknownLabel)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .principal) {
                 HStack(spacing: 8) {
-                    Image(systemName: iconForArchetype(room?.metadata.archetype ?? ""))
-                        .foregroundColor(.white)
-                    Text(room?.metadata.name ?? "Unknown Room")
+                    Image(systemName: groupIcon)
+                        .foregroundStyle(.white)
+                    Text(group?.metadata.name ?? unknownLabel)
                         .font(.headline)
-                        .foregroundColor(.white)
+                        .foregroundStyle(.white)
                 }
             }
         }
         .toolbarBackground(.hidden, for: .navigationBar)
         .onAppear {
             isViewActive = true
-            loadRoomState()
+            loadGroupState()
         }
         .onDisappear {
             isViewActive = false
@@ -173,7 +194,7 @@ struct RoomDetailView_iOS: View {
             brightnessTask?.cancel()
             sceneTask?.cancel()
             powerTask?.cancel()
-            sceneResetWorkItem?.cancel()
+            sceneResetTask?.cancel()
         }
         .alert("Error", isPresented: $showError) {
             Button("OK") {
@@ -184,7 +205,7 @@ struct RoomDetailView_iOS: View {
         }
     }
 
-    private func loadRoomState() {
+    private func loadGroupState() {
         isOn = groupedLight?.on?.on ?? false
         brightness = groupedLight?.dimming?.brightness ?? 0.0
     }
@@ -285,13 +306,12 @@ struct RoomDetailView_iOS: View {
                         brightness = sceneBrightness
 
                         // Reset flag after brief delay
-                        sceneResetWorkItem?.cancel()
-                        let workItem = DispatchWorkItem {
-                            guard isViewActive else { return }
+                        sceneResetTask?.cancel()
+                        sceneResetTask = Task { @MainActor in
+                            try? await Task.sleep(for: .milliseconds(100))
+                            guard !Task.isCancelled, isViewActive else { return }
                             isApplyingScene = false
                         }
-                        sceneResetWorkItem = workItem
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1, execute: workItem)
                     }
                     // Clear optimistic state
                     optimisticIsOn = nil
@@ -333,7 +353,7 @@ struct RoomDetailView_iOS: View {
                     Text(scene.metadata.name)
                         .font(.caption)
                         .fontWeight(.medium)
-                        .foregroundColor(.white)
+                        .foregroundStyle(.white)
                         .lineLimit(2)
                         .multilineTextAlignment(.center)
                 }
@@ -347,7 +367,7 @@ struct RoomDetailView_iOS: View {
                     VStack {
                         HStack {
                             Image(systemName: "pin.fill")
-                                .foregroundColor(.white)
+                                .foregroundStyle(.white)
                                 .font(.body)
                                 .shadow(color: .black.opacity(0.3), radius: 2)
                                 .padding(8)
@@ -363,7 +383,7 @@ struct RoomDetailView_iOS: View {
                         HStack {
                             Spacer()
                             Image(systemName: "checkmark.circle.fill")
-                                .foregroundColor(.white)
+                                .foregroundStyle(.white)
                                 .font(.body)
                                 .shadow(color: .black.opacity(0.3), radius: 2)
                                 .padding(8)
@@ -392,20 +412,6 @@ struct RoomDetailView_iOS: View {
 
             // Toggle pin state
             bridgeManager.toggleScenePin(sceneId: scene.id, forGroupId: groupId)
-        }
-    }
-
-    private func iconForArchetype(_ archetype: String) -> String {
-        switch archetype.lowercased() {
-        case "living_room": return "sofa"
-        case "bedroom": return "bed.double"
-        case "kitchen": return "fork.knife"
-        case "bathroom": return "shower"
-        case "office": return "desktopcomputer"
-        case "dining": return "fork.knife"
-        case "hallway": return "figure.walk"
-        case "garage": return "car"
-        default: return "lightbulb.led.fill"
         }
     }
 }

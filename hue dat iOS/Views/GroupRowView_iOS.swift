@@ -1,19 +1,20 @@
 //
-//  ZoneRowView.swift
+//  GroupRowView_iOS.swift
 //  hue dat iOS
 //
-//  Created by Claude Code
+//  Unified row view for rooms and zones in the list.
+//  Replaces RoomRowView and ZoneRowView.
 //
 
 import SwiftUI
 import HueDatShared
 
-struct ZoneRowView: View {
-    let zone: HueZone
+struct GroupRowView_iOS<T: GroupedLightContainer>: View {
+    let group: T
     var isLoading: Bool = false
 
     private var lightStatus: (isOn: Bool, brightness: Double?) {
-        guard let lights = zone.groupedLights, !lights.isEmpty else {
+        guard let lights = group.groupedLights, !lights.isEmpty else {
             return (false, nil)
         }
 
@@ -23,17 +24,25 @@ struct ZoneRowView: View {
         return (anyOn, averageBrightness)
     }
 
+    private var icon: String {
+        if T.isRoom {
+            return iconForArchetype(group.metadata.archetype)
+        } else {
+            return "square.grid.2x2"
+        }
+    }
+
     var body: some View {
         let status = lightStatus  // Compute once and cache
 
         return HStack(spacing: 8) {
-            Image(systemName: "square.grid.2x2")
+            Image(systemName: icon)
                 .font(.headline)
                 .foregroundStyle(status.isOn ? .yellow : .secondary)
                 .padding(.leading, 12)
 
             VStack(alignment: .leading, spacing: 4) {
-                Text(zone.metadata.name)
+                Text(group.metadata.name)
                     .font(.subheadline)
             }
 
@@ -81,5 +90,13 @@ struct ZoneRowView: View {
             return "\(Int(brightness))%"
         }
         return String(format: "%.1f%%", brightness)
+    }
+}
+
+// MARK: - Array Extension for Average Calculation
+extension Array where Element == Double {
+    func average() -> Double? {
+        guard !isEmpty else { return nil }
+        return reduce(0, +) / Double(count)
     }
 }

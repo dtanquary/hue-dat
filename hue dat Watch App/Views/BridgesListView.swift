@@ -6,7 +6,6 @@
 //
 
 import SwiftUI
-import Combine
 import HueDatShared
 
 struct BridgesListView: View {
@@ -20,9 +19,6 @@ struct BridgesListView: View {
             bridgesList
                 .navigationTitle("Bridges")
                 .navigationBarTitleDisplayMode(.automatic)
-        }
-        .toolbar {
-            toolbarContent
         }
         .alert("Error", isPresented: errorBinding) {
             Button("OK") {
@@ -118,29 +114,6 @@ struct BridgesListView: View {
             Image(systemName: "chevron.right")
                 .foregroundStyle(.quaternary)
                 .font(.caption)
-        }
-    }
-    
-    @ToolbarContentBuilder
-    private var toolbarContent: some ToolbarContent {
-        ToolbarItem(placement: .topBarLeading) {
-            Button {
-                /*showSettings = true*/
-            } label: {
-                Image(systemName: "gear")
-            }
-        }
-        
-        ToolbarItem(placement: .topBarTrailing) {
-            Button {
-                /*
-                Task {
-                    await refreshData()
-                }
-                 */
-            } label: {
-                Image(systemName: "arrow.clockwise.circle.fill")
-            }
         }
     }
     

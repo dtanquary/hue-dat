@@ -101,7 +101,7 @@ struct BridgeSetupView_macOS: View {
 
             Text("Searching for Hue bridges...")
                 .font(.body)
-                .foregroundColor(.secondary)
+                .foregroundStyle(.secondary)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
@@ -110,7 +110,7 @@ struct BridgeSetupView_macOS: View {
         VStack(spacing: 20) {
             Image(systemName: "exclamationmark.triangle")
                 .font(.system(size: 48))
-                .foregroundColor(.orange)
+                .foregroundStyle(.orange)
 
             Text("No Bridges Found")
                 .font(.title3)
@@ -118,7 +118,7 @@ struct BridgeSetupView_macOS: View {
 
             Text("Make sure your Hue bridge is connected to the same network as this Mac.")
                 .font(.body)
-                .foregroundColor(.secondary)
+                .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
                 .padding(.horizontal)
 
@@ -147,7 +147,7 @@ struct BridgeSetupView_macOS: View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Found \(discoveryService.discoveredBridges.count) bridge(s)")
                 .font(.caption)
-                .foregroundColor(.secondary)
+                .foregroundStyle(.secondary)
                 .padding(.horizontal)
                 .padding(.top, 8)
 
@@ -160,7 +160,7 @@ struct BridgeSetupView_macOS: View {
 
                         Text(bridge.displayAddress)
                             .font(.caption)
-                            .foregroundColor(.secondary)
+                            .foregroundStyle(.secondary)
                     }
 
                     Spacer()
@@ -170,7 +170,7 @@ struct BridgeSetupView_macOS: View {
                             .scaleEffect(0.8)
                     } else if registrationService.isRegistered(bridge: bridge) {
                         Image(systemName: "checkmark.circle.fill")
-                            .foregroundColor(.green)
+                            .foregroundStyle(.green)
                     } else {
                         Button("Connect") {
                             Task {
@@ -192,7 +192,7 @@ struct BridgeSetupView_macOS: View {
                     showManualEntry = true
                 }
                 .buttonStyle(.borderless)
-                .foregroundColor(.accentColor)
+                .foregroundStyle(Color.accentColor)
 
                 Spacer()
 

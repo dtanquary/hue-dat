@@ -5,7 +5,7 @@
 //  Global event monitor for detecting clicks outside the popover
 //
 
-import Cocoa
+import AppKit
 
 class EventMonitor {
     private var monitor: Any?

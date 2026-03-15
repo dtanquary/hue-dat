@@ -38,7 +38,7 @@ struct SettingsView_iOS: View {
             } else {
                 Section("Bridge Connection") {
                     Text("No bridge connected")
-                        .foregroundColor(.secondary)
+                        .foregroundStyle(.secondary)
                 }
             }
 
@@ -73,12 +73,12 @@ struct SettingsView_iOS: View {
     private func settingRow(label: String, value: String) -> some View {
         HStack {
             Text(label)
-                .foregroundColor(.secondary)
+                .foregroundStyle(.secondary)
 
             Spacer()
 
             Text(value)
-                .foregroundColor(.primary)
+                .foregroundStyle(.primary)
                 .textSelection(.enabled)
         }
     }

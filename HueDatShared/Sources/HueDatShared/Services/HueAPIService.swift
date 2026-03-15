@@ -130,132 +130,36 @@ public actor HueAPIService {
             throw HueAPIError.httpError(statusCode: httpResponse.statusCode)
         }
 
-        do {
-            return try JSONDecoder().decode(T.self, from: data)
-        } catch {
-            // Log raw response for debugging
-            if let responseString = String(data: data, encoding: .utf8) {
-                print("❌ Failed to decode response. Raw data: \(responseString)")
+        // Decode outside actor context to avoid blocking the actor
+        return try await Task.detached {
+            do {
+                return try JSONDecoder().decode(T.self, from: data)
+            } catch {
+                // Log raw response for debugging
+                if let responseString = String(data: data, encoding: .utf8) {
+                    print("❌ Failed to decode response. Raw data: \(responseString)")
+                }
+                throw HueAPIError.decodingError(error)
             }
-            throw HueAPIError.decodingError(error)
-        }
+        }.value
     }
 
     /// Fetch all rooms from the bridge
     /// Returns: HueRoomsResponse containing array of rooms
     public func fetchRooms() async throws -> HueRoomsResponse {
-        // Fetch raw data first
-        guard let url = URL(string: "https://\(baseURL)/clip/v2/resource/room") else {
-            throw HueAPIError.invalidURL
-        }
-
-        var request = URLRequest(url: url)
-        request.httpMethod = "GET"
-        request.setValue(hueApplicationKey, forHTTPHeaderField: "hue-application-key")
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.timeoutInterval = 10.0
-
-        let (data, response) = try await session.data(for: request, delegate: sessionDelegate)
-
-        // Validate HTTP response
-        guard let httpResponse = response as? HTTPURLResponse else {
-            throw HueAPIError.invalidResponse
-        }
-
-        guard httpResponse.statusCode == 200 else {
-            throw HueAPIError.httpError(statusCode: httpResponse.statusCode)
-        }
-
-        // Decode outside actor context
-        return try await Task.detached {
-            do {
-                return try JSONDecoder().decode(HueRoomsResponse.self, from: data)
-            } catch {
-                // Log raw response for debugging
-                if let responseString = String(data: data, encoding: .utf8) {
-                    print("❌ Failed to decode rooms response. Raw data: \(responseString)")
-                }
-                throw HueAPIError.decodingError(error)
-            }
-        }.value
+        return try await request(endpoint: "/clip/v2/resource/room")
     }
 
     /// Fetch all zones from the bridge
     /// Returns: HueZonesResponse containing array of zones
     public func fetchZones() async throws -> HueZonesResponse {
-        // Fetch raw data first
-        guard let url = URL(string: "https://\(baseURL)/clip/v2/resource/zone") else {
-            throw HueAPIError.invalidURL
-        }
-
-        var request = URLRequest(url: url)
-        request.httpMethod = "GET"
-        request.setValue(hueApplicationKey, forHTTPHeaderField: "hue-application-key")
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.timeoutInterval = 10.0
-
-        let (data, response) = try await session.data(for: request, delegate: sessionDelegate)
-
-        // Validate HTTP response
-        guard let httpResponse = response as? HTTPURLResponse else {
-            throw HueAPIError.invalidResponse
-        }
-
-        guard httpResponse.statusCode == 200 else {
-            throw HueAPIError.httpError(statusCode: httpResponse.statusCode)
-        }
-
-        // Decode outside actor context
-        return try await Task.detached {
-            do {
-                return try JSONDecoder().decode(HueZonesResponse.self, from: data)
-            } catch {
-                // Log raw response for debugging
-                if let responseString = String(data: data, encoding: .utf8) {
-                    print("❌ Failed to decode zones response. Raw data: \(responseString)")
-                }
-                throw HueAPIError.decodingError(error)
-            }
-        }.value
+        return try await request(endpoint: "/clip/v2/resource/zone")
     }
 
     /// Fetch all grouped lights from the bridge
     /// Returns: HueGroupedLightsResponse containing array of grouped lights
     public func fetchGroupedLights() async throws -> HueGroupedLightsResponse {
-        // Fetch raw data first
-        guard let url = URL(string: "https://\(baseURL)/clip/v2/resource/grouped_light") else {
-            throw HueAPIError.invalidURL
-        }
-
-        var request = URLRequest(url: url)
-        request.httpMethod = "GET"
-        request.setValue(hueApplicationKey, forHTTPHeaderField: "hue-application-key")
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.timeoutInterval = 10.0
-
-        let (data, response) = try await session.data(for: request, delegate: sessionDelegate)
-
-        // Validate HTTP response
-        guard let httpResponse = response as? HTTPURLResponse else {
-            throw HueAPIError.invalidResponse
-        }
-
-        guard httpResponse.statusCode == 200 else {
-            throw HueAPIError.httpError(statusCode: httpResponse.statusCode)
-        }
-
-        // Decode outside actor context
-        return try await Task.detached {
-            do {
-                return try JSONDecoder().decode(HueGroupedLightsResponse.self, from: data)
-            } catch {
-                // Log raw response for debugging
-                if let responseString = String(data: data, encoding: .utf8) {
-                    print("❌ Failed to decode grouped lights response. Raw data: \(responseString)")
-                }
-                throw HueAPIError.decodingError(error)
-            }
-        }.value
+        return try await request(endpoint: "/clip/v2/resource/grouped_light")
     }
 
     // MARK: - Control Methods

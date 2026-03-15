@@ -22,6 +22,7 @@ struct MainMenuView: View {
     @State private var player = AVPlayer()
     @State private var isVideoSetup = false
     @State private var isViewActive = true
+    @State private var loopObserver: NSObjectProtocol?
     @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
@@ -81,21 +82,6 @@ struct MainMenuView: View {
                             .disabled(discoveryService.isLoading)
                             .accessibilityLabel("Manually add a Hue bridge on your network")
                             .glassEffect()
-
-                            /*
-                            // Tappable bridge count
-                            if !discoveryService.discoveredBridges.isEmpty && !discoveryService.isLoading {
-                                Button {
-                                    showBridgesList = true
-                                } label: {
-                                    Text("\(discoveryService.discoveredBridges.count) found")
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
-                                        .underline()
-                                }
-                                .accessibilityLabel("Show \(discoveryService.discoveredBridges.count) discovered bridge\(discoveryService.discoveredBridges.count == 1 ? "" : "s")")
-                            }
-                             */
                         }
                     }
                     .padding()
@@ -118,6 +104,10 @@ struct MainMenuView: View {
                 }
                 .onDisappear {
                     isViewActive = false
+                    if let observer = loopObserver {
+                        NotificationCenter.default.removeObserver(observer)
+                        loopObserver = nil
+                    }
                 }
                 .onChange(of: scenePhase) { _, newPhase in
                     switch newPhase {
@@ -200,9 +190,7 @@ struct MainMenuView: View {
         guard !isVideoSetup else { return }
 
         // Load video from asset catalog
-        let videoURL = await MainActor.run {
-            LoopingVideoPlayer_watchOS.loadVideoURL(named: "light")
-        }
+        let videoURL = LoopingVideoPlayer_watchOS.loadVideoURL(named: "light")
 
         guard let videoURL = videoURL else {
             print("❌ Failed to load video URL")
@@ -218,7 +206,7 @@ struct MainMenuView: View {
             player.replaceCurrentItem(with: playerItem)
 
             // Setup manual looping using notification (AVPlayerLooper not available on watchOS)
-            NotificationCenter.default.addObserver(
+            loopObserver = NotificationCenter.default.addObserver(
                 forName: .AVPlayerItemDidPlayToEndTime,
                 object: playerItem,
                 queue: .main

@@ -58,7 +58,7 @@ struct PinnedScenesListView: View {
             } else {
                 Text("PINNED SCENES (\(pinnedSceneItems.count))")
                     .font(.caption)
-                    .foregroundColor(.secondary)
+                    .foregroundStyle(.secondary)
                     .padding(.horizontal, 4)
 
                 ForEach(pinnedSceneItems) { item in
@@ -67,23 +67,23 @@ struct PinnedScenesListView: View {
                     } label: {
                         HStack {
                             Image(systemName: "lightbulb.fill")
-                                .foregroundColor(.yellow)
+                                .foregroundStyle(.yellow)
                                 .frame(width: 24)
 
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(item.scene.metadata.name)
-                                    .foregroundColor(.primary)
+                                    .foregroundStyle(.primary)
 
                                 Text("in \(item.contextName)")
                                     .font(.caption)
-                                    .foregroundColor(.secondary)
+                                    .foregroundStyle(.secondary)
                             }
 
                             Spacer()
 
                             Image(systemName: "wand.and.stars")
                                 .font(.caption)
-                                .foregroundColor(.secondary)
+                                .foregroundStyle(.secondary)
                         }
                         .padding(.vertical, 12)
                         .padding(.horizontal, 16)
@@ -100,13 +100,13 @@ struct PinnedScenesListView: View {
         VStack(spacing: 12) {
             Image(systemName: "pin.slash")
                 .font(.system(size: 48))
-                .foregroundColor(.secondary)
+                .foregroundStyle(.secondary)
             Text("No pinned scenes")
                 .font(.headline)
-                .foregroundColor(.secondary)
+                .foregroundStyle(.secondary)
             Text("Long-press a scene to pin it")
                 .font(.caption)
-                .foregroundColor(.secondary)
+                .foregroundStyle(.secondary)
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 40)

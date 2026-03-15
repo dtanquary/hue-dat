@@ -33,6 +33,7 @@ struct RoomsAndZonesListView_iOS: View {
     @State private var searchManager: SearchManager?
     @State private var toastMessage: String?
     @State private var showToast = false
+    @State private var searchResults = SearchResults(rooms: [], zones: [], scenes: [])
 
     // SSE status tracking
     @State private var sseStreamState: StreamState = .idle
@@ -127,7 +128,7 @@ struct RoomsAndZonesListView_iOS: View {
                             }
                             .opacity(0)
 
-                            RoomRowView(room: room, isLoading: isLoading)
+                            GroupRowView_iOS(group: room, isLoading: isLoading)
                         }
                         .disabled(isLoading)
                         .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 6, trailing: 16))
@@ -138,7 +139,7 @@ struct RoomsAndZonesListView_iOS: View {
                     Text("ROOMS (\(roomsCount))")
                         .font(.caption)
                         .fontWeight(.semibold)
-                        .foregroundColor(.secondary)
+                        .foregroundStyle(.secondary)
                         .padding(.leading, 0)
                 }
                 .id("rooms-section")
@@ -154,7 +155,7 @@ struct RoomsAndZonesListView_iOS: View {
                             }
                             .opacity(0)
 
-                            ZoneRowView(zone: zone, isLoading: isLoading)
+                            GroupRowView_iOS(group: zone, isLoading: isLoading)
                         }
                         .disabled(isLoading)
                         .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 6, trailing: 16))
@@ -165,7 +166,7 @@ struct RoomsAndZonesListView_iOS: View {
                     Text("ZONES (\(zonesCount))")
                         .font(.caption)
                         .fontWeight(.semibold)
-                        .foregroundColor(.secondary)
+                        .foregroundStyle(.secondary)
                         .padding(.leading, 0)
                 }
                 .id("zones-section")
@@ -195,19 +196,21 @@ struct RoomsAndZonesListView_iOS: View {
         contentWithNavigation
             .onChange(of: focusedField) { _, newField in
                 let isFocused = newField == .search
-                print("🔍 Search field focus changed: \(isFocused)")
                 withAnimation {
                     showSearchOverlay = isFocused
-                    print("🔍 showSearchOverlay set to: \(showSearchOverlay)")
+                }
+                if isFocused {
+                    searchResults = performSearch()
                 }
             }
             .onChange(of: searchText) { _, newText in
-                print("🔍 Search text changed: '\(newText)'")
+                // Update search results
+                searchResults = performSearch()
+
                 // Show overlay if field is focused OR there's text
                 if focusedField == .search || !newText.isEmpty {
                     withAnimation {
                         showSearchOverlay = true
-                        print("🔍 showSearchOverlay updated to: true (focused: \(focusedField == .search), text: '\(newText)')")
                     }
                 }
             }
@@ -282,14 +285,7 @@ struct RoomsAndZonesListView_iOS: View {
     @ViewBuilder
     private var contentWithNavigation: some View {
         mainContent
-//            .safeAreaBar(edge: .bottom) {
-//                if (!bridgeManager.rooms.isEmpty || !bridgeManager.zones.isEmpty)
-//                    && hasLoadedData {
-//                    searchBarView
-//                }
-//            }
             .navigationTitle("Rooms & Zones")
-//            .navigationSubtitle(bridgeManager.isRefreshing ? "Loading..." : "\(bridgeManager.rooms.count) Room\(bridgeManager.rooms.count == 1 ? "" : "s") & \(bridgeManager.zones.count) Zone\(bridgeManager.zones.count == 1 ? "" : "s")")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 toolbarContent
@@ -307,10 +303,8 @@ struct RoomsAndZonesListView_iOS: View {
                     loadingOverlay
 
                     if showSearchOverlay {
-                        let _ = print("🔍 Rendering SearchResultsOverlay")
-                        let results = performSearch() // Cache search results
                         SearchResultsOverlay(
-                            searchResults: results,
+                            searchResults: searchResults,
                             searchQuery: searchText,
                             onRoomTap: navigateToRoom,
                             onZoneTap: navigateToZone,
@@ -360,45 +354,6 @@ struct RoomsAndZonesListView_iOS: View {
             }
         }.sharedBackgroundVisibility(.hidden)
 
-//        ToolbarItem(placement: .topBarTrailing) {
-//            Menu {
-//                Button {
-//                    Task {
-//                        await turnOffAllLights()
-//                    }
-//                } label: {
-//                    Label("Turn off all lights", systemImage: "lightbulb.slash")
-//                }
-//                .disabled(isTurningOffLights || bridgeManager.connectedBridge == nil)
-//            } label: {
-//                if isTurningOffLights {
-//                    ProgressView()
-//                } else {
-//                    Image(systemName: "moon.fill")
-//                }
-//            }
-//        }.sharedBackgroundVisibility(.hidden)
-
-//        ToolbarItem(placement: .topBarTrailing) {
-//            Button {
-//                Task {
-//                    await refreshData(forceRefresh: true)
-//                }
-//            } label: {
-//                Image(systemName: "arrow.clockwise")
-//                    .symbolEffect(.rotate, isActive: bridgeManager.isRefreshing)
-//                    
-//            }
-//            .disabled(bridgeManager.isRefreshing)
-//        }
-//
-//        ToolbarItem(placement: .topBarTrailing) {
-//            Button("Settings", systemImage: "gear"){
-//                showSettings = true
-//            }
-//            .matchedTransitionSource(id: "Settings", in: animation)
-//        }
-        
         ToolbarItem(placement: .topBarTrailing) {
             Menu {
                 PinnedScenesListView { scene, groupId in
@@ -453,7 +408,6 @@ struct RoomsAndZonesListView_iOS: View {
             ToolbarSpacer(.flexible, placement: .bottomBar)
             ToolbarItem(placement: .bottomBar) {
                 Button("Close", systemImage: "xmark"){
-                    print("🔍 Clear button tapped")
                     focusedField = nil
                     searchText = ""
                     withAnimation {
@@ -470,37 +424,14 @@ struct RoomsAndZonesListView_iOS: View {
             // Search field container
             HStack(spacing: 8) {
                 Image(systemName: "magnifyingglass")
-                    .foregroundColor(.secondary)
+                    .foregroundStyle(.secondary)
 
                 TextField("Rooms, Zones, and Scenes", text: $searchText)
                     .focused($focusedField, equals: .search)
                     .textInputAutocapitalization(.never)
-                    .disableAutocorrection(true)
-                    .onSubmit {
-                        print("🔍 TextField submitted")
-                    }
+                    .autocorrectionDisabled()
+                    .onSubmit { }
             }
-//            .padding(.horizontal, 8)
-//            .padding(.vertical, 6)
-            //.background(Color(.systemFill))
-            //.cornerRadius(10)
-            // .glassEffect()
-
-            // Clear button - appears when focused or has text
-//            if focusedField == .search || !searchText.isEmpty {
-//                Button {
-//                    print("🔍 Clear button tapped")
-//                    focusedField = nil
-//                    searchText = ""
-//                    withAnimation {
-//                        showSearchOverlay = false
-//                    }
-//                } label: {
-//                    Image(systemName: "xmark.circle.fill")
-//                        .foregroundColor(.secondary)
-//                }
-//                .transition(.opacity.combined(with: .scale))
-//            }
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 8)
@@ -627,12 +558,9 @@ struct RoomsAndZonesListView_iOS: View {
 
     private func performSearch() -> SearchResults {
         guard let searchManager = searchManager else {
-            print("🔍 ⚠️ SearchManager is nil!")
             return SearchResults(rooms: [], zones: [], scenes: [])
         }
-        let results = searchManager.search(searchText)
-        print("🔍 Search '\(searchText)' returned: \(results.rooms.count) rooms, \(results.zones.count) zones, \(results.scenes.count) scenes")
-        return results
+        return searchManager.search(searchText)
     }
 
     // MARK: - Navigation Handlers

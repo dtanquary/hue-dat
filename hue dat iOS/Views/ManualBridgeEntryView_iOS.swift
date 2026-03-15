@@ -35,7 +35,7 @@ struct ManualBridgeEntryView_iOS: View {
                 } footer: {
                     if showValidationError {
                         Text("Please enter a valid IP address (e.g., 192.168.1.2)")
-                            .foregroundColor(.red)
+                            .foregroundStyle(.red)
                     } else {
                         Text("Enter the IP address of your Philips Hue bridge. You can find this in the Hue app or your router's settings.")
                     }

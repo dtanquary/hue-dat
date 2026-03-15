@@ -14,18 +14,88 @@ public struct HueAPIV2Error: Codable, Sendable {
     public let description: String
 }
 
+// MARK: - Unified Group Types
+
+/// Shared child reference type for rooms and zones
+/// NOTE: Children with rtype="device" contain device IDs, NOT light IDs.
+/// To get light data: 1) Query /clip/v2/resource/device/{rid} to get device
+/// 2) Find service with rtype="light" in device.services to get actual light ID
+/// 3) Query /clip/v2/resource/light/{lightId} with the light ID from step 2
+public struct GroupChild: Codable, Equatable, Hashable, Sendable {
+    public let rid: String   // Resource ID (device ID when rtype="device")
+    public let rtype: String // Resource type (e.g., "device", "motion", etc.)
+
+    public init(rid: String, rtype: String) {
+        self.rid = rid
+        self.rtype = rtype
+    }
+}
+
+/// Shared service reference type for rooms and zones
+public struct GroupService: Codable, Equatable, Hashable, Sendable {
+    public let rid: String
+    public let rtype: String
+
+    public init(rid: String, rtype: String) {
+        self.rid = rid
+        self.rtype = rtype
+    }
+}
+
+/// Shared metadata type for rooms and zones
+public struct GroupMetadata: Codable, Equatable, Hashable, Sendable {
+    public let name: String
+    public let archetype: String
+
+    public init(name: String, archetype: String) {
+        self.name = name
+        self.archetype = archetype
+    }
+}
+
+// MARK: - GroupedLightContainer Protocol
+
+/// Protocol unifying HueRoom and HueZone for shared view/logic code
+public protocol GroupedLightContainer: Identifiable, Equatable, Hashable, Codable, Sendable {
+    var id: String { get }
+    var type: String { get }
+    var metadata: GroupMetadata { get set }
+    var children: [GroupChild]? { get }
+    var services: [GroupService]? { get }
+    var groupedLights: [HueGroupedLight]? { get set }
+
+    /// Display name for the group
+    var displayName: String { get }
+
+    /// Whether this is a room (vs zone)
+    static var isRoom: Bool { get }
+
+    /// The group type identifier used in the Hue API (e.g., "room" or "zone")
+    static var apiGroupType: String { get }
+}
+
+/// Default implementation for displayName
+public extension GroupedLightContainer {
+    var displayName: String {
+        metadata.name
+    }
+}
+
 // MARK: - Room Models
 
 /// Hue room with metadata, children, services, and grouped lights
-public struct HueRoom: Codable, Identifiable, Equatable, Hashable, Sendable {
+public struct HueRoom: GroupedLightContainer {
     public let id: String
     public let type: String
-    public var metadata: RoomMetadata
-    public var children: [HueRoomChild]?
-    public var services: [HueRoomService]?
+    public var metadata: GroupMetadata
+    public var children: [GroupChild]?
+    public var services: [GroupService]?
     public var groupedLights: [HueGroupedLight]?
 
-    public init(id: String, type: String, metadata: RoomMetadata, children: [HueRoomChild]? = nil, services: [HueRoomService]? = nil, groupedLights: [HueGroupedLight]? = nil) {
+    public static var isRoom: Bool { true }
+    public static var apiGroupType: String { "room" }
+
+    public init(id: String, type: String, metadata: GroupMetadata, children: [GroupChild]? = nil, services: [GroupService]? = nil, groupedLights: [HueGroupedLight]? = nil) {
         self.id = id
         self.type = type
         self.metadata = metadata
@@ -34,40 +104,10 @@ public struct HueRoom: Codable, Identifiable, Equatable, Hashable, Sendable {
         self.groupedLights = groupedLights
     }
 
-    public struct RoomMetadata: Codable, Equatable, Hashable, Sendable {
-        public let name: String
-        public let archetype: String
-
-        public init(name: String, archetype: String) {
-            self.name = name
-            self.archetype = archetype
-        }
-    }
-
-    /// Child references in Hue API v2 rooms
-    /// NOTE: Children with rtype="device" contain device IDs, NOT light IDs.
-    /// To get light data: 1) Query /clip/v2/resource/device/{rid} to get device
-    /// 2) Find service with rtype="light" in device.services to get actual light ID
-    /// 3) Query /clip/v2/resource/light/{lightId} with the light ID from step 2
-    public struct HueRoomChild: Codable, Equatable, Hashable, Sendable {
-        public let rid: String   // Resource ID (device ID when rtype="device")
-        public let rtype: String // Resource type (e.g., "device", "motion", etc.)
-
-        public init(rid: String, rtype: String) {
-            self.rid = rid
-            self.rtype = rtype
-        }
-    }
-
-    public struct HueRoomService: Codable, Equatable, Hashable, Sendable {
-        public let rid: String
-        public let rtype: String
-
-        public init(rid: String, rtype: String) {
-            self.rid = rid
-            self.rtype = rtype
-        }
-    }
+    // Backward-compatible nested type aliases
+    public typealias RoomMetadata = GroupMetadata
+    public typealias HueRoomChild = GroupChild
+    public typealias HueRoomService = GroupService
 
     // Custom Equatable implementation for efficient comparison
     public static func == (lhs: HueRoom, rhs: HueRoom) -> Bool {
@@ -85,15 +125,18 @@ public struct HueRoom: Codable, Identifiable, Equatable, Hashable, Sendable {
 // MARK: - Zone Models
 
 /// Hue zone with metadata, children, services, and grouped lights
-public struct HueZone: Codable, Identifiable, Equatable, Hashable, Sendable {
+public struct HueZone: GroupedLightContainer {
     public let id: String
     public let type: String
-    public var metadata: ZoneMetadata
-    public var children: [HueZoneChild]?
-    public var services: [HueZoneService]?
+    public var metadata: GroupMetadata
+    public var children: [GroupChild]?
+    public var services: [GroupService]?
     public var groupedLights: [HueGroupedLight]?
 
-    public init(id: String, type: String, metadata: ZoneMetadata, children: [HueZoneChild]? = nil, services: [HueZoneService]? = nil, groupedLights: [HueGroupedLight]? = nil) {
+    public static var isRoom: Bool { false }
+    public static var apiGroupType: String { "zone" }
+
+    public init(id: String, type: String, metadata: GroupMetadata, children: [GroupChild]? = nil, services: [GroupService]? = nil, groupedLights: [HueGroupedLight]? = nil) {
         self.id = id
         self.type = type
         self.metadata = metadata
@@ -102,40 +145,10 @@ public struct HueZone: Codable, Identifiable, Equatable, Hashable, Sendable {
         self.groupedLights = groupedLights
     }
 
-    public struct ZoneMetadata: Codable, Equatable, Hashable, Sendable {
-        public let name: String
-        public let archetype: String
-
-        public init(name: String, archetype: String) {
-            self.name = name
-            self.archetype = archetype
-        }
-    }
-
-    /// Child references in Hue API v2 zones
-    /// NOTE: Children with rtype="device" contain device IDs, NOT light IDs.
-    /// To get light data: 1) Query /clip/v2/resource/device/{rid} to get device
-    /// 2) Find service with rtype="light" in device.services to get actual light ID
-    /// 3) Query /clip/v2/resource/light/{lightId} with the light ID from step 2
-    public struct HueZoneChild: Codable, Equatable, Hashable, Sendable {
-        public let rid: String   // Resource ID (device ID when rtype="device")
-        public let rtype: String // Resource type (e.g., "device", "motion", etc.)
-
-        public init(rid: String, rtype: String) {
-            self.rid = rid
-            self.rtype = rtype
-        }
-    }
-
-    public struct HueZoneService: Codable, Equatable, Hashable, Sendable {
-        public let rid: String
-        public let rtype: String
-
-        public init(rid: String, rtype: String) {
-            self.rid = rid
-            self.rtype = rtype
-        }
-    }
+    // Backward-compatible nested type aliases
+    public typealias ZoneMetadata = GroupMetadata
+    public typealias HueZoneChild = GroupChild
+    public typealias HueZoneService = GroupService
 
     // Custom Equatable implementation for efficient comparison
     public static func == (lhs: HueZone, rhs: HueZone) -> Bool {
@@ -149,6 +162,21 @@ public struct HueZone: Codable, Identifiable, Equatable, Hashable, Sendable {
         hasher.combine(id)
     }
 }
+
+// MARK: - Top-Level Backward-Compatible Type Aliases
+
+/// Backward compatibility: HueRoomChild -> GroupChild
+public typealias HueRoomChild = GroupChild
+/// Backward compatibility: HueZoneChild -> GroupChild
+public typealias HueZoneChild = GroupChild
+/// Backward compatibility: HueRoomService -> GroupService
+public typealias HueRoomService = GroupService
+/// Backward compatibility: HueZoneService -> GroupService
+public typealias HueZoneService = GroupService
+/// Backward compatibility: RoomMetadata -> GroupMetadata
+public typealias RoomMetadata = GroupMetadata
+/// Backward compatibility: ZoneMetadata -> GroupMetadata
+public typealias ZoneMetadata = GroupMetadata
 
 // MARK: - Grouped Light Models
 
@@ -358,7 +386,7 @@ public struct HueLight: Codable, Identifiable, Equatable, Hashable, Sendable {
 
 // MARK: - Device Models
 
-/// Hue device information (for device → light resolution)
+/// Hue device information (for device -> light resolution)
 public struct HueDevice: Codable, Sendable {
     public let id: String
     public let type: String
@@ -404,9 +432,9 @@ public struct HueRoomDetailResponse: Codable {
 public struct HueRoomDetail: Codable {
     public let id: String
     public let type: String
-    public let metadata: HueRoom.RoomMetadata
-    public let children: [HueRoom.HueRoomChild]?
-    public let services: [HueRoom.HueRoomService]?
+    public let metadata: GroupMetadata
+    public let children: [GroupChild]?
+    public let services: [GroupService]?
 }
 
 /// Response wrapper for zone queries
@@ -425,9 +453,9 @@ public struct HueZoneDetailResponse: Codable {
 public struct HueZoneDetail: Codable {
     public let id: String
     public let type: String
-    public let metadata: HueZone.ZoneMetadata
-    public let children: [HueZone.HueZoneChild]?
-    public let services: [HueZone.HueZoneService]?
+    public let metadata: GroupMetadata
+    public let children: [GroupChild]?
+    public let services: [GroupService]?
 }
 
 /// Response wrapper for grouped light queries

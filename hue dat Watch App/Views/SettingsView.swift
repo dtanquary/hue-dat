@@ -30,11 +30,6 @@ struct SettingsView: View {
                                 .padding(.top, 8)
                                    
                             HStack {
-                                /*
-                                Circle()
-                                    .fill(bridgeManager.isSSEConnected ? Color.green : Color.red)
-                                    .frame(width: 6, height: 6)
-                                 */
                                 Image(systemName: bridgeManager.isSSEConnected ? "antenna.radiowaves.left.and.right" : "antenna.radiowaves.left.and.right.slash")
                                     .font(.title3)
                                     .foregroundStyle(bridgeManager.isSSEConnected ? Color.green : Color.red)
@@ -90,35 +85,6 @@ struct SettingsView: View {
                             Text(bridge.connectedDate, style: .date)
                                 .font(.caption)
                                 .padding(.bottom, 8)
-                            
-                            /*
-                            HStack {
-                                Text("IP Address")
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                                Spacer()
-                                Text(bridge.bridge.internalipaddress)
-                                    .font(.caption.monospaced())
-                            }
-
-                            HStack {
-                                Text("Bridge ID")
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                                Spacer()
-                                Text(String(bridge.bridge.id.prefix(8)))
-                                    .font(.caption.monospaced())
-                            }
-
-                            HStack {
-                                Text("Connected")
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                                Spacer()
-                                Text(bridge.connectedDate, style: .date)
-                                    .font(.caption)
-                            }
-                             */
                         }
                         
                         Button(role: .destructive) {

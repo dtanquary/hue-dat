@@ -62,18 +62,9 @@ struct RoomsZonesListView_macOS: View {
                         }
                         
                     }
-                    
-                    
+
                     Spacer()
-                    
-                    /*
-                     if let timestamp = bridgeManager.lastRefreshTimestamp {
-                     Text(timestamp, style: .relative)
-                     .font(.caption)
-                     .foregroundColor(.secondary)
-                     }
-                     */
-                    
+
                     // SSE status indicator
                     SSEStatusIndicator()
                         .environmentObject(bridgeManager)
@@ -165,7 +156,7 @@ struct RoomsZonesListView_macOS: View {
                 .font(.largeTitle)
             Text("Loading rooms and zones...")
                 .font(.caption)
-                .foregroundColor(.secondary)
+                .foregroundStyle(.secondary)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
@@ -174,7 +165,7 @@ struct RoomsZonesListView_macOS: View {
         VStack(spacing: 16) {
             Image(systemName: "questionmark.folder")
                 .font(.system(size: 48))
-                .foregroundColor(.secondary)
+                .foregroundStyle(.secondary)
 
             Text("No Rooms or Zones")
                 .font(.title3)
@@ -200,7 +191,7 @@ struct RoomsZonesListView_macOS: View {
                     sectionHeader("Rooms", count: bridgeManager.rooms.count)
 
                     ForEach(bridgeManager.rooms) { room in
-                        RoomRowView(room: room, isLoading: isLoading)
+                        GroupRowView_macOS(group: room, isLoading: isLoading)
                             .contentShape(Rectangle())
                             .onTapGesture {
                                 // Disable tap during loading
@@ -217,7 +208,7 @@ struct RoomsZonesListView_macOS: View {
                         .padding(.top, bridgeManager.rooms.isEmpty ? 0 : 8)
 
                     ForEach(bridgeManager.zones) { zone in
-                        ZoneRowView(zone: zone, isLoading: isLoading)
+                        GroupRowView_macOS(group: zone, isLoading: isLoading)
                             .contentShape(Rectangle())
                             .onTapGesture {
                                 // Disable tap during loading
@@ -236,21 +227,21 @@ struct RoomsZonesListView_macOS: View {
         Text("\(title) (\(count))")
             .font(.caption)
             .fontWeight(.semibold)
-            .foregroundColor(.secondary)
+            .foregroundStyle(.secondary)
             .textCase(.uppercase)
     }
 }
 
-// MARK: - Room Row View
+// MARK: - Group Row View (unified for rooms and zones)
 
-struct RoomRowView: View {
-    let room: HueRoom
+struct GroupRowView_macOS<T: GroupedLightContainer>: View {
+    let group: T
     var isLoading: Bool = false
     @EnvironmentObject var bridgeManager: BridgeManager
     @State private var isHovered: Bool = false
 
     private var groupedLight: HueGroupedLight? {
-        room.groupedLights?.first
+        group.groupedLights?.first
     }
 
     private var isOn: Bool {
@@ -261,119 +252,32 @@ struct RoomRowView: View {
         groupedLight?.dimming?.brightness
     }
 
+    private var groupIcon: String {
+        if T.isRoom {
+            return iconForArchetype(group.metadata.archetype)
+        } else {
+            return "square.grid.2x2"
+        }
+    }
+
     var body: some View {
         HStack(spacing: 12) {
             // Icon
-            Image(systemName: iconForArchetype(room.metadata.archetype))
+            Image(systemName: groupIcon)
                 .font(.title3)
                 .foregroundStyle(isOn ? .yellow : .secondary)
                 .frame(width: 24)
 
             // Name and status
             VStack(alignment: .leading, spacing: 2) {
-                Text(room.metadata.name)
+                Text(group.metadata.name)
                     .font(.body)
                     .fontWeight(.medium)
 
                 if let brightness = brightness {
                     Text("\(brightness.truncatingRemainder(dividingBy: 1) == 0 ? "\(Int(brightness))" : String(format: "%.1f", brightness))% brightness")
                         .font(.caption)
-                        .foregroundColor(.secondary)
-                }
-            }
-
-            Spacer()
-
-            // Status indicator
-            HStack(spacing: 4) {
-                Circle()
-                    .fill(isOn ? Color.green : Color.secondary)
-                    .frame(width: 6, height: 6)
-                Text(isOn ? "On" : "Off")
-                    .font(.caption)
-                    .foregroundStyle(isOn ? .primary : .secondary)
-            }
-        }
-        .padding(.vertical, 8)
-        .padding(.horizontal, 12)
-        .background(
-            ZStack {
-                // Brightness progress bar background
-                GeometryReader { geometry in
-                    HStack(spacing: 0) {
-                        Rectangle()
-                            .fill(Color.orange.opacity(0.15))
-                            .frame(width: geometry.size.width * (brightness ?? 0) / 100.0)
-
-                        Spacer(minLength: 0)
-                    }
-                }
-                .animation(.easeInOut(duration: 0.3), value: brightness)
-
-                // Hover overlay
-                RoundedRectangle(cornerRadius: 8)
-                    .fill(Color.primary.opacity(isHovered ? 0.10 : 0.05))
-            }
-            .clipShape(RoundedRectangle(cornerRadius: 8))
-        )
-        .skeletonLoader(isActive: isLoading)
-        .animation(.easeInOut(duration: 0.15), value: isHovered)
-        .onHover { isHovered = $0 }
-    }
-
-    private func iconForArchetype(_ archetype: String) -> String {
-        switch archetype.lowercased() {
-        case "living_room": return "sofa"
-        case "bedroom": return "bed.double"
-        case "kitchen": return "fork.knife"
-        case "bathroom": return "shower"
-        case "office": return "desktopcomputer"
-        case "dining": return "fork.knife"
-        case "hallway": return "figure.walk"
-        case "garage": return "car"
-        default: return "lightbulb.led.fill"
-        }
-    }
-}
-
-// MARK: - Zone Row View
-
-struct ZoneRowView: View {
-    let zone: HueZone
-    var isLoading: Bool = false
-    @EnvironmentObject var bridgeManager: BridgeManager
-    @State private var isHovered: Bool = false
-
-    private var groupedLight: HueGroupedLight? {
-        zone.groupedLights?.first
-    }
-
-    private var isOn: Bool {
-        groupedLight?.on?.on ?? false
-    }
-
-    private var brightness: Double? {
-        groupedLight?.dimming?.brightness
-    }
-
-    var body: some View {
-        HStack(spacing: 12) {
-            // Icon
-            Image(systemName: "square.grid.2x2")
-                .font(.title3)
-                .foregroundStyle(isOn ? .yellow : .secondary)
-                .frame(width: 24)
-
-            // Name and status
-            VStack(alignment: .leading, spacing: 2) {
-                Text(zone.metadata.name)
-                    .font(.body)
-                    .fontWeight(.medium)
-
-                if let brightness = brightness {
-                    Text("\(brightness.truncatingRemainder(dividingBy: 1) == 0 ? "\(Int(brightness))" : String(format: "%.1f", brightness))% brightness")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
+                        .foregroundStyle(.secondary)
                 }
             }
 

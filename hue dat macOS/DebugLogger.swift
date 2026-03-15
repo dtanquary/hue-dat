@@ -44,8 +44,7 @@ class DebugLogger {
             try? fileHandle?.write(contentsOf: data)
         }
 
-        // Install crash handlers
-        installCrashHandlers()
+        log("Debug logger initialized")
     }
 
     deinit {
@@ -88,91 +87,6 @@ class DebugLogger {
 
     var logFilePath: String {
         fileURL.path
-    }
-
-    private func installCrashHandlers() {
-        // Signal handlers for crash signals
-        signal(SIGABRT) { signal in
-            DebugLogger.shared.handleCrashSignal(signal)
-        }
-        signal(SIGSEGV) { signal in
-            DebugLogger.shared.handleCrashSignal(signal)
-        }
-        signal(SIGBUS) { signal in
-            DebugLogger.shared.handleCrashSignal(signal)
-        }
-        signal(SIGILL) { signal in
-            DebugLogger.shared.handleCrashSignal(signal)
-        }
-        signal(SIGFPE) { signal in
-            DebugLogger.shared.handleCrashSignal(signal)
-        }
-
-        // Set uncaught exception handler
-        NSSetUncaughtExceptionHandler { exception in
-            DebugLogger.shared.handleException(exception)
-        }
-
-        log("Crash handlers installed")
-    }
-
-    private func handleCrashSignal(_ signal: Int32) {
-        let signalName: String
-        switch signal {
-        case SIGABRT: signalName = "SIGABRT (abort)"
-        case SIGSEGV: signalName = "SIGSEGV (segmentation fault)"
-        case SIGBUS: signalName = "SIGBUS (bus error)"
-        case SIGILL: signalName = "SIGILL (illegal instruction)"
-        case SIGFPE: signalName = "SIGFPE (floating point exception)"
-        default: signalName = "Signal \(signal)"
-        }
-
-        let crashInfo = """
-
-        !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-        CRASH DETECTED: \(signalName)
-        Time: \(dateFormatter.string(from: Date()))
-        !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-
-        Stack trace:
-        \(Thread.callStackSymbols.joined(separator: "\n"))
-
-        """
-
-        // Write directly to file (can't use async in signal handler)
-        if let data = crashInfo.data(using: .utf8) {
-            try? fileHandle?.write(contentsOf: data)
-            try? fileHandle?.synchronize()
-        }
-
-        // Re-raise the signal to let the system handle it
-        Darwin.signal(signal, SIG_DFL)
-        raise(signal)
-    }
-
-    private func handleException(_ exception: NSException) {
-        let crashInfo = """
-
-        !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-        UNCAUGHT EXCEPTION
-        Time: \(dateFormatter.string(from: Date()))
-        Name: \(exception.name.rawValue)
-        Reason: \(exception.reason ?? "unknown")
-        !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-
-        User Info:
-        \(exception.userInfo ?? [:])
-
-        Call Stack:
-        \(exception.callStackSymbols.joined(separator: "\n"))
-
-        """
-
-        // Write directly to file
-        if let data = crashInfo.data(using: .utf8) {
-            try? fileHandle?.write(contentsOf: data)
-            try? fileHandle?.synchronize()
-        }
     }
 }
 
