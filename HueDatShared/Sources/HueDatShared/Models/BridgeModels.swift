@@ -121,6 +121,25 @@ public enum BridgeRegistrationError: Error, LocalizedError {
     }
 }
 
+// MARK: - Bridge Manager Error
+public enum BridgeManagerError: LocalizedError {
+    case notConnected
+    case noBridgeAvailable
+    case invalidResponse(String)
+    case apiError(String)
+    case timeout
+
+    public var errorDescription: String? {
+        switch self {
+        case .notConnected: return "No bridge connected"
+        case .noBridgeAvailable: return "No bridge available"
+        case .invalidResponse(let detail): return "Invalid response: \(detail)"
+        case .apiError(let detail): return "API error: \(detail)"
+        case .timeout: return "Request timed out"
+        }
+    }
+}
+
 // MARK: - Scene Models
 public struct HueScene: Codable, Identifiable, Equatable, Hashable {
     public let id: String

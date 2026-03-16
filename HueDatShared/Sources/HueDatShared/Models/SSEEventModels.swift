@@ -60,8 +60,13 @@ public struct SSEEventData: Codable, Sendable {
     // Grouped light / light state fields
     public let on: OnState?
     public let dimming: DimmingState?
-    public let color_temperature: ColorTemperatureState?
+    public let colorTemperature: ColorTemperatureState?
     public let color: ColorState?
+
+    private enum CodingKeys: String, CodingKey {
+        case id, type, on, dimming, color, metadata, children, services, status, recall
+        case colorTemperature = "color_temperature"
+    }
 
     // Room/zone metadata fields
     public let metadata: MetadataState?
@@ -88,7 +93,12 @@ public struct SSEEventData: Codable, Sendable {
 
     public struct ColorTemperatureState: Codable, Sendable {
         public let mirek: Int?
-        public let mirek_valid: Bool?
+        public let mirekValid: Bool?
+
+        private enum CodingKeys: String, CodingKey {
+            case mirek
+            case mirekValid = "mirek_valid"
+        }
     }
 
     public struct ColorState: Codable, Sendable {

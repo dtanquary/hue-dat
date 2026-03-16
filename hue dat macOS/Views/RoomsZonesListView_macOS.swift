@@ -338,7 +338,7 @@ struct GroupRowView_macOS<T: GroupedLightContainer>: View {
                     type: "grouped_light",
                     on: HueGroupedLight.GroupedLightOn(on: true),
                     dimming: HueGroupedLight.GroupedLightDimming(brightness: 75.0),
-                    color_temperature: nil,
+                    colorTemperature: nil,
                     color: nil
                 )
             ]
@@ -356,7 +356,7 @@ struct GroupRowView_macOS<T: GroupedLightContainer>: View {
                     type: "grouped_light",
                     on: HueGroupedLight.GroupedLightOn(on: false),
                     dimming: HueGroupedLight.GroupedLightDimming(brightness: 0.0),
-                    color_temperature: nil,
+                    colorTemperature: nil,
                     color: nil
                 )
             ]

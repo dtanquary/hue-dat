@@ -251,11 +251,11 @@ public class BridgeManager: ObservableObject {
             type: "grouped_light",
             on: HueGroupedLight.GroupedLightOn(on: true),
             dimming: HueGroupedLight.GroupedLightDimming(brightness: 75.0),
-            color_temperature: nil,
+            colorTemperature: nil,
             color: HueGroupedLight.GroupedLightColor(
                 xy: HueGroupedLight.GroupedLightColor.GroupedLightColorXY(x: 0.4573, y: 0.41),
                 gamut: nil,
-                gamut_type: nil
+                gamutType: nil
             )
         )
 
@@ -279,7 +279,7 @@ public class BridgeManager: ObservableObject {
                     type: "grouped_light",
                     on: HueGroupedLight.GroupedLightOn(on: false),
                     dimming: HueGroupedLight.GroupedLightDimming(brightness: 50.0),
-                    color_temperature: HueGroupedLight.GroupedLightColorTemperature(mirek: 366, mirek_valid: true, mirek_schema: nil),
+                    colorTemperature: HueGroupedLight.GroupedLightColorTemperature(mirek: 366, mirekValid: true, mirekSchema: nil),
                     color: nil
                 )]
             ),
@@ -294,7 +294,7 @@ public class BridgeManager: ObservableObject {
                     type: "grouped_light",
                     on: HueGroupedLight.GroupedLightOn(on: true),
                     dimming: HueGroupedLight.GroupedLightDimming(brightness: 100.0),
-                    color_temperature: HueGroupedLight.GroupedLightColorTemperature(mirek: 250, mirek_valid: true, mirek_schema: nil),
+                    colorTemperature: HueGroupedLight.GroupedLightColorTemperature(mirek: 250, mirekValid: true, mirekSchema: nil),
                     color: nil
                 )]
             )
@@ -315,7 +315,7 @@ public class BridgeManager: ObservableObject {
                     type: "grouped_light",
                     on: HueGroupedLight.GroupedLightOn(on: true),
                     dimming: HueGroupedLight.GroupedLightDimming(brightness: 80.0),
-                    color_temperature: nil,
+                    colorTemperature: nil,
                     color: nil
                 )]
             )
@@ -986,7 +986,7 @@ public class BridgeManager: ObservableObject {
 
         guard currentConnectedBridge?.bridge != nil else {
             AppLogger.bridge.error("activateScene: No connected bridge available")
-            return .failure(NSError(domain: "BridgeManager", code: -1, userInfo: [NSLocalizedDescriptionKey: "No bridge connection available"]))
+            return .failure(BridgeManagerError.noBridgeAvailable)
         }
 
         do {
@@ -1188,7 +1188,7 @@ public class BridgeManager: ObservableObject {
                     type: light.type,
                     on: newOn,
                     dimming: newDimming,
-                    color_temperature: light.color_temperature,
+                    colorTemperature: light.colorTemperature,
                     color: light.color
                 )
             }
@@ -1263,7 +1263,7 @@ public class BridgeManager: ObservableObject {
         }
 
         guard currentConnectedBridge != nil else {
-            return .failure(NSError(domain: "BridgeManager", code: -1, userInfo: [NSLocalizedDescriptionKey: "No bridge connected"]))
+            return .failure(BridgeManagerError.notConnected)
         }
 
         do {
@@ -1287,7 +1287,7 @@ public class BridgeManager: ObservableObject {
         }
 
         guard currentConnectedBridge != nil else {
-            return .failure(NSError(domain: "BridgeManager", code: -1, userInfo: [NSLocalizedDescriptionKey: "No bridge connected"]))
+            return .failure(BridgeManagerError.notConnected)
         }
 
         do {
@@ -1313,7 +1313,7 @@ public class BridgeManager: ObservableObject {
         }
 
         guard currentConnectedBridge != nil else {
-            return .failure(NSError(domain: "BridgeManager", code: -1, userInfo: [NSLocalizedDescriptionKey: "No bridge connected"]))
+            return .failure(BridgeManagerError.notConnected)
         }
 
         do {
@@ -1353,7 +1353,7 @@ public class BridgeManager: ObservableObject {
                             type: groupedLights[i].type,
                             on: HueGroupedLight.GroupedLightOn(on: false),
                             dimming: groupedLights[i].dimming,
-                            color_temperature: groupedLights[i].color_temperature,
+                            colorTemperature: groupedLights[i].colorTemperature,
                             color: groupedLights[i].color
                         )
                     }
@@ -1370,7 +1370,7 @@ public class BridgeManager: ObservableObject {
                             type: groupedLights[i].type,
                             on: HueGroupedLight.GroupedLightOn(on: false),
                             dimming: groupedLights[i].dimming,
-                            color_temperature: groupedLights[i].color_temperature,
+                            colorTemperature: groupedLights[i].colorTemperature,
                             color: groupedLights[i].color
                         )
                     }
@@ -1382,7 +1382,7 @@ public class BridgeManager: ObservableObject {
         }
 
         guard currentConnectedBridge != nil else {
-            return .failure(NSError(domain: "BridgeManager", code: -1, userInfo: [NSLocalizedDescriptionKey: "No bridge connected"]))
+            return .failure(BridgeManagerError.notConnected)
         }
 
         AppLogger.bridge.debug("Turning off all lights...")
@@ -1432,7 +1432,7 @@ public class BridgeManager: ObservableObject {
                         type: groupedLights[i].type,
                         on: HueGroupedLight.GroupedLightOn(on: false),
                         dimming: groupedLights[i].dimming,
-                        color_temperature: groupedLights[i].color_temperature,
+                        colorTemperature: groupedLights[i].colorTemperature,
                         color: groupedLights[i].color
                     )
                 }
@@ -1448,7 +1448,7 @@ public class BridgeManager: ObservableObject {
                         type: groupedLights[i].type,
                         on: HueGroupedLight.GroupedLightOn(on: false),
                         dimming: groupedLights[i].dimming,
-                        color_temperature: groupedLights[i].color_temperature,
+                        colorTemperature: groupedLights[i].colorTemperature,
                         color: groupedLights[i].color
                     )
                 }

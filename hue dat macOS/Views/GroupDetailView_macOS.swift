@@ -434,7 +434,7 @@ struct SceneCardView_macOS: View {
                 type: "grouped_light",
                 on: HueGroupedLight.GroupedLightOn(on: true),
                 dimming: HueGroupedLight.GroupedLightDimming(brightness: 75.0),
-                color_temperature: nil,
+                colorTemperature: nil,
                 color: nil
             )]
         )
@@ -467,7 +467,7 @@ struct SceneCardView_macOS: View {
                 type: "grouped_light",
                 on: HueGroupedLight.GroupedLightOn(on: true),
                 dimming: HueGroupedLight.GroupedLightDimming(brightness: 75.0),
-                color_temperature: nil,
+                colorTemperature: nil,
                 color: nil
             )]
         )

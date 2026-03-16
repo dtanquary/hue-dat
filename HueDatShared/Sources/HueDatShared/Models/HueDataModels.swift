@@ -186,15 +186,20 @@ public struct HueGroupedLight: Codable, Identifiable, Equatable, Hashable, Senda
     public let type: String
     public let on: GroupedLightOn?
     public let dimming: GroupedLightDimming?
-    public let color_temperature: GroupedLightColorTemperature?
+    public let colorTemperature: GroupedLightColorTemperature?
     public let color: GroupedLightColor?
 
-    public init(id: String, type: String, on: GroupedLightOn? = nil, dimming: GroupedLightDimming? = nil, color_temperature: GroupedLightColorTemperature? = nil, color: GroupedLightColor? = nil) {
+    private enum CodingKeys: String, CodingKey {
+        case id, type, on, dimming, color
+        case colorTemperature = "color_temperature"
+    }
+
+    public init(id: String, type: String, on: GroupedLightOn? = nil, dimming: GroupedLightDimming? = nil, colorTemperature: GroupedLightColorTemperature? = nil, color: GroupedLightColor? = nil) {
         self.id = id
         self.type = type
         self.on = on
         self.dimming = dimming
-        self.color_temperature = color_temperature
+        self.colorTemperature = colorTemperature
         self.color = color
     }
 
@@ -216,22 +221,33 @@ public struct HueGroupedLight: Codable, Identifiable, Equatable, Hashable, Senda
 
     public struct GroupedLightColorTemperature: Codable, Equatable, Hashable, Sendable {
         public let mirek: Int?
-        public let mirek_valid: Bool?
-        public let mirek_schema: GroupedLightColorTemperatureSchema?
+        public let mirekValid: Bool?
+        public let mirekSchema: GroupedLightColorTemperatureSchema?
 
-        public init(mirek: Int? = nil, mirek_valid: Bool? = nil, mirek_schema: GroupedLightColorTemperatureSchema? = nil) {
+        private enum CodingKeys: String, CodingKey {
+            case mirek
+            case mirekValid = "mirek_valid"
+            case mirekSchema = "mirek_schema"
+        }
+
+        public init(mirek: Int? = nil, mirekValid: Bool? = nil, mirekSchema: GroupedLightColorTemperatureSchema? = nil) {
             self.mirek = mirek
-            self.mirek_valid = mirek_valid
-            self.mirek_schema = mirek_schema
+            self.mirekValid = mirekValid
+            self.mirekSchema = mirekSchema
         }
 
         public struct GroupedLightColorTemperatureSchema: Codable, Equatable, Hashable, Sendable {
-            public let mirek_minimum: Int
-            public let mirek_maximum: Int
+            public let mirekMinimum: Int
+            public let mirekMaximum: Int
 
-            public init(mirek_minimum: Int, mirek_maximum: Int) {
-                self.mirek_minimum = mirek_minimum
-                self.mirek_maximum = mirek_maximum
+            private enum CodingKeys: String, CodingKey {
+                case mirekMinimum = "mirek_minimum"
+                case mirekMaximum = "mirek_maximum"
+            }
+
+            public init(mirekMinimum: Int, mirekMaximum: Int) {
+                self.mirekMinimum = mirekMinimum
+                self.mirekMaximum = mirekMaximum
             }
         }
     }
@@ -239,12 +255,17 @@ public struct HueGroupedLight: Codable, Identifiable, Equatable, Hashable, Senda
     public struct GroupedLightColor: Codable, Equatable, Hashable, Sendable {
         public let xy: GroupedLightColorXY?
         public let gamut: GroupedLightColorGamut?
-        public let gamut_type: String?
+        public let gamutType: String?
 
-        public init(xy: GroupedLightColorXY? = nil, gamut: GroupedLightColorGamut? = nil, gamut_type: String? = nil) {
+        private enum CodingKeys: String, CodingKey {
+            case xy, gamut
+            case gamutType = "gamut_type"
+        }
+
+        public init(xy: GroupedLightColorXY? = nil, gamut: GroupedLightColorGamut? = nil, gamutType: String? = nil) {
             self.xy = xy
             self.gamut = gamut
-            self.gamut_type = gamut_type
+            self.gamutType = gamutType
         }
 
         public struct GroupedLightColorXY: Codable, Equatable, Hashable, Sendable {
@@ -275,7 +296,7 @@ public struct HueGroupedLight: Codable, Identifiable, Equatable, Hashable, Senda
         lhs.id == rhs.id &&
         lhs.on?.on == rhs.on?.on &&
         lhs.dimming?.brightness == rhs.dimming?.brightness &&
-        lhs.color_temperature?.mirek == rhs.color_temperature?.mirek &&
+        lhs.colorTemperature?.mirek == rhs.colorTemperature?.mirek &&
         lhs.color?.xy?.x == rhs.color?.xy?.x &&
         lhs.color?.xy?.y == rhs.color?.xy?.y
     }
@@ -295,8 +316,13 @@ public struct HueLight: Codable, Identifiable, Equatable, Hashable, Sendable {
     public let metadata: LightMetadata?
     public let on: LightOn?
     public let dimming: LightDimming?
-    public let color_temperature: LightColorTemperature?
+    public let colorTemperature: LightColorTemperature?
     public let color: LightColor?
+
+    private enum CodingKeys: String, CodingKey {
+        case id, type, metadata, on, dimming, color
+        case colorTemperature = "color_temperature"
+    }
 
     public struct LightMetadata: Codable, Equatable, Hashable, Sendable {
         public let name: String
@@ -326,23 +352,33 @@ public struct HueLight: Codable, Identifiable, Equatable, Hashable, Sendable {
 
     public struct LightColorTemperature: Codable, Equatable, Hashable, Sendable {
         public let mirek: Int?
-        public let mirek_valid: Bool?
+        public let mirekValid: Bool?
 
-        public init(mirek: Int? = nil, mirek_valid: Bool? = nil) {
+        private enum CodingKeys: String, CodingKey {
+            case mirek
+            case mirekValid = "mirek_valid"
+        }
+
+        public init(mirek: Int? = nil, mirekValid: Bool? = nil) {
             self.mirek = mirek
-            self.mirek_valid = mirek_valid
+            self.mirekValid = mirekValid
         }
     }
 
     public struct LightColor: Codable, Equatable, Hashable, Sendable {
         public let xy: LightColorXY?
         public let gamut: LightColorGamut?
-        public let gamut_type: String?
+        public let gamutType: String?
 
-        public init(xy: LightColorXY? = nil, gamut: LightColorGamut? = nil, gamut_type: String? = nil) {
+        private enum CodingKeys: String, CodingKey {
+            case xy, gamut
+            case gamutType = "gamut_type"
+        }
+
+        public init(xy: LightColorXY? = nil, gamut: LightColorGamut? = nil, gamutType: String? = nil) {
             self.xy = xy
             self.gamut = gamut
-            self.gamut_type = gamut_type
+            self.gamutType = gamutType
         }
 
         public struct LightColorXY: Codable, Equatable, Hashable, Sendable {
@@ -373,7 +409,7 @@ public struct HueLight: Codable, Identifiable, Equatable, Hashable, Sendable {
         lhs.id == rhs.id &&
         lhs.on?.on == rhs.on?.on &&
         lhs.dimming?.brightness == rhs.dimming?.brightness &&
-        lhs.color_temperature?.mirek == rhs.color_temperature?.mirek &&
+        lhs.colorTemperature?.mirek == rhs.colorTemperature?.mirek &&
         lhs.color?.xy?.x == rhs.color?.xy?.x &&
         lhs.color?.xy?.y == rhs.color?.xy?.y
     }
