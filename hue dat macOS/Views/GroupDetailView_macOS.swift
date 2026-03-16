@@ -13,7 +13,7 @@ struct GroupDetailView_macOS<T: GroupedLightContainer>: View {
     let groupId: String
     let onBack: () -> Void
 
-    @EnvironmentObject var bridgeManager: BridgeManager
+    @Environment(BridgeManager.self) var bridgeManager
 
     @State private var isOn: Bool = false
     @State private var brightness: Double = 0.0
@@ -337,7 +337,7 @@ struct GroupDetailView_macOS<T: GroupedLightContainer>: View {
                 hoveredSceneId = isHovered ? scene.id : nil
             }
         )
-        .environmentObject(bridgeManager)
+        .environment(bridgeManager)
     }
 }
 
@@ -350,7 +350,7 @@ struct SceneCardView_macOS: View {
     let onTap: () -> Void
     let onHoverChange: (Bool) -> Void
 
-    @EnvironmentObject var bridgeManager: BridgeManager
+    @Environment(BridgeManager.self) var bridgeManager
     @State private var colors: [Color] = []
 
     var body: some View {
@@ -420,7 +420,7 @@ struct SceneCardView_macOS: View {
 // MARK: - Previews
 
 #Preview("Room Detail") {
-    @Previewable @StateObject var manager: BridgeManager = {
+    @Previewable @State var manager: BridgeManager = {
         let mgr = BridgeManager()
 
         let sampleRoom = HueRoom(
@@ -448,12 +448,12 @@ struct SceneCardView_macOS: View {
         groupId: "preview-room-1",
         onBack: {}
     )
-    .environmentObject(manager)
+    .environment(manager)
     .frame(width: 320, height: 480)
 }
 
 #Preview("Zone Detail") {
-    @Previewable @StateObject var manager: BridgeManager = {
+    @Previewable @State var manager: BridgeManager = {
         let mgr = BridgeManager()
 
         let sampleZone = HueZone(
@@ -481,6 +481,6 @@ struct SceneCardView_macOS: View {
         groupId: "preview-zone-1",
         onBack: {}
     )
-    .environmentObject(manager)
+    .environment(manager)
     .frame(width: 320, height: 480)
 }

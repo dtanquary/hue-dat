@@ -10,15 +10,15 @@ import HueDatShared
 
 struct BridgeSetupView_macOS: View {
     @Environment(\.dismiss) private var dismiss
-    @EnvironmentObject var bridgeManager: BridgeManager
+    @Environment(BridgeManager.self) var bridgeManager
 
-    @StateObject private var discoveryService = BridgeDiscoveryService()
-    @StateObject private var registrationService: BridgeRegistrationService
+    @State private var discoveryService = BridgeDiscoveryService()
+    @State private var registrationService: BridgeRegistrationService
 
     @State private var showManualEntry = false
 
     init() {
-        _registrationService = StateObject(wrappedValue: BridgeRegistrationService(
+        _registrationService = State(wrappedValue: BridgeRegistrationService(
             deviceIdentifierProvider: MacOSDeviceIdentifierProvider()
         ))
     }
@@ -215,5 +215,5 @@ struct BridgeSetupView_macOS: View {
 
 #Preview {
     BridgeSetupView_macOS()
-        .environmentObject(BridgeManager())
+        .environment(BridgeManager())
 }

@@ -11,7 +11,7 @@ import HueDatShared
 struct SettingsView_macOS: View {
     let onBack: () -> Void
 
-    @EnvironmentObject var bridgeManager: BridgeManager
+    @Environment(BridgeManager.self) var bridgeManager
 
     @State private var showDisconnectAlert = false
     @State private var launchAtLogin = false
@@ -159,5 +159,5 @@ struct SettingsView_macOS: View {
 
 #Preview {
     SettingsView_macOS(onBack: {})
-        .environmentObject(BridgeManager())
+        .environment(BridgeManager())
 }

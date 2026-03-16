@@ -9,7 +9,7 @@ import SwiftUI
 import HueDatShared
 
 struct SettingsView: View {
-    @ObservedObject var bridgeManager: BridgeManager
+    var bridgeManager: BridgeManager
     @State private var showDisconnectAlert = false
     @Environment(\.dismiss) private var dismiss
 

@@ -10,7 +10,7 @@ import Combine
 import HueDatShared
 
 struct ContentView: View {
-    @StateObject private var bridgeManager = BridgeManager()
+    @State private var bridgeManager = BridgeManager()
     @Environment(\.scenePhase) private var scenePhase
     @State private var navigationPath = NavigationPath()
     @State private var showConnectionFailedAlert = false
@@ -44,11 +44,11 @@ struct ContentView: View {
                 }
                 .navigationDestination(for: HueRoom.self) { room in
                     GroupDetailView_iOS<HueRoom>(groupId: room.id)
-                        .environmentObject(bridgeManager)
+                        .environment(bridgeManager)
                 }
                 .navigationDestination(for: HueZone.self) { zone in
                     GroupDetailView_iOS<HueZone>(groupId: zone.id)
-                        .environmentObject(bridgeManager)
+                        .environment(bridgeManager)
                 }
             }
             .opacity(isValidatingConnection ? 0 : 1)

@@ -11,8 +11,8 @@ import AVFoundation
 import AVKit
 
 struct MainMenuView: View {
-    @ObservedObject var bridgeManager: BridgeManager
-    @StateObject private var discoveryService = BridgeDiscoveryService()
+    var bridgeManager: BridgeManager
+    @State private var discoveryService = BridgeDiscoveryService()
     @State private var showBridgesList = false
     @State private var showManualEntry = false
     @State private var showRegistrationForManualBridge = false

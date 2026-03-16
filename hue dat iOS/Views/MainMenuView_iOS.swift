@@ -12,8 +12,8 @@ import AVFoundation
 
 struct MainMenuView_iOS: View {
     @Environment(\.colorScheme) var colorScheme
-    @ObservedObject var bridgeManager: BridgeManager
-    @StateObject private var discoveryService = BridgeDiscoveryService()
+    var bridgeManager: BridgeManager
+    @State private var discoveryService = BridgeDiscoveryService()
     @State private var showBridgesList = false
     @State private var showManualEntry = false
     @State private var showRegistrationForManualBridge = false

@@ -6,6 +6,7 @@
 //
 
 import Foundation
+import Observation
 import os
 
 // MARK: - Scene Search Result with Context
@@ -81,12 +82,13 @@ public struct SearchResults {
 /// print("Found \(results.totalCount) matches")
 /// ```
 @MainActor
-public class SearchManager: ObservableObject {
+@Observable
+public class SearchManager {
 
     // MARK: - Properties
 
     /// Weak reference to BridgeManager to prevent retain cycles
-    private weak var bridgeManager: BridgeManager?
+    @ObservationIgnored private weak var bridgeManager: BridgeManager?
 
     // MARK: - Initialization
 

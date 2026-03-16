@@ -6,7 +6,6 @@
 //
 
 import SwiftUI
-import Combine
 import HueDatShared
 
 struct BridgesListView_iOS: View {
@@ -14,7 +13,7 @@ struct BridgesListView_iOS: View {
     let bridgeManager: BridgeManager
     var onManualEntryTapped: (() -> Void)?
     @Environment(\.dismiss) private var dismiss
-    @StateObject private var registrationService = BridgeRegistrationService(deviceIdentifierProvider: IOSDeviceIdentifierProvider())
+    @State private var registrationService = BridgeRegistrationService(deviceIdentifierProvider: IOSDeviceIdentifierProvider())
 
     var body: some View {
         NavigationStack {

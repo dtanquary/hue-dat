@@ -9,7 +9,7 @@ import SwiftUI
 import HueDatShared
 
 struct RoomsZonesListView_macOS: View {
-    @EnvironmentObject var bridgeManager: BridgeManager
+    @Environment(BridgeManager.self) var bridgeManager
 
     let onRoomSelected: (HueRoom) -> Void
     let onZoneSelected: (HueZone) -> Void
@@ -67,7 +67,7 @@ struct RoomsZonesListView_macOS: View {
 
                     // SSE status indicator
                     SSEStatusIndicator()
-                        .environmentObject(bridgeManager)
+                        .environment(bridgeManager)
                         .padding(6)
                     
                     Button(action: {
@@ -237,7 +237,7 @@ struct RoomsZonesListView_macOS: View {
 struct GroupRowView_macOS<T: GroupedLightContainer>: View {
     let group: T
     var isLoading: Bool = false
-    @EnvironmentObject var bridgeManager: BridgeManager
+    @Environment(BridgeManager.self) var bridgeManager
     @State private var isHovered: Bool = false
 
     private var groupedLight: HueGroupedLight? {
@@ -322,7 +322,7 @@ struct GroupRowView_macOS<T: GroupedLightContainer>: View {
 }
 
 #Preview("With Sample Data") {
-    @Previewable @StateObject var manager: BridgeManager = {
+    @Previewable @State var manager: BridgeManager = {
         let mgr = BridgeManager()
 
         // Add some sample data to prevent loading state
@@ -373,6 +373,6 @@ struct GroupRowView_macOS<T: GroupedLightContainer>: View {
         onZoneSelected: { _ in },
         onSettingsSelected: {}
     )
-    .environmentObject(manager)
+    .environment(manager)
     .frame(width: 320, height: 480)
 }

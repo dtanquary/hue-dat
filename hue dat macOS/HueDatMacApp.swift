@@ -8,7 +8,6 @@
 import SwiftUI
 import HueDatShared
 import AppKit
-import Combine
 
 @main
 struct HueDatMacApp: App {
@@ -130,7 +129,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // Recreate content view controller for fresh material rendering
         debugLog("🚀 showPopover() - creating MenuBarPanelView")
         let contentView = MenuBarPanelView()
-            .environmentObject(bridgeManager)
+            .environment(bridgeManager)
             .environment(popoverEnvironment!)
 
         // Store hosting controller as property to ensure it stays alive
@@ -302,8 +301,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         Task {
             await stopSSEStream()
         }
-        connectionObserver?.cancel()
-        connectionObserver = nil
+        // Connection observation cleanup handled automatically via task cancellation
     }
 
     func applicationWillResignActive(_ notification: Notification) {
@@ -404,7 +402,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     // MARK: - SSE Lifecycle Management
 
-    private var connectionObserver: AnyCancellable?
+    // Connection observation is handled via withObservationTracking in observeConnectionChanges()
     private var isSSEStreamActive = false
 
     private func initializeSSEConnection() async {
@@ -427,19 +425,26 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func observeConnectionChanges() {
-        connectionObserver = bridgeManager.$connectedBridge
-            .sink { [weak self] bridge in
-                guard let self = self else { return }
-                if bridge != nil {
-                    Task {
-                        await self.handleConnectionEstablished()
-                    }
-                } else {
-                    Task {
-                        await self.handleConnectionLost()
-                    }
+        // Use withObservationTracking to observe connectedBridge changes
+        func observe() {
+            let bridge = withObservationTracking {
+                self.bridgeManager.connectedBridge
+            } onChange: {
+                Task { @MainActor in
+                    observe()
                 }
             }
+            if bridge != nil {
+                Task {
+                    await self.handleConnectionEstablished()
+                }
+            } else {
+                Task {
+                    await self.handleConnectionLost()
+                }
+            }
+        }
+        observe()
     }
 
     private func observeWakeNotifications() {

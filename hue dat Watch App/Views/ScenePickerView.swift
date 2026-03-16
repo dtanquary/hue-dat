@@ -13,7 +13,7 @@ struct ScenePickerView: View {
     let activeSceneId: String?
     let onSceneSelected: (HueScene) -> Void
     @Environment(\.dismiss) var dismiss
-    @ObservedObject var bridgeManager: BridgeManager
+    var bridgeManager: BridgeManager
 
     var body: some View {
         NavigationView {
@@ -54,7 +54,7 @@ struct ScenePickerView: View {
 struct SceneRowView: View {
     let scene: HueScene
     let isActive: Bool
-    @ObservedObject var bridgeManager: BridgeManager
+    var bridgeManager: BridgeManager
 
     var body: some View {
         HStack(spacing: 10) {

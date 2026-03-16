@@ -9,7 +9,7 @@ import SwiftUI
 import HueDatShared
 
 struct MenuBarPanelView: View {
-    @EnvironmentObject var bridgeManager: BridgeManager
+    @Environment(BridgeManager.self) var bridgeManager
     @Environment(PopoverEnvironment.self) var popoverEnvironment
 
     @State private var showBridgeSetup = false
@@ -96,7 +96,7 @@ struct MenuBarPanelView: View {
         }
         .sheet(isPresented: $showBridgeSetup) {
             BridgeSetupView_macOS()
-                .environmentObject(bridgeManager)
+                .environment(bridgeManager)
         }
         // Note: About dialog is shown via NSWindow in AppDelegate (accessed from context menu)
         // Note: SSE lifecycle is now managed by AppDelegate for persistent background connection
@@ -131,6 +131,6 @@ struct MenuBarPanelView: View {
 
 #Preview {
     MenuBarPanelView()
-        .environmentObject(BridgeManager())
+        .environment(BridgeManager())
         .environment(PopoverEnvironment())
 }

@@ -10,7 +10,7 @@ import Combine
 import HueDatShared
 
 struct ContentView: View {
-    @StateObject private var bridgeManager = BridgeManager()
+    @State private var bridgeManager = BridgeManager()
     @Environment(\.scenePhase) private var scenePhase
     @State private var navigationPath = NavigationPath()
     @State private var showConnectionFailedAlert = false

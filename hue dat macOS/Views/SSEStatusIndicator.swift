@@ -10,7 +10,7 @@ import HueDatShared
 import Combine
 
 struct SSEStatusIndicator: View {
-    @EnvironmentObject var bridgeManager: BridgeManager
+    @Environment(BridgeManager.self) var bridgeManager
     @State private var streamState: StreamState = .idle
     @State private var cancellable: AnyCancellable?
     @State private var isHovering: Bool = false
@@ -142,5 +142,5 @@ struct SSEStatusIndicator: View {
 
 #Preview {
     SSEStatusIndicator()
-        .environmentObject(BridgeManager())
+        .environment(BridgeManager())
 }

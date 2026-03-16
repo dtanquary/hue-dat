@@ -10,7 +10,7 @@ import HueDatShared
 import Combine
 
 struct SSEStatusIndicator: View {
-    @ObservedObject var bridgeManager: BridgeManager
+    var bridgeManager: BridgeManager
     @State private var streamState: StreamState = .idle
     @State private var cancellable: AnyCancellable?
 

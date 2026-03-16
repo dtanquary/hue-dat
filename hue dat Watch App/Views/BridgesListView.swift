@@ -12,7 +12,7 @@ struct BridgesListView: View {
     let bridges: [BridgeInfo]
     let bridgeManager: BridgeManager
     @Environment(\.dismiss) private var dismiss
-    @StateObject private var registrationService = BridgeRegistrationService(deviceIdentifierProvider: WatchOSDeviceIdentifierProvider())
+    @State private var registrationService = BridgeRegistrationService(deviceIdentifierProvider: WatchOSDeviceIdentifierProvider())
     
     var body: some View {
         NavigationStack {

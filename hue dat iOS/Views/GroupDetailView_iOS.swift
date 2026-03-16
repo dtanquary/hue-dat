@@ -12,7 +12,7 @@ import HueDatShared
 struct GroupDetailView_iOS<T: GroupedLightContainer>: View {
     let groupId: String
 
-    @EnvironmentObject var bridgeManager: BridgeManager
+    @Environment(BridgeManager.self) var bridgeManager
 
     @State private var isOn: Bool = false
     @State private var brightness: Double = 0.0

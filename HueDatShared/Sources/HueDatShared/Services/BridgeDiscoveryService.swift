@@ -6,22 +6,23 @@
 //
 
 import Foundation
-import Combine
 import Network
+import Observation
 import os
 
 // MARK: - Bridge Discovery Service
 @MainActor
-public class BridgeDiscoveryService: ObservableObject {
-    @Published public var isLoading = false
-    @Published public var discoveredBridges: [BridgeInfo] = []
-    @Published public var error: Error?
-    @Published public var isRegistering = false
-    @Published public var registrationSuccess = false
-    @Published public var showNoBridgesAlert = false
+@Observable
+public class BridgeDiscoveryService {
+    public var isLoading = false
+    public var discoveredBridges: [BridgeInfo] = []
+    public var error: Error?
+    public var isRegistering = false
+    public var registrationSuccess = false
+    public var showNoBridgesAlert = false
 
     // Store reference to active browser for manual cancellation
-    private var activeBrowser: NWBrowser?
+    @ObservationIgnored private var activeBrowser: NWBrowser?
 
     public init() {}
 

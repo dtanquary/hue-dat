@@ -8,6 +8,7 @@
 import SwiftUI
 import Foundation
 import Combine
+import Observation
 import Security
 import os
 
@@ -19,59 +20,60 @@ public enum ConnectionValidationResult {
 
 // MARK: - Bridge Manager
 @MainActor
-public class BridgeManager: ObservableObject {
-    @Published public var connectedBridge: BridgeConnectionInfo?
-    @Published public var showAlert: Bool = false
-    @Published public var alertMessage: String? = nil
-    @Published public var isConnectionValidated: Bool = false
-    @Published public var rooms: [HueRoom] = []
-    @Published public var zones: [HueZone] = []
-    @Published public var scenes: [HueScene] = []
-    @Published public var isLoadingRooms: Bool = false
-    @Published public var isLoadingZones: Bool = false
-    @Published public var refreshError: String? = nil  // Error message for background refresh failures
-    @Published public var isDemoMode: Bool = false  // Demo mode flag for offline demonstration
-    @Published public var isRefreshing: Bool = false  // Combined refresh state for UI feedback
+@Observable
+public class BridgeManager {
+    public var connectedBridge: BridgeConnectionInfo?
+    public var showAlert: Bool = false
+    public var alertMessage: String? = nil
+    public var isConnectionValidated: Bool = false
+    public var rooms: [HueRoom] = []
+    public var zones: [HueZone] = []
+    public var scenes: [HueScene] = []
+    public var isLoadingRooms: Bool = false
+    public var isLoadingZones: Bool = false
+    public var refreshError: String? = nil  // Error message for background refresh failures
+    public var isDemoMode: Bool = false  // Demo mode flag for offline demonstration
+    public var isRefreshing: Bool = false  // Combined refresh state for UI feedback
 
     // Scene pinning - delegated to ScenePinningManager
     public let scenePinning = ScenePinningManager()
 
-    /// Published proxy so existing views that observe `pinnedSceneIds` continue to work.
-    @Published public private(set) var pinnedSceneIds: [String: [String: [String]]] = [:]
+    /// Proxy so existing views that observe `pinnedSceneIds` continue to work.
+    public private(set) var pinnedSceneIds: [String: [String: [String]]] = [:]
 
-    // Event broadcasting for connection validation
-    private let connectionValidationSubject = PassthroughSubject<ConnectionValidationResult, Never>()
+    // Event broadcasting for connection validation (Combine - kept for event streams)
+    @ObservationIgnored private let connectionValidationSubject = PassthroughSubject<ConnectionValidationResult, Never>()
     public var connectionValidationPublisher: AnyPublisher<ConnectionValidationResult, Never> {
         connectionValidationSubject.eraseToAnyPublisher()
     }
 
     // SSE event processing - delegated to SSEEventProcessor
-    public private(set) lazy var sseProcessor: SSEEventProcessor = SSEEventProcessor(bridgeManager: self)
-    @Published public var isSSEConnected: Bool = false
-    public var reconnectAttempts = 0  // Public so ContentView can reset on successful connection
+    @ObservationIgnored public private(set) lazy var sseProcessor: SSEEventProcessor = SSEEventProcessor(bridgeManager: self)
+    public var isSSEConnected: Bool = false
+    @ObservationIgnored public var reconnectAttempts = 0  // Public so ContentView can reset on successful connection
 
-    private let userDefaults = UserDefaults.standard
-    private let connectedBridgeKey = "ConnectedBridge"
-    private let cachedRoomsKey = "CachedRooms"
-    private let cachedZonesKey = "CachedZones"
-    private let cachedScenesKey = "CachedScenes"
-    private let demoModeKey = "DemoMode"
+    @ObservationIgnored private let userDefaults = UserDefaults.standard
+    @ObservationIgnored private let connectedBridgeKey = "ConnectedBridge"
+    @ObservationIgnored private let cachedRoomsKey = "CachedRooms"
+    @ObservationIgnored private let cachedZonesKey = "CachedZones"
+    @ObservationIgnored private let cachedScenesKey = "CachedScenes"
+    @ObservationIgnored private let demoModeKey = "DemoMode"
 
-    /// Combine subscription to forward ScenePinningManager changes to local proxy.
-    private var pinningSubscription: AnyCancellable?
+    /// Observation tracking to forward ScenePinningManager changes to local proxy.
+    @ObservationIgnored private var pinningTrackingTask: Task<Void, Never>?
 
     // Refresh state management (concurrent call protection)
-    private var isRefreshingRooms: Bool = false
-    private var isRefreshingZones: Bool = false
+    @ObservationIgnored private var isRefreshingRooms: Bool = false
+    @ObservationIgnored private var isRefreshingZones: Bool = false
 
     // Debouncing (prevent refresh spam during rapid navigation)
-    private var lastRoomsRefreshTime: Date? = nil
-    private var lastZonesRefreshTime: Date? = nil
-    private let refreshDebounceInterval: TimeInterval = 30.0  // 30 seconds
+    @ObservationIgnored private var lastRoomsRefreshTime: Date? = nil
+    @ObservationIgnored private var lastZonesRefreshTime: Date? = nil
+    @ObservationIgnored private let refreshDebounceInterval: TimeInterval = 30.0  // 30 seconds
 
     // Periodic refresh
-    private var refreshTimer: Timer?
-    @Published public var lastRefreshTimestamp: Date?
+    @ObservationIgnored private var refreshTimer: Timer?
+    public var lastRefreshTimestamp: Date?
 
 
     /// Returns the current connected bridge information, or nil if none is connected.
@@ -93,11 +95,17 @@ public class BridgeManager: ObservableObject {
 
         // Sync pinning state from ScenePinningManager
         pinnedSceneIds = scenePinning.pinnedSceneIds
-        pinningSubscription = scenePinning.$pinnedSceneIds
-            .receive(on: DispatchQueue.main)
-            .sink { [weak self] newValue in
-                self?.pinnedSceneIds = newValue
+        pinningTrackingTask = Task { [weak self] in
+            while !Task.isCancelled {
+                guard let self = self else { return }
+                let newValue = withObservationTracking {
+                    self.scenePinning.pinnedSceneIds
+                } onChange: { }
+                self.pinnedSceneIds = newValue
+                // Yield to let other work run and wait for change notification
+                try? await Task.sleep(nanoseconds: 100_000_000) // 100ms polling
             }
+        }
     }
     
     public func saveConnection(bridge: BridgeInfo, registrationResponse: BridgeRegistrationResponse) {

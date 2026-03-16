@@ -10,7 +10,7 @@ import HueDatShared
 import Combine
 
 struct RoomsAndZonesListView_iOS: View {
-    @ObservedObject var bridgeManager: BridgeManager
+    var bridgeManager: BridgeManager
     @State private var hasLoadedData = false
     @State private var showSettings = false
     @State private var showNetworkErrorAlert = false
@@ -359,7 +359,7 @@ struct RoomsAndZonesListView_iOS: View {
                 PinnedScenesListView { scene, groupId in
                     activateSceneFromPinned(scene, groupId: groupId)
                 }
-                .environmentObject(bridgeManager)
+                .environment(bridgeManager)
             } label: {
                 Image(systemName: "pin.fill")
             }

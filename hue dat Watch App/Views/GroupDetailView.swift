@@ -10,7 +10,7 @@ import HueDatShared
 
 struct GroupDetailView<T: GroupedLightContainer>: View {
     let groupId: String
-    @ObservedObject var bridgeManager: BridgeManager
+    var bridgeManager: BridgeManager
 
     // Tunable parameter for crown brightness adjustment sensitivity
     private let crownBrightnessDeltaMultiplier: Double = 1.0

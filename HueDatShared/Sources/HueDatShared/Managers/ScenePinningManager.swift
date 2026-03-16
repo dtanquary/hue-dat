@@ -7,6 +7,7 @@
 //
 
 import Foundation
+import Observation
 import os
 
 /// Manages pinned (favorite) scenes per bridge and per room/zone.
@@ -14,17 +15,18 @@ import os
 /// Storage layout: `[bridgeId: [groupId: [sceneId]]]`
 /// Arrays preserve insertion order for UI display.
 @MainActor
-public class ScenePinningManager: ObservableObject {
+@Observable
+public class ScenePinningManager {
 
-    // MARK: - Published State
+    // MARK: - State
 
     /// The full pinning dictionary: bridgeId -> groupId -> ordered scene IDs
-    @Published public private(set) var pinnedSceneIds: [String: [String: [String]]] = [:]
+    public private(set) var pinnedSceneIds: [String: [String: [String]]] = [:]
 
     // MARK: - Storage
 
-    private let userDefaults = UserDefaults.standard
-    private let pinnedScenesKey = "PinnedScenes"
+    @ObservationIgnored private let userDefaults = UserDefaults.standard
+    @ObservationIgnored private let pinnedScenesKey = "PinnedScenes"
 
     // MARK: - Init
 

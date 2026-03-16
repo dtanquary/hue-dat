@@ -6,23 +6,24 @@
 //
 
 import Foundation
-import Combine
+import Observation
 import os
 
 // MARK: - Bridge Registration Service
 @MainActor
-public class BridgeRegistrationService: ObservableObject {
-    @Published public var error: Error?
-    @Published public var registeringBridge: BridgeInfo?
-    @Published public var successfulBridge: BridgeInfo?
-    @Published public var registrationResponse: BridgeRegistrationResponse?
-    @Published public var showLinkButtonAlert = false
-    @Published public var linkButtonBridge: BridgeInfo?
+@Observable
+public class BridgeRegistrationService {
+    public var error: Error?
+    public var registeringBridge: BridgeInfo?
+    public var successfulBridge: BridgeInfo?
+    public var registrationResponse: BridgeRegistrationResponse?
+    public var showLinkButtonAlert = false
+    public var linkButtonBridge: BridgeInfo?
 
-    private let deviceIdentifierProvider: DeviceIdentifierProvider
+    @ObservationIgnored private let deviceIdentifierProvider: DeviceIdentifierProvider
 
     // Helper for demo link button flow
-    private var linkButtonAttempts: Set<String> = []
+    @ObservationIgnored private var linkButtonAttempts: Set<String> = []
 
     public init(deviceIdentifierProvider: DeviceIdentifierProvider) {
         self.deviceIdentifierProvider = deviceIdentifierProvider

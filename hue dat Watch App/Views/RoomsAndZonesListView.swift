@@ -9,7 +9,7 @@ import SwiftUI
 import HueDatShared
 
 struct RoomsAndZonesListView: View {
-    @ObservedObject var bridgeManager: BridgeManager
+    var bridgeManager: BridgeManager
     @Binding var navigationPath: NavigationPath
     @State private var hasLoadedData = false
     @State private var rotationAngle: Double = 0

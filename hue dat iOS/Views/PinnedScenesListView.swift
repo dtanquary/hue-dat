@@ -16,7 +16,7 @@ struct PinnedSceneItem: Identifiable {
 }
 
 struct PinnedScenesListView: View {
-    @EnvironmentObject var bridgeManager: BridgeManager
+    @Environment(BridgeManager.self) var bridgeManager
     let onSceneTap: (HueScene, String) -> Void
 
     private var pinnedSceneItems: [PinnedSceneItem] {
@@ -117,6 +117,6 @@ struct PinnedScenesListView: View {
     PinnedScenesListView { scene, groupId in
         print("Tapped scene: \(scene.metadata.name) in group \(groupId)")
     }
-    .environmentObject(BridgeManager())
+    .environment(BridgeManager())
     .padding()
 }
