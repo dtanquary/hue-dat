@@ -25,6 +25,9 @@ xcuserdata/
 timeline.xctimeline
 playground.xcworkspace
 
+## Firebase
+firebase-debug.log
+
 ## Swift Package Manager dependencies
 Packages/
 Package.pins
