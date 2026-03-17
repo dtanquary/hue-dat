@@ -141,8 +141,15 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // Store hosting controller as property to ensure it stays alive
         debugLog("🚀 showPopover() - creating NSHostingController")
         hostingController = NSHostingController(rootView: AnyView(contentView))
+
+        // Set preferred size BEFORE assigning to popover — otherwise NSPopover
+        // adopts the hosting controller's intrinsic size (from SwiftUI frame modifiers),
+        // discarding the user's saved height.
+        let savedSize = PopoverSizeManager.shared.contentSize
+        hostingController!.preferredContentSize = savedSize
+        popover.contentSize = savedSize
         popover.contentViewController = hostingController
-        debugLog("🚀 showPopover() - NSHostingController created and assigned")
+        debugLog("🚀 showPopover() - NSHostingController created and assigned with saved size: \(savedSize)")
 
         // Critical: Activate app to ensure transient behavior works
         debugLog("🚀 showPopover() - activating app")
