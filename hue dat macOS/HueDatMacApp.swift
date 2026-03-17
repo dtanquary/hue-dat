@@ -28,9 +28,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     var aboutWindow: NSWindow?
     var eventMonitor: EventMonitor?
 
-    // Strong references to prevent premature deallocation (fixes crash after reboot)
+    // Strong references to prevent premature deallocation
     var hostingController: NSHostingController<AnyView>?
     var popoverEnvironment: PopoverEnvironment?
+
+    // Re-entrancy guard for closePopover (prevents crash from simultaneous close triggers)
+    private var isClosingPopover = false
 
     // UserDefaults key for tracking popover open timestamps
     private let lastPopoverOpenKey = "LastPopoverOpenTimestamp"
@@ -40,9 +43,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private let minimumDelayAfterWake: TimeInterval = 3.0  // 3 seconds
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        // Initialize debug logger FIRST
+        // Initialize debug logger FIRST, then install crash handlers
         debugLog("🚀 applicationDidFinishLaunching - starting up")
         debugLog("Log file: \(DebugLogger.shared.logFilePath)")
+        debugLog("Previous log: \(DebugLogger.shared.previousLogFilePath)")
+        DebugLogger.shared.installCrashHandlers()
+        DebugLogger.shared.installExceptionHandler()
 
         // Initialize bridge manager on main thread
         bridgeManager = BridgeManager()
@@ -169,34 +175,46 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func closePopover() {
+        // Re-entrancy guard: performClose can synchronously trigger applicationWillResignActive,
+        // which calls closePopover again. Without this guard, the re-entrant call deallocates
+        // the hosting controller while the popover's own teardown is still in progress → crash.
+        guard !isClosingPopover else {
+            debugLogSync("🔻 closePopover() skipped - already closing (re-entrancy guard)")
+            return
+        }
+        isClosingPopover = true
+
         debugLogSync("🔻 Starting popover close sequence")
-        debugLogSync("🔻 popover: \(popover != nil ? "exists" : "nil")")
         debugLogSync("🔻 popover.isShown: \(popover?.isShown ?? false)")
-        debugLogSync("🔻 eventMonitor: \(eventMonitor != nil ? "exists" : "nil")")
-        debugLogSync("🔻 hostingController: \(hostingController != nil ? "exists" : "nil")")
-        debugLogSync("🔻 popoverEnvironment: \(popoverEnvironment != nil ? "exists" : "nil")")
 
-        debugLogSync("🔻 Step 1: Calling popover?.performClose(nil)")
-        popover?.performClose(nil)
-        debugLogSync("🔻 Step 1 complete")
-
-        debugLogSync("🔻 Step 2: Calling eventMonitor?.stop()")
+        // Stop event monitor BEFORE closing popover to prevent the monitor
+        // from firing during the close and triggering another close attempt
         eventMonitor?.stop()
-        debugLogSync("🔻 Step 2 complete")
-
-        debugLogSync("🔻 Step 3: Setting eventMonitor = nil")
         eventMonitor = nil
-        debugLogSync("🔻 Step 3 complete")
 
-        // Clear strong references after popover is closed
-        debugLogSync("🔻 Step 4: Setting hostingController = nil")
+        // Close the popover - this may synchronously trigger applicationWillResignActive
+        if popover?.isShown == true {
+            popover?.performClose(nil)
+        }
+
+        // Detach the content view controller from the popover before releasing our references.
+        // This prevents the popover's internal teardown from racing with our deallocation.
+        popover?.contentViewController = nil
+
+        // Defer cleanup of SwiftUI hosting controller and environment to the next run loop
+        // iteration, ensuring the popover's window animation and teardown complete first.
+        let hc = hostingController
+        let pe = popoverEnvironment
         hostingController = nil
-        debugLogSync("🔻 Step 4 complete")
-
-        debugLogSync("🔻 Step 5: Setting popoverEnvironment = nil")
         popoverEnvironment = nil
-        debugLogSync("🔻 Step 5 complete")
+        DispatchQueue.main.async {
+            // These references are captured solely to extend their lifetime past the
+            // popover's close animation. They are released here after teardown completes.
+            _ = hc
+            _ = pe
+        }
 
+        isClosingPopover = false
         debugLogSync("🔻 Popover close sequence finished")
     }
 
@@ -305,8 +323,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationWillResignActive(_ notification: Notification) {
-        debugLogSync("⚡️ App losing focus - triggering closePopover()")
-        // Close popover when app loses focus for additional reliability
+        // Only close if the popover is actually shown. This method fires frequently
+        // for menu bar apps (LSUIElement) and can fire re-entrantly during popover close.
+        guard popover?.isShown == true else { return }
+        debugLogSync("⚡️ App losing focus while popover shown - triggering closePopover()")
         closePopover()
         debugLogSync("⚡️ closePopover() completed")
     }

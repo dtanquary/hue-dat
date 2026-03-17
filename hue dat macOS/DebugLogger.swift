@@ -28,7 +28,14 @@ class DebugLogger {
 
         fileURL = logDir.appendingPathComponent("huedat_debug.log")
 
-        // Create or truncate log file at startup
+        // Preserve previous session's log (critical for post-crash diagnosis)
+        let previousLogURL = logDir.appendingPathComponent("huedat_debug_previous.log")
+        if FileManager.default.fileExists(atPath: fileURL.path) {
+            try? FileManager.default.removeItem(at: previousLogURL)
+            try? FileManager.default.moveItem(at: fileURL, to: previousLogURL)
+        }
+
+        // Create fresh log file for this session
         FileManager.default.createFile(atPath: fileURL.path, contents: nil)
         fileHandle = try? FileHandle(forWritingTo: fileURL)
 
@@ -87,6 +94,58 @@ class DebugLogger {
 
     var logFilePath: String {
         fileURL.path
+    }
+
+    var previousLogFilePath: String {
+        fileURL.deletingLastPathComponent()
+            .appendingPathComponent("huedat_debug_previous.log").path
+    }
+
+    /// Install signal handlers to capture crash info before the process dies
+    func installCrashHandlers() {
+        let signals: [Int32] = [SIGABRT, SIGSEGV, SIGBUS, SIGILL, SIGFPE, SIGTRAP]
+        for sig in signals {
+            signal(sig) { signalNumber in
+                // UNSAFE in signal handler but best-effort for crash diagnosis
+                let msg = "\n💥 CRASH: Received signal \(signalNumber) (\(DebugLogger.signalName(signalNumber)))\n"
+                if let data = msg.data(using: .utf8),
+                   let handle = DebugLogger.shared.fileHandle {
+                    try? handle.write(contentsOf: data)
+                    try? handle.synchronize()
+                }
+                // Re-raise to get default crash behavior (generates crash report)
+                signal(signalNumber, SIG_DFL)
+                raise(signalNumber)
+            }
+        }
+    }
+
+    /// Also install NSException handler for Objective-C exceptions
+    func installExceptionHandler() {
+        NSSetUncaughtExceptionHandler { exception in
+            let msg = """
+            \n💥 UNCAUGHT EXCEPTION: \(exception.name.rawValue)
+            Reason: \(exception.reason ?? "unknown")
+            Stack: \(exception.callStackSymbols.joined(separator: "\n"))\n
+            """
+            if let data = msg.data(using: .utf8),
+               let handle = DebugLogger.shared.fileHandle {
+                try? handle.write(contentsOf: data)
+                try? handle.synchronize()
+            }
+        }
+    }
+
+    static func signalName(_ sig: Int32) -> String {
+        switch sig {
+        case SIGABRT: return "SIGABRT"
+        case SIGSEGV: return "SIGSEGV"
+        case SIGBUS:  return "SIGBUS"
+        case SIGILL:  return "SIGILL"
+        case SIGFPE:  return "SIGFPE"
+        case SIGTRAP: return "SIGTRAP"
+        default:      return "UNKNOWN(\(sig))"
+        }
     }
 }
 
