@@ -98,7 +98,7 @@ struct ContentView: View {
 
                 if hasCachedData {
                     // Skip validation loading dialog - we have cached data to show immediately
-                    print("✅ Found cached data - skipping validation dialog")
+                    debugLog("✅ Found cached data - skipping validation dialog")
                     isConnectionValidated = true
                     isValidatingConnection = false
 
@@ -111,7 +111,7 @@ struct ContentView: View {
                     }
                 } else {
                     // No cached data - show validation loading dialog
-                    print("⏳ No cached data - showing validation dialog")
+                    debugLog("⏳ No cached data - showing validation dialog")
                     isValidatingConnection = true
                     validationMessage = "Validating connection..."
                     Task {
@@ -149,7 +149,7 @@ struct ContentView: View {
                     if let backgroundTime = lastBackgroundTimestamp {
                         let idleTime = Date().timeIntervalSince(backgroundTime)
                         if idleTime > idleTimeoutThreshold && !navigationPath.isEmpty {
-                            print("⏰ App idle for \(Int(idleTime / 60)) minutes - returning to list view")
+                            debugLog("⏰ App idle for \(Int(idleTime / 60)) minutes - returning to list view")
                             navigationPath.removeLast(navigationPath.count)
                         }
                     }
@@ -189,7 +189,7 @@ struct ContentView: View {
 
             switch result {
             case .success:
-                print("✅ ContentView: Bridge connection validation succeeded")
+                debugLog("✅ ContentView: Bridge connection validation succeeded")
 
                 // Mark connection as validated - this triggers view to show RoomsAndZonesListView
                 isConnectionValidated = true
@@ -200,7 +200,7 @@ struct ContentView: View {
                 }
 
             case .failure(let message):
-                print("❌ ContentView: Bridge connection validation failed: \(message)")
+                debugLog("❌ ContentView: Bridge connection validation failed: \(message)")
                 // Mark as not validated
                 isConnectionValidated = false
                 // Store failure message and show alert
@@ -247,13 +247,13 @@ struct ContentView: View {
     private func startSSEStream() async {
         // Demo mode: Skip SSE stream
         if bridgeManager.isDemoMode {
-            print("🎭 startSSEStream: Demo mode - skipping SSE")
+            debugLog("🎭 startSSEStream: Demo mode - skipping SSE")
             return
         }
 
         guard let baseUrl = bridgeManager.connectedBridge?.bridge.displayAddress,
               let username = bridgeManager.connectedBridge?.username else {
-            print("⚠️ Cannot start SSE stream: Missing bridge connection details")
+            debugLog("⚠️ Cannot start SSE stream: Missing bridge connection details")
             return
         }
 
@@ -266,13 +266,13 @@ struct ContentView: View {
 
         do {
             try await HueAPIService.shared.startEventStream()
-            print("✅ SSE stream connected")
+            debugLog("✅ SSE stream connected")
             // Reset reconnection attempts on successful connection
             await MainActor.run {
                 bridgeManager.reconnectAttempts = 0
             }
         } catch {
-            print("❌ Failed to start SSE stream: \(error)")
+            debugLog("❌ Failed to start SSE stream: \(error)")
         }
     }
 
@@ -283,18 +283,18 @@ struct ContentView: View {
             await MainActor.run {
                 bridgeManager.stopListeningToSSEEvents()
             }
-            print("🛑 SSE stream stopped")
+            debugLog("🛑 SSE stream stopped")
         }
     }
 
     /// Reconnect SSE stream after app becomes active (with validation and delay)
     private func reconnectSSEAfterResume() async {
         guard bridgeManager.connectedBridge != nil else {
-            print("⚠️ No bridge connected - skipping SSE reconnect after resume")
+            debugLog("⚠️ No bridge connected - skipping SSE reconnect after resume")
             return
         }
 
-        print("🔄 Reconnecting SSE after app became active...")
+        debugLog("🔄 Reconnecting SSE after app became active...")
 
         // Stop existing SSE connection
         await HueAPIService.shared.stopEventStream()
@@ -312,13 +312,13 @@ struct ContentView: View {
 
         // Only reconnect if validation succeeded
         guard bridgeManager.isConnectionValidated else {
-            print("❌ Connection validation failed after resume - not starting SSE")
+            debugLog("❌ Connection validation failed after resume - not starting SSE")
             return
         }
 
         // Restart SSE stream
         await startSSEStream()
-        print("✅ SSE reconnected after app resume")
+        debugLog("✅ SSE reconnected after app resume")
     }
 
     // MARK: - Staleness Check (macOS Gold Standard Pattern)
@@ -355,14 +355,14 @@ struct ContentView: View {
 
         if dataIsFresh {
             let minutesAgo = Int(now.timeIntervalSince(lastRefresh!) / 60)
-            print("⏭️ Data is fresh (last refresh \(minutesAgo) min ago) - skipping auto-refresh")
+            debugLog("⏭️ Data is fresh (last refresh \(minutesAgo) min ago) - skipping auto-refresh")
             return
         }
 
         // Update timestamp BEFORE refresh (prevents duplicate calls)
         UserDefaults.standard.set(now, forKey: lastRefreshKey)
 
-        print("🔄 Auto-refreshing data (last refresh > 30 minutes ago or first launch)")
+        debugLog("🔄 Auto-refreshing data (last refresh > 30 minutes ago or first launch)")
         await bridgeManager.refreshAllData(forceRefresh: false)
     }
 

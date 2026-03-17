@@ -33,3 +33,17 @@ Packages/
 Package.pins
 Package.resolved
 *.xcodeproj/project.xcworkspace/xcuserdata/
+
+## Claude Code
+.claude/
+
+## Secrets & credentials
+.env
+.env.*
+*.key
+*.pem
+*.p12
+*.cer
+*.mobileprovision
+GoogleService-Info.plist
+Secrets/

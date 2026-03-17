@@ -212,7 +212,7 @@ struct RoomsAndZonesListView: View {
         .onChange(of: bridgeManager.connectedBridge) { oldBridge, newBridge in
             // When bridge connection changes (disconnect or new bridge), reset state and reload
             if let newBridge = newBridge, oldBridge?.bridge.id != newBridge.bridge.id {
-                print("🔄 New bridge detected, resetting view state and loading fresh data")
+                debugLog("🔄 New bridge detected, resetting view state and loading fresh data")
                 hasLoadedData = false
                 // The .task modifier will trigger automatically when hasLoadedData changes
             }
@@ -271,7 +271,7 @@ struct RoomsAndZonesListView: View {
             }
 
         case .failure(let error):
-            print("❌ Failed to turn off all lights: \(error.localizedDescription)")
+            debugLog("❌ Failed to turn off all lights: \(error.localizedDescription)")
             // Give failure haptic
             WKInterfaceDevice.current().play(.failure)
         }

@@ -193,7 +193,7 @@ struct MainMenuView: View {
         let videoURL = LoopingVideoPlayer_watchOS.loadVideoURL(named: "light")
 
         guard let videoURL = videoURL else {
-            print("❌ Failed to load video URL")
+            debugLog("❌ Failed to load video URL")
             return
         }
 
@@ -220,7 +220,7 @@ struct MainMenuView: View {
 
             // Start playing automatically
             player.play()
-            print("✅ Video player started")
+            debugLog("✅ Video player started")
         }
     }
 }

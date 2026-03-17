@@ -275,7 +275,7 @@ struct RoomsAndZonesListView_iOS: View {
             .onChange(of: bridgeManager.connectedBridge) { oldBridge, newBridge in
                 // When bridge connection changes, reset state and reload
                 if let newBridge = newBridge, oldBridge?.bridge.id != newBridge.bridge.id {
-                    print("🔄 New bridge detected, resetting view state and loading fresh data")
+                    debugLog("🔄 New bridge detected, resetting view state and loading fresh data")
                     hasLoadedData = false
                     // The .task modifier will trigger automatically when hasLoadedData changes
                 }
@@ -516,10 +516,10 @@ struct RoomsAndZonesListView_iOS: View {
 
         switch result {
         case .success:
-            print("✅ All lights turned off successfully")
+            debugLog("✅ All lights turned off successfully")
 
         case .failure(let error):
-            print("❌ Failed to turn off all lights: \(error.localizedDescription)")
+            debugLog("❌ Failed to turn off all lights: \(error.localizedDescription)")
         }
 
         isTurningOffLights = false

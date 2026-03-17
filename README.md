@@ -65,7 +65,7 @@ HueDat is a multi-platform Swift application providing seamless control of Phili
 ### Clone Repository
 
 ```bash
-git clone <repository-url>
+git clone https://github.com/dtanquary/hue-dat.git
 cd hue-dat
 ```
 
@@ -331,7 +331,15 @@ Hue API v2 device hierarchy:
 
 Contributions are welcome! This project follows standard Swift/Xcode conventions.
 
-**Key Guidelines:**
+### Setup for Contributors
+
+1. **Bundle Identifiers**: The project uses `com.dtanquary.*` bundle IDs. You'll need to update these to your own identifier in Xcode's target settings (Signing & Capabilities) to build on physical devices.
+2. **Development Team**: Set your own Apple Developer Team in each target's build settings.
+3. **Philips Hue Bridge**: A physical Hue Bridge (v2 API compatible) is required for full testing. Use **Demo Mode** (`BridgeManager.shared.enableDemoMode()`) for UI development without hardware.
+4. **SSL Certificates**: The app uses `InsecureURLSessionDelegate` to accept self-signed certificates from local Hue bridges. This is intentional and required for local network communication.
+
+### Guidelines
+
 - Follow existing code style (SwiftUI, actor-based concurrency)
 - Test on all three platform targets (watchOS, macOS, iOS)
 - Maintain platform abstraction via HueDatShared package
@@ -340,31 +348,7 @@ Contributions are welcome! This project follows standard Swift/Xcode conventions
 
 ## License
 
-This project is licensed under the MIT License - see below for details:
-
-```
-MIT License
-
-Copyright (c) 2025 HueDat Contributors
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
-```
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
 ## Acknowledgments
 

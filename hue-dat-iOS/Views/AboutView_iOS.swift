@@ -226,12 +226,11 @@ private extension AboutView_iOS {
             Divider()
                 .padding(.horizontal, isCompact ? 0 : 20)
             
-            // TODO: Add links when URLs are configured
-            // - Privacy Policy
-            // - Terms of Service
-            // - Support & Feedback
+            Link("GitHub Repository", destination: URL(string: "https://github.com/dtanquary/hue-dat")!)
+                .font(.caption)
+                .foregroundStyle(.secondary)
 
-            Text("© 2026 Hue Dat Contributors")
+            Text("© 2025 HueDat Contributors")
                 .font(.caption)
                 .foregroundStyle(.tertiary)
                 .padding(.top, 8)

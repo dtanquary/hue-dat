@@ -233,7 +233,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         if let lastWake = lastWakeTimestamp {
             let timeSinceWake = now.timeIntervalSince(lastWake)
             if timeSinceWake < minimumDelayAfterWake {
-                print("⏱️ Just woke from sleep \(String(format: "%.1f", timeSinceWake))s ago - delaying auto-refresh")
+                debugLog("⏱️ Just woke from sleep \(String(format: "%.1f", timeSinceWake))s ago - delaying auto-refresh")
 
                 // Schedule refresh after delay
                 let remainingDelay = minimumDelayAfterWake - timeSinceWake
@@ -253,10 +253,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         if let lastTimestamp = lastTimestamp {
             let timeSinceLastOpen = now.timeIntervalSince(lastTimestamp)
             shouldRefresh = timeSinceLastOpen > thirtyMinutesInSeconds
-            print("⏱️ Time since last popover open: \(Int(timeSinceLastOpen / 60)) minutes")
+            debugLog("⏱️ Time since last popover open: \(Int(timeSinceLastOpen / 60)) minutes")
         } else {
             shouldRefresh = true
-            print("⏱️ No previous popover open timestamp - triggering refresh")
+            debugLog("⏱️ No previous popover open timestamp - triggering refresh")
         }
 
         // Update timestamp
@@ -264,7 +264,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         // Trigger refresh if needed (with validation)
         if shouldRefresh {
-            print("🔄 Auto-refreshing data (last open > 30 minutes ago)")
+            debugLog("🔄 Auto-refreshing data (last open > 30 minutes ago)")
             Task {
                 await performConnectionValidationAndRefresh()
             }
@@ -275,11 +275,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     /// This ensures the network is ready and the bridge is reachable
     private func performConnectionValidationAndRefresh() async {
         guard bridgeManager.isConnected else {
-            print("⚠️ No bridge connected - skipping auto-refresh")
+            debugLog("⚠️ No bridge connected - skipping auto-refresh")
             return
         }
 
-        print("🔍 Validating connection before auto-refresh...")
+        debugLog("🔍 Validating connection before auto-refresh...")
 
         // Validate connection with timeout
         await withTimeout(seconds: 3.0) { [self] in
@@ -287,12 +287,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         guard bridgeManager.isConnectionValidated else {
-            print("❌ Connection validation failed - not performing auto-refresh")
-            print("💡 User can manually refresh when network is ready")
+            debugLog("❌ Connection validation failed - not performing auto-refresh")
+            debugLog("💡 User can manually refresh when network is ready")
             return
         }
 
-        print("✅ Connection validated - proceeding with auto-refresh")
+        debugLog("✅ Connection validated - proceeding with auto-refresh")
         await bridgeManager.refreshAllData(forceRefresh: false)
     }
 
@@ -322,7 +322,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     // MARK: - App State Monitoring
 
     func applicationWillTerminate(_ notification: Notification) {
-        print("🛑 App terminating - cleaning up SSE stream")
+        debugLog("🛑 App terminating - cleaning up SSE stream")
         Task {
             await stopSSEStream()
         }
@@ -434,17 +434,17 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func initializeSSEConnection() async {
         guard bridgeManager.isConnected else {
-            print("ℹ️ No bridge connected - skipping SSE initialization")
+            debugLog("ℹ️ No bridge connected - skipping SSE initialization")
             return
         }
 
-        print("🔍 Initializing SSE connection on app launch...")
+        debugLog("🔍 Initializing SSE connection on app launch...")
 
         // Validate connection to ensure HueAPIService is configured
         await bridgeManager.validateConnection()
 
         guard bridgeManager.isConnectionValidated else {
-            print("⚠️ Connection validation failed - not starting SSE")
+            debugLog("⚠️ Connection validation failed - not starting SSE")
             return
         }
 
@@ -484,7 +484,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc private func handleWakeFromSleep() {
-        print("💤 System woke from sleep")
+        debugLog("💤 System woke from sleep")
         lastWakeTimestamp = Date()
 
         // Clear connection validation state - connection may be stale
@@ -498,11 +498,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func reconnectSSEAfterWake() async {
         guard bridgeManager.isConnected else {
-            print("⚠️ No bridge connected - skipping SSE reconnect after wake")
+            debugLog("⚠️ No bridge connected - skipping SSE reconnect after wake")
             return
         }
 
-        print("🔄 Reconnecting SSE after wake from sleep...")
+        debugLog("🔄 Reconnecting SSE after wake from sleep...")
 
         // Stop existing SSE connection
         await stopSSEStream()
@@ -514,21 +514,21 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         await bridgeManager.validateConnection()
 
         guard bridgeManager.isConnectionValidated else {
-            print("❌ Connection validation failed after wake - not starting SSE")
+            debugLog("❌ Connection validation failed after wake - not starting SSE")
             return
         }
 
         // Restart SSE stream
         await startSSEStream()
-        print("✅ SSE reconnected after wake from sleep")
+        debugLog("✅ SSE reconnected after wake from sleep")
     }
 
     private func handleConnectionEstablished() async {
-        print("🔗 Bridge connected - starting SSE stream...")
+        debugLog("🔗 Bridge connected - starting SSE stream...")
         await bridgeManager.validateConnection()
 
         guard bridgeManager.isConnectionValidated else {
-            print("⚠️ Connection validation failed")
+            debugLog("⚠️ Connection validation failed")
             return
         }
 
@@ -536,18 +536,18 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func handleConnectionLost() async {
-        print("🔌 Bridge disconnected - stopping SSE stream...")
+        debugLog("🔌 Bridge disconnected - stopping SSE stream...")
         await stopSSEStream()
     }
 
     private func startSSEStream() async {
         // Prevent duplicate SSE streams
         if isSSEStreamActive {
-            print("⚠️ SSE stream already active - skipping duplicate start")
+            debugLog("⚠️ SSE stream already active - skipping duplicate start")
             return
         }
 
-        print("🟢 Starting background SSE stream and event listeners")
+        debugLog("🟢 Starting background SSE stream and event listeners")
 
         // Start listening to SSE events in BridgeManager
         bridgeManager.startListeningToSSEEvents()
@@ -556,20 +556,20 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         do {
             try await HueAPIService.shared.startEventStream()
             isSSEStreamActive = true
-            print("✅ Background SSE stream started successfully")
+            debugLog("✅ Background SSE stream started successfully")
         } catch {
-            print("❌ Failed to start SSE stream: \(error.localizedDescription)")
+            debugLog("❌ Failed to start SSE stream: \(error.localizedDescription)")
             isSSEStreamActive = false
         }
     }
 
     private func stopSSEStream() async {
         guard isSSEStreamActive else {
-            print("ℹ️ SSE stream not active - nothing to stop")
+            debugLog("ℹ️ SSE stream not active - nothing to stop")
             return
         }
 
-        print("🔴 Stopping background SSE stream and event listeners")
+        debugLog("🔴 Stopping background SSE stream and event listeners")
 
         // Stop listening to SSE events
         bridgeManager.stopListeningToSSEEvents()
@@ -577,6 +577,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // Stop the SSE stream
         await HueAPIService.shared.stopEventStream()
         isSSEStreamActive = false
-        print("✅ Background SSE stream stopped")
+        debugLog("✅ Background SSE stream stopped")
     }
 }

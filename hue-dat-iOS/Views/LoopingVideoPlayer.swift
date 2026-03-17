@@ -7,6 +7,7 @@
 
 import SwiftUI
 import AVFoundation
+import HueDatShared
 
 struct LoopingVideoPlayer: UIViewRepresentable {
     let player: AVQueuePlayer
@@ -36,7 +37,7 @@ struct LoopingVideoPlayer: UIViewRepresentable {
     // Static helper to load video from asset catalog
     static func loadVideoURL(named name: String) -> URL? {
         guard let asset = NSDataAsset(name: name) else {
-            print("Error: Could not find video asset '\(name)' in asset catalog")
+            debugLog("Error: Could not find video asset '\(name)' in asset catalog")
             return nil
         }
 
@@ -50,7 +51,7 @@ struct LoopingVideoPlayer: UIViewRepresentable {
             try asset.data.write(to: tempURL)
             return tempURL
         } catch {
-            print("Error: Could not write video data to temporary file: \(error)")
+            debugLog("Error: Could not write video data to temporary file: \(error)")
             return nil
         }
     }

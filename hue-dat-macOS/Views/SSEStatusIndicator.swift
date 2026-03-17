@@ -81,7 +81,7 @@ struct SSEStatusIndicator: View {
     }
 
     private func handleReconnectClick() {
-        print("🔄 User clicked SSE status indicator - attempting reconnection")
+        debugLog("🔄 User clicked SSE status indicator - attempting reconnection")
         Task {
             await bridgeManager.reconnectSSE()
         }

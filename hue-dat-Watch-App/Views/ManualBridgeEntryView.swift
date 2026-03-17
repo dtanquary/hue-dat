@@ -123,6 +123,6 @@ struct ManualBridgeEntryView: View {
 
 #Preview {
     ManualBridgeEntryView { bridge in
-        print("Bridge added: \(bridge)")
+        debugLog("Bridge added: \(bridge)")
     }
 }

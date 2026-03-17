@@ -44,9 +44,9 @@ struct SettingsView: View {
                                     Task {
                                         do {
                                             try await HueAPIService.shared.startEventStream()
-                                            print("✅ SSE stream reconnected via settings button")
+                                            debugLog("✅ SSE stream reconnected via settings button")
                                         } catch {
-                                            print("❌ Failed to reconnect SSE stream: \(error)")
+                                            debugLog("❌ Failed to reconnect SSE stream: \(error)")
                                         }
                                     }
                                 } label: {

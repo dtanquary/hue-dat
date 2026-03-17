@@ -82,7 +82,7 @@ struct GroupDetailView<T: GroupedLightContainer>: View {
                     // If group is not found, try to refresh
                     if !T.isRoom {
                         Task {
-                            print("⚠️ \(groupTypeLabel.capitalized) \(groupId) not found, refreshing \(groupTypeLabel)s...")
+                            debugLog("⚠️ \(groupTypeLabel.capitalized) \(groupId) not found, refreshing \(groupTypeLabel)s...")
                             await bridgeManager.getZones()
                         }
                     }
@@ -319,7 +319,7 @@ struct GroupDetailView<T: GroupedLightContainer>: View {
             // Load scenes for this group (guard against duplicate calls)
             Task {
                 guard !hasFetchedScenes else {
-                    print("⏭️ GroupDetailView<\(T.apiGroupType)>: Skipping duplicate fetchScenes call")
+                    debugLog("⏭️ GroupDetailView<\(T.apiGroupType)>: Skipping duplicate fetchScenes call")
                     return
                 }
                 hasFetchedScenes = true
@@ -344,21 +344,21 @@ struct GroupDetailView<T: GroupedLightContainer>: View {
 
     private func togglePower() async {
         let label = groupTypeLabel
-        print("🔘 togglePower() called - displayIsOn: \(displayIsOn), isTogglingPower: \(isTogglingPower), isSettingBrightness: \(isSettingBrightness)")
+        debugLog("🔘 togglePower() called - displayIsOn: \(displayIsOn), isTogglingPower: \(isTogglingPower), isSettingBrightness: \(isSettingBrightness)")
 
         // Don't allow toggling power while brightness is being set
         guard !isSettingBrightness else {
-            print("❌ togglePower blocked: brightness is being set")
+            debugLog("❌ togglePower blocked: brightness is being set")
             return
         }
 
         guard let currentGroup = group,
               let groupedLight = currentGroup.groupedLights?.first else {
-            print("❌ togglePower blocked: \(label)=\(group != nil), groupedLights=\(group?.groupedLights != nil), count=\(group?.groupedLights?.count ?? 0)")
+            debugLog("❌ togglePower blocked: \(label)=\(group != nil), groupedLights=\(group?.groupedLights != nil), count=\(group?.groupedLights?.count ?? 0)")
             return
         }
 
-        print("✅ togglePower proceeding with groupedLight.id=\(groupedLight.id)")
+        debugLog("✅ togglePower proceeding with groupedLight.id=\(groupedLight.id)")
 
         // Give initial haptic feedback
         if !hasGivenInitialPowerHaptic {
@@ -373,13 +373,13 @@ struct GroupDetailView<T: GroupedLightContainer>: View {
         // Send API request directly to HueAPIService - only revert on network failure
         do {
             try await HueAPIService.shared.setPower(groupedLightId: groupedLight.id, on: displayIsOn)
-            print("✅ Power toggle succeeded: \(displayIsOn ? "ON" : "OFF")")
+            debugLog("✅ Power toggle succeeded: \(displayIsOn ? "ON" : "OFF")")
 
             // If we just turned ON the light, fetch the current brightness from the bridge
             if displayIsOn {
                 if let updatedGroupedLight = await bridgeManager.fetchGroupedLight(groupedLightId: groupedLight.id) {
                     if let currentBrightness = updatedGroupedLight.dimming?.brightness {
-                        print("🔄 Fetched brightness after power on: \(Int(currentBrightness))%")
+                        debugLog("🔄 Fetched brightness after power on: \(Int(currentBrightness))%")
                         // Update brightness with animation to ensure orb opacity updates smoothly
                         withAnimation(.easeInOut(duration: 0.3)) {
                             brightness = currentBrightness
@@ -404,7 +404,7 @@ struct GroupDetailView<T: GroupedLightContainer>: View {
             }
         } catch {
             // Network failure - revert UI state
-            print("❌ Power toggle failed: \(error.localizedDescription)")
+            debugLog("❌ Power toggle failed: \(error.localizedDescription)")
             displayIsOn = !displayIsOn  // Revert to previous state
             WKInterfaceDevice.current().play(.failure)
         }
@@ -422,21 +422,21 @@ struct GroupDetailView<T: GroupedLightContainer>: View {
 
     private func turnOff() async {
         let label = groupTypeLabel
-        print("🔘 turnOff() called via long press - isTogglingPower: \(isTogglingPower), isSettingBrightness: \(isSettingBrightness)")
+        debugLog("🔘 turnOff() called via long press - isTogglingPower: \(isTogglingPower), isSettingBrightness: \(isSettingBrightness)")
 
         // Don't allow turning off while brightness is being set
         guard !isSettingBrightness else {
-            print("❌ turnOff blocked: brightness is being set")
+            debugLog("❌ turnOff blocked: brightness is being set")
             return
         }
 
         guard let currentGroup = group,
               let groupedLight = currentGroup.groupedLights?.first else {
-            print("❌ turnOff blocked: \(label)=\(group != nil), groupedLights=\(group?.groupedLights != nil), count=\(group?.groupedLights?.count ?? 0)")
+            debugLog("❌ turnOff blocked: \(label)=\(group != nil), groupedLights=\(group?.groupedLights != nil), count=\(group?.groupedLights?.count ?? 0)")
             return
         }
 
-        print("✅ turnOff proceeding with groupedLight.id=\(groupedLight.id)")
+        debugLog("✅ turnOff proceeding with groupedLight.id=\(groupedLight.id)")
 
         // Give initial haptic feedback
         if !hasGivenInitialPowerHaptic {
@@ -451,7 +451,7 @@ struct GroupDetailView<T: GroupedLightContainer>: View {
         // Send API request to turn off
         do {
             try await HueAPIService.shared.setPower(groupedLightId: groupedLight.id, on: false)
-            print("✅ Power off succeeded")
+            debugLog("✅ Power off succeeded")
 
             // Update local state
             updateLocalState(on: false)
@@ -463,7 +463,7 @@ struct GroupDetailView<T: GroupedLightContainer>: View {
             }
         } catch {
             // Network failure - revert UI state if it was on before
-            print("❌ Power off failed: \(error.localizedDescription)")
+            debugLog("❌ Power off failed: \(error.localizedDescription)")
             // Check if light was actually on before we tried to turn it off
             if let lights = group?.groupedLights, !lights.isEmpty {
                 displayIsOn = lights.contains { $0.on?.on == true }
@@ -497,7 +497,7 @@ struct GroupDetailView<T: GroupedLightContainer>: View {
         // Send the relative brightness adjustment
         do {
             try await HueAPIService.shared.adjustBrightness(groupedLightId: groupedLight.id, delta: scaledDelta)
-            print("✅ Brightness adjusted by delta: \(scaledDelta)")
+            debugLog("✅ Brightness adjusted by delta: \(scaledDelta)")
 
             // Success haptic - only give once per adjustment session
             if !hasGivenFinalBrightnessHaptic {
@@ -511,7 +511,7 @@ struct GroupDetailView<T: GroupedLightContainer>: View {
             // 3. Relative adjustments don't give us an absolute value to store
 
         } catch {
-            print("❌ Brightness adjustment failed: \(error.localizedDescription)")
+            debugLog("❌ Brightness adjustment failed: \(error.localizedDescription)")
             WKInterfaceDevice.current().play(.failure)
         }
     }
@@ -548,7 +548,7 @@ struct GroupDetailView<T: GroupedLightContainer>: View {
                     hasGivenFinalBrightnessHaptic = true
                 }
             case .failure(let error):
-                print("❌ setBrightness (power+brightness) failed: \(error.localizedDescription)")
+                debugLog("❌ setBrightness (power+brightness) failed: \(error.localizedDescription)")
                 // Rollback optimistic state
                 displayIsOn = previousDisplayIsOn
                 optimisticBrightness = previousOptimisticBrightness
@@ -574,7 +574,7 @@ struct GroupDetailView<T: GroupedLightContainer>: View {
                     hasGivenFinalBrightnessHaptic = true
                 }
             case .failure(let error):
-                print("❌ setBrightness failed: \(error.localizedDescription)")
+                debugLog("❌ setBrightness failed: \(error.localizedDescription)")
                 // Rollback optimistic state
                 optimisticBrightness = previousOptimisticBrightness
                 WKInterfaceDevice.current().play(.failure)
@@ -653,7 +653,7 @@ struct GroupDetailView<T: GroupedLightContainer>: View {
     // MARK: - Scene Actions
 
     private func activateScene(_ scene: HueScene) async {
-        print("🎬 Activating scene: \(scene.metadata.name)")
+        debugLog("🎬 Activating scene: \(scene.metadata.name)")
 
         // Extract scene brightness before making API call
         let sceneBrightness = bridgeManager.extractAverageBrightnessFromScene(scene)
@@ -662,7 +662,7 @@ struct GroupDetailView<T: GroupedLightContainer>: View {
 
         switch result {
         case .success:
-            print("✅ Scene activated: \(scene.metadata.name)")
+            debugLog("✅ Scene activated: \(scene.metadata.name)")
             activeSceneId = scene.id
             // Keep using scene colors - no need to revert to light data
             // The scene colors ARE the correct colors for this scene
@@ -677,7 +677,7 @@ struct GroupDetailView<T: GroupedLightContainer>: View {
                     optimisticBrightness = sceneBrightness
                     displayIsOn = sceneBrightness > 0
                 }
-                print("💡 Updated brightness slider to scene value: \(sceneBrightness)%")
+                debugLog("💡 Updated brightness slider to scene value: \(sceneBrightness)%")
 
                 // Reset flag after a short delay to allow onChange to complete
                 Task {
@@ -687,7 +687,7 @@ struct GroupDetailView<T: GroupedLightContainer>: View {
             }
 
         case .failure(let error):
-            print("❌ Failed to activate scene: \(error.localizedDescription)")
+            debugLog("❌ Failed to activate scene: \(error.localizedDescription)")
             // Scene activation failed, continue without showing error
         }
     }

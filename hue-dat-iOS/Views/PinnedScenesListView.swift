@@ -115,7 +115,7 @@ struct PinnedScenesListView: View {
 
 #Preview {
     PinnedScenesListView { scene, groupId in
-        print("Tapped scene: \(scene.metadata.name) in group \(groupId)")
+        debugLog("Tapped scene: \(scene.metadata.name) in group \(groupId)")
     }
     .environment(BridgeManager())
     .padding()

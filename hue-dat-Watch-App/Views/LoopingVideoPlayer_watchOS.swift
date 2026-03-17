@@ -8,6 +8,7 @@
 import SwiftUI
 import AVFoundation
 import AVKit
+import HueDatShared
 
 struct LoopingVideoPlayer_watchOS: View {
     let player: AVPlayer
@@ -44,7 +45,7 @@ struct LoopingVideoPlayer_watchOS: View {
                         // Ensure video plays when view appears
                         if player.rate == 0 {
                             player.play()
-                            print("🎬 VideoPlayer appeared - starting playback")
+                            debugLog("🎬 VideoPlayer appeared - starting playback")
                         }
                     }
             }
@@ -56,7 +57,7 @@ struct LoopingVideoPlayer_watchOS: View {
     // Static helper to load video from asset catalog
     static func loadVideoURL(named name: String) -> URL? {
         guard let asset = NSDataAsset(name: name) else {
-            print("Error: Could not find video asset '\(name)' in asset catalog")
+            debugLog("Error: Could not find video asset '\(name)' in asset catalog")
             return nil
         }
 
@@ -70,7 +71,7 @@ struct LoopingVideoPlayer_watchOS: View {
             try asset.data.write(to: tempURL)
             return tempURL
         } catch {
-            print("Error: Could not write video data to temporary file: \(error)")
+            debugLog("Error: Could not write video data to temporary file: \(error)")
             return nil
         }
     }

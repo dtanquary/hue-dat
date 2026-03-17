@@ -112,6 +112,6 @@ struct ManualBridgeEntryView_iOS: View {
 
 #Preview {
     ManualBridgeEntryView_iOS { bridge in
-        print("Bridge added: \(bridge)")
+        debugLog("Bridge added: \(bridge)")
     }
 }

@@ -117,12 +117,12 @@ struct MainMenuView_iOS: View {
             AboutView_iOS().navigationTransition(.zoom(sourceID: "About", in: animation))
         }
         .task {
-            print("MainMenuView task started")
+            debugLog("MainMenuView task started")
             isViewActive = true
             await setupVideoAsync()
         }
         .onAppear {
-            print("MainMenuView appeared")
+            debugLog("MainMenuView appeared")
             isViewActive = true
             // Resume playback if already setup
             if isVideoSetup && player.rate == 0 {
@@ -130,7 +130,7 @@ struct MainMenuView_iOS: View {
             }
         }
         .onDisappear {
-            print("MainMenuView disappeared")
+            debugLog("MainMenuView disappeared")
             isViewActive = false
         }
         .sheet(isPresented: $showBridgesList, onDismiss: {
@@ -234,11 +234,11 @@ struct MainMenuView_iOS: View {
 
     private func setupVideoAsync() async {
         guard !isVideoSetup else {
-            print("Video already setup")
+            debugLog("Video already setup")
             return
         }
 
-        print("Setting up video async...")
+        debugLog("Setting up video async...")
 
         // Load video from asset catalog
         let videoURL = await MainActor.run {
@@ -247,19 +247,19 @@ struct MainMenuView_iOS: View {
         }
 
         guard let videoURL = videoURL else {
-            print("❌ Failed to load video URL")
+            debugLog("❌ Failed to load video URL")
             return
         }
-        print("✅ Video URL loaded: \(videoURL)")
+        debugLog("✅ Video URL loaded: \(videoURL)")
 
         await MainActor.run {
             // Configure audio session to mix with other audio (e.g., Music)
             do {
                 try AVAudioSession.sharedInstance().setCategory(.ambient, mode: .default)
                 try AVAudioSession.sharedInstance().setActive(true)
-                print("✅ Audio session configured for ambient playback")
+                debugLog("✅ Audio session configured for ambient playback")
             } catch {
-                print("⚠️ Failed to configure audio session: \(error)")
+                debugLog("⚠️ Failed to configure audio session: \(error)")
             }
 
             let playerItem = AVPlayerItem(url: videoURL)
@@ -270,13 +270,13 @@ struct MainMenuView_iOS: View {
 
             // Setup looping
             playerLooper = AVPlayerLooper(player: player, templateItem: playerItem)
-            print("✅ Player looper setup complete")
+            debugLog("✅ Player looper setup complete")
 
             // Mark as setup and start playing if view is active
             isVideoSetup = true
             if isViewActive {
                 player.play()
-                print("✅ Player started")
+                debugLog("✅ Player started")
             }
         }
     }
