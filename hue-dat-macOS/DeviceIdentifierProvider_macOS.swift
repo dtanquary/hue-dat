@@ -6,6 +6,7 @@
 //
 
 import Foundation
+import IOKit
 import HueDatShared
 
 /// macOS implementation of DeviceIdentifierProvider

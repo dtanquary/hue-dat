@@ -350,6 +350,10 @@ Contributions are welcome! This project follows standard Swift/Xcode conventions
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
+## Trademarks
+
+"Philips" and "Hue" are trademarks of Signify B.V. This project is not affiliated with, endorsed by, or officially connected to Signify or Philips.
+
 ## Acknowledgments
 
 - Philips Hue for the excellent API and hardware
