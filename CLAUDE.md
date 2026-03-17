@@ -19,16 +19,16 @@ Multi-platform Philips Hue controller with native watchOS and macOS apps. Core f
 
 ```bash
 # Open project
-open "hue dat.xcodeproj"
+open hue-dat.xcodeproj
 
 # Build watchOS (Simulator)
-xcodebuild -project "hue dat.xcodeproj" -scheme "hue dat Watch App" -destination 'platform=watchOS Simulator,name=Apple Watch Series 11 (46mm)' build
+xcodebuild -project hue-dat.xcodeproj -scheme "hue dat Watch App" -destination 'platform=watchOS Simulator,name=Apple Watch Series 11 (46mm)' build
 
 # Build macOS
-xcodebuild -project "hue dat.xcodeproj" -scheme "hue dat macOS" -destination 'platform=macOS' build
+xcodebuild -project hue-dat.xcodeproj -scheme "hue dat macOS" -destination 'platform=macOS' build
 
 # Build iOS (Simulator)
-xcodebuild -project "hue dat.xcodeproj" -scheme "hue dat iOS" -sdk iphonesimulator -destination 'platform=iOS Simulator,name=iPhone 17,OS=26.1' build
+xcodebuild -project hue-dat.xcodeproj -scheme "hue dat iOS" -sdk iphonesimulator -destination 'platform=iOS Simulator,name=iPhone 17,OS=26.1' build
 ```
 
 **Build Scripts:** macOS target includes pre-build script to kill existing app instances (prevents duplicate menu bar icons during development).
@@ -431,9 +431,9 @@ do {
 
 #### Implementation Files
 
-- **macOS AppDelegate**: `hue dat macOS/HueDatMacApp.swift` (checkAndRefreshIfNeeded, reconnectSSEAfterWake)
-- **iOS ContentView**: `hue dat iOS/ContentView.swift` (checkAndRefreshIfNeeded, reconnectSSEAfterResume)
-- **watchOS ContentView**: `hue dat Watch App/ContentView.swift` (checkAndRefreshIfNeeded, reconnectSSEAfterResume)
+- **macOS AppDelegate**: `hue-dat-macOS/HueDatMacApp.swift` (checkAndRefreshIfNeeded, reconnectSSEAfterWake)
+- **iOS ContentView**: `hue-dat-iOS/ContentView.swift` (checkAndRefreshIfNeeded, reconnectSSEAfterResume)
+- **watchOS ContentView**: `hue-dat-Watch-App/ContentView.swift` (checkAndRefreshIfNeeded, reconnectSSEAfterResume)
 - **BridgeManager reconnection**: `HueDatShared/.../BridgeManager.swift` (handleReconnection)
 - **HueAPIService SSE**: `HueDatShared/.../HueAPIService.swift` (startEventStream, stopEventStream)
 
@@ -531,7 +531,7 @@ HueDatShared/                              # Shared Package
         ├── BridgeManager.swift            # State & persistence
         └── SearchManager.swift            # In-memory search
 
-hue dat Watch App/                         # watchOS Target
+hue-dat-Watch-App/                         # watchOS Target
 ├── hue_datApp.swift
 ├── ContentView.swift                      # Lifecycle manager
 ├── DeviceIdentifierProvider_watchOS.swift
@@ -546,7 +546,7 @@ hue dat Watch App/                         # watchOS Target
     ├── BridgesListView.swift
     └── ManualBridgeEntryView.swift
 
-hue dat macOS/                             # macOS Target
+hue-dat-macOS/                             # macOS Target
 ├── HueDatMacApp.swift                    # AppKit menu bar
 ├── EventMonitor.swift
 ├── LaunchAtLoginManager.swift            # Startup configuration
@@ -563,7 +563,7 @@ hue dat macOS/                             # macOS Target
     ├── SettingsView_macOS.swift
     └── SSEStatusIndicator.swift
 
-hue dat iOS/                               # iOS Target
+hue-dat-iOS/                               # iOS Target
 ├── HueDatiOSApp.swift                    # SwiftUI App entry
 ├── ContentView.swift                      # Lifecycle manager + SSE
 ├── DeviceIdentifierProvider_iOS.swift

@@ -66,19 +66,19 @@ HueDat is a multi-platform Swift application providing seamless control of Phili
 
 ```bash
 git clone <repository-url>
-cd "hue dat"
+cd hue-dat
 ```
 
 ### Open in Xcode
 
 ```bash
-open "hue dat.xcodeproj"
+open hue-dat.xcodeproj
 ```
 
 ### Build watchOS (Simulator)
 
 ```bash
-xcodebuild -project "hue dat.xcodeproj" \
+xcodebuild -project hue-dat.xcodeproj \
   -scheme "hue dat Watch App" \
   -destination 'platform=watchOS Simulator,name=Apple Watch Series 11 (46mm)' \
   build
@@ -87,7 +87,7 @@ xcodebuild -project "hue dat.xcodeproj" \
 ### Build macOS
 
 ```bash
-xcodebuild -project "hue dat.xcodeproj" \
+xcodebuild -project hue-dat.xcodeproj \
   -scheme "hue dat macOS" \
   -destination 'platform=macOS' \
   build
@@ -96,7 +96,7 @@ xcodebuild -project "hue dat.xcodeproj" \
 ### Build iOS (Simulator)
 
 ```bash
-xcodebuild -project "hue dat.xcodeproj" \
+xcodebuild -project hue-dat.xcodeproj \
   -scheme "hue dat iOS" \
   -sdk iphonesimulator \
   -destination 'platform=iOS Simulator,name=iPhone 17,OS=26.1' \
@@ -159,7 +159,7 @@ Core functionality is shared between platforms via a Swift Package Manager packa
 ## Project Structure
 
 ```
-hue dat/
+hue-dat/
 ├── HueDatShared/                          # Swift Package (shared code)
 │   ├── Package.swift
 │   └── Sources/HueDatShared/
@@ -176,7 +176,7 @@ hue dat/
 │       └── Managers/
 │           └── BridgeManager.swift        # State & persistence
 │
-├── hue dat Watch App/                     # watchOS Target
+├── hue-dat-Watch-App/                     # watchOS Target
 │   ├── Views/
 │   │   ├── ContentView.swift              # Lifecycle manager
 │   │   ├── RoomDetailView.swift           # Digital Crown + haptics
@@ -184,7 +184,7 @@ hue dat/
 │   │   └── [6 other views]
 │   └── DeviceIdentifierProvider_watchOS.swift
 │
-├── hue dat macOS/                         # macOS Target
+├── hue-dat-macOS/                         # macOS Target
 │   ├── HueDatMacApp.swift                # Menu bar + NSApplicationDelegate
 │   ├── EventMonitor.swift                # Click-outside detection
 │   ├── LaunchAtLoginManager.swift        # Startup configuration
@@ -195,7 +195,7 @@ hue dat/
 │   │   └── [6 other views]
 │   └── DeviceIdentifierProvider_macOS.swift
 │
-└── hue dat iOS/                           # iOS Target
+└── hue-dat-iOS/                           # iOS Target
     ├── HueDatiOSApp.swift                # SwiftUI App entry
     ├── ContentView.swift                  # Lifecycle + SSE manager
     ├── DeviceIdentifierProvider_iOS.swift

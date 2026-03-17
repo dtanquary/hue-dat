@@ -58,17 +58,17 @@
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		5538526B2EC6A63B00A20A8E /* hue dat macOS */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
-			path = "hue dat macOS";
+			path = "hue-dat-macOS";
 			sourceTree = "<group>";
 		};
 		55911FF32EB1DCEC005CED54 /* hue dat Watch App */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
-			path = "hue dat Watch App";
+			path = "hue-dat-Watch-App";
 			sourceTree = "<group>";
 		};
 		55F135C92ECC08B90010F7E1 /* hue dat iOS */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
-			path = "hue dat iOS";
+			path = "hue-dat-iOS";
 			sourceTree = "<group>";
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
