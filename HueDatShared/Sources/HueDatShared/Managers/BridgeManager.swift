@@ -1171,16 +1171,16 @@ public class BridgeManager {
 
     /// Generic local state update for any GroupedLightContainer
     /// Updates grouped lights optimistically after a successful control action
+    /// Returns true if the collection was modified, false if not found.
     private func updateLocalGroupState<T: GroupedLightContainer>(
         groupId: String,
         in collection: inout [T],
         on: Bool?,
-        brightness: Double?,
-        save: () -> Void
-    ) {
+        brightness: Double?
+    ) -> Bool {
         guard let index = collection.firstIndex(where: { $0.id == groupId }) else {
             AppLogger.bridge.warning("updateLocalGroupState: \(T.apiGroupType, privacy: .public) \(groupId, privacy: .public) not found in local cache")
-            return
+            return false
         }
 
         var updatedItem = collection[index]
@@ -1212,21 +1212,27 @@ public class BridgeManager {
 
         // Update the item in the array
         collection[index] = updatedItem
-
-        // Save to cache
-        save()
+        return true
     }
 
     /// Update local room state optimistically after a successful control action
     /// This ensures the list view reflects changes immediately without waiting for a full refresh
     public func updateLocalRoomState(roomId: String, on: Bool? = nil, brightness: Double? = nil) {
-        updateLocalGroupState(groupId: roomId, in: &rooms, on: on, brightness: brightness, save: saveRoomsToStorage)
+        // Mutation and save are separated to avoid Swift exclusivity violation:
+        // the inout access on `rooms` must end before saveRoomsToStorage() reads `rooms`.
+        if updateLocalGroupState(groupId: roomId, in: &rooms, on: on, brightness: brightness) {
+            saveRoomsToStorage()
+        }
     }
 
     /// Update local zone state optimistically after a successful control action
     /// This ensures the list view reflects changes immediately without waiting for a full refresh
     public func updateLocalZoneState(zoneId: String, on: Bool? = nil, brightness: Double? = nil) {
-        updateLocalGroupState(groupId: zoneId, in: &zones, on: on, brightness: brightness, save: saveZonesToStorage)
+        // Mutation and save are separated to avoid Swift exclusivity violation:
+        // the inout access on `zones` must end before saveZonesToStorage() reads `zones`.
+        if updateLocalGroupState(groupId: zoneId, in: &zones, on: on, brightness: brightness) {
+            saveZonesToStorage()
+        }
     }
 
     /// Fetch the current state of a grouped light from the bridge
