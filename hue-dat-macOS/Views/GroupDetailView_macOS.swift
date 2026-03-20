@@ -26,6 +26,9 @@ struct GroupDetailView_macOS<T: GroupedLightContainer>: View {
     @State private var optimisticIsOn: Bool?
     @State private var optimisticBrightness: Double?
 
+    // Guard against updating state after popover teardown
+    @State private var isViewActive = false
+
     private var group: T? {
         if T.isRoom {
             return bridgeManager.rooms.first(where: { $0.id == groupId }) as? T
@@ -218,14 +221,20 @@ struct GroupDetailView_macOS<T: GroupedLightContainer>: View {
             }
         }
         .onAppear {
+            isViewActive = true
             loadGroupState()
         }
+        .onDisappear {
+            isViewActive = false
+        }
         .onChange(of: groupedLight?.dimming?.brightness) { _, newBrightness in
+            guard isViewActive else { return }
             if let newBrightness = newBrightness {
                 brightness = newBrightness
             }
         }
         .onChange(of: groupedLight?.on?.on) { _, newIsOn in
+            guard isViewActive else { return }
             if let newIsOn = newIsOn {
                 isOn = newIsOn
             }
@@ -253,10 +262,12 @@ struct GroupDetailView_macOS<T: GroupedLightContainer>: View {
         Task {
             do {
                 try await HueAPIService.shared.setPower(groupedLightId: lightId, on: newValue)
+                guard isViewActive else { return }
                 isOn = newValue
                 optimisticIsOn = nil
             } catch {
                 optimisticIsOn = nil
+                guard isViewActive else { return }
                 errorMessage = "Failed to toggle power: \(error.localizedDescription)"
                 showError = true
             }
@@ -281,10 +292,12 @@ struct GroupDetailView_macOS<T: GroupedLightContainer>: View {
 
             do {
                 try await HueAPIService.shared.setBrightness(groupedLightId: lightId, brightness: newValue)
+                guard isViewActive else { return }
                 brightness = newValue
                 optimisticBrightness = nil
             } catch {
                 optimisticBrightness = nil
+                guard isViewActive else { return }
                 errorMessage = "Failed to set brightness: \(error.localizedDescription)"
                 showError = true
             }
@@ -304,6 +317,7 @@ struct GroupDetailView_macOS<T: GroupedLightContainer>: View {
         Task {
             do {
                 try await HueAPIService.shared.activateScene(sceneId: scene.id)
+                guard isViewActive else { return }
 
                 isOn = true
                 if let sceneBrightness = sceneBrightness {
@@ -312,6 +326,7 @@ struct GroupDetailView_macOS<T: GroupedLightContainer>: View {
 
                     Task {
                         try? await Task.sleep(for: .milliseconds(100))
+                        guard isViewActive else { return }
                         isApplyingScene = false
                     }
                 }
@@ -320,6 +335,7 @@ struct GroupDetailView_macOS<T: GroupedLightContainer>: View {
             } catch {
                 optimisticIsOn = nil
                 optimisticBrightness = nil
+                guard isViewActive else { return }
                 errorMessage = "Failed to activate scene: \(error.localizedDescription)"
                 showError = true
             }

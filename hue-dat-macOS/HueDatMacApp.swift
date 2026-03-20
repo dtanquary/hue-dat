@@ -199,6 +199,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         eventMonitor?.stop()
         eventMonitor = nil
 
+        // Pause SSE event listeners BEFORE view teardown to prevent SSE-triggered
+        // @Observable updates from reaching a partially-destroyed SwiftUI view hierarchy.
+        // The SSE stream itself stays connected; we just stop dispatching events to views.
+        bridgeManager.stopListeningToSSEEvents()
+
         // Close the popover - this may synchronously trigger applicationWillResignActive
         if popover?.isShown == true {
             popover?.performClose(nil)
@@ -210,15 +215,20 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         // Defer cleanup of SwiftUI hosting controller and environment to the next run loop
         // iteration, ensuring the popover's window animation and teardown complete first.
+        // Then resume SSE event listeners once teardown is complete.
         let hc = hostingController
         let pe = popoverEnvironment
         hostingController = nil
         popoverEnvironment = nil
-        DispatchQueue.main.async {
+        DispatchQueue.main.async { [weak self] in
             // These references are captured solely to extend their lifetime past the
             // popover's close animation. They are released here after teardown completes.
             _ = hc
             _ = pe
+
+            // Resume SSE event listeners now that the view hierarchy is fully torn down.
+            // Events will update BridgeManager state in the background for the next open.
+            self?.bridgeManager.startListeningToSSEEvents()
         }
 
         isClosingPopover = false
@@ -541,11 +551,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func startSSEStream() async {
-        // Prevent duplicate SSE streams
+        // Prevent duplicate SSE streams - set flag BEFORE await to close race window
         if isSSEStreamActive {
             debugLog("⚠️ SSE stream already active - skipping duplicate start")
             return
         }
+        isSSEStreamActive = true
 
         debugLog("🟢 Starting background SSE stream and event listeners")
 
@@ -555,7 +566,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // Start the actual SSE stream
         do {
             try await HueAPIService.shared.startEventStream()
-            isSSEStreamActive = true
             debugLog("✅ Background SSE stream started successfully")
         } catch {
             debugLog("❌ Failed to start SSE stream: \(error.localizedDescription)")
@@ -568,6 +578,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             debugLog("ℹ️ SSE stream not active - nothing to stop")
             return
         }
+        // Set flag BEFORE await to prevent concurrent start during stop
+        isSSEStreamActive = false
 
         debugLog("🔴 Stopping background SSE stream and event listeners")
 
@@ -576,7 +588,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         // Stop the SSE stream
         await HueAPIService.shared.stopEventStream()
-        isSSEStreamActive = false
         debugLog("✅ Background SSE stream stopped")
     }
 }
