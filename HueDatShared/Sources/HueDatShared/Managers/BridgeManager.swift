@@ -791,7 +791,7 @@ public class BridgeManager {
 
         // Update timestamp after successful refresh
         lastRefreshTimestamp = Date()
-        AppLogger.bridge.info("Refresh completed at \(self.lastRefreshTimestamp!.description, privacy: .public)")
+        AppLogger.bridge.info("Refresh completed at \(self.lastRefreshTimestamp?.description ?? "unknown", privacy: .public)")
 
         // Check SSE connection status and attempt reconnection if needed
         if !isSSEConnected && isConnected {
@@ -1238,23 +1238,8 @@ public class BridgeManager {
     /// Fetch the current state of a grouped light from the bridge
     /// Returns the updated grouped light data including current brightness
     public func fetchGroupedLight(groupedLightId: String) async -> HueGroupedLight? {
-        guard let bridge = currentConnectedBridge?.bridge else { return nil }
-
-        let delegate = InsecureURLSessionDelegate()
-        let session = URLSession(configuration: .default, delegate: delegate, delegateQueue: nil)
-
-        let urlString = "https://\(bridge.internalipaddress)/clip/v2/resource/grouped_light/\(groupedLightId)"
-        guard let url = URL(string: urlString) else { return nil }
-
-        var request = URLRequest(url: url)
-        request.httpMethod = "GET"
-        request.setValue(currentConnectedBridge?.username, forHTTPHeaderField: "hue-application-key")
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-
         do {
-            let (data, _) = try await session.data(for: request)
-            let response = try JSONDecoder().decode(HueGroupedLightsResponse.self, from: data)
-            return response.data.first
+            return try await HueAPIService.shared.fetchGroupedLight(groupedLightId: groupedLightId)
         } catch {
             AppLogger.bridge.error("fetchGroupedLight: \(error.localizedDescription, privacy: .public)")
             return nil

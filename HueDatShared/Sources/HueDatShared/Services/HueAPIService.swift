@@ -60,8 +60,14 @@ public enum StreamState: Equatable, Sendable {
 public actor HueAPIService {
     public static let shared = HueAPIService()
 
-    public let session: URLSession
-    private let sessionDelegate: InsecureURLSessionDelegate
+    /// REST session: finite timeouts, fails fast on network loss
+    private let restSession: URLSession
+    private let restSessionDelegate: InsecureURLSessionDelegate
+
+    /// SSE streaming session: infinite timeouts, waits for connectivity
+    private let streamSession: URLSession
+    private let streamSessionDelegate: InsecureURLSessionDelegate
+
     private var streamTask: Task<Void, Never>?
 
     public var baseURL = ""
@@ -79,16 +85,23 @@ public actor HueAPIService {
     private let individualLightRateLimit: TimeInterval = 0.1 // 10 per second for individual lights
 
     public init() {
-        let config = URLSessionConfiguration.default
-        config.httpMaximumConnectionsPerHost = 1
+        // REST session: short timeouts, no waiting for connectivity.
+        // When network drops, REST calls fail immediately instead of hanging.
+        let restConfig = URLSessionConfiguration.default
+        restConfig.timeoutIntervalForRequest = 10.0
+        restConfig.timeoutIntervalForResource = 15.0
+        restConfig.waitsForConnectivity = false
+        self.restSessionDelegate = InsecureURLSessionDelegate()
+        self.restSession = URLSession(configuration: restConfig, delegate: restSessionDelegate, delegateQueue: nil)
 
-        // Prevent stream timeouts
-        config.timeoutIntervalForRequest = .infinity
-        config.timeoutIntervalForResource = .infinity
-        config.waitsForConnectivity = true
-
-        self.sessionDelegate = InsecureURLSessionDelegate()
-        self.session = URLSession(configuration: config, delegate: sessionDelegate, delegateQueue: nil)
+        // SSE streaming session: infinite timeouts for long-lived event stream.
+        let streamConfig = URLSessionConfiguration.default
+        streamConfig.httpMaximumConnectionsPerHost = 1
+        streamConfig.timeoutIntervalForRequest = .infinity
+        streamConfig.timeoutIntervalForResource = .infinity
+        streamConfig.waitsForConnectivity = true
+        self.streamSessionDelegate = InsecureURLSessionDelegate()
+        self.streamSession = URLSession(configuration: streamConfig, delegate: streamSessionDelegate, delegateQueue: nil)
     }
 
     public func setup(baseUrl: String, hueApplicationKey: String) {
@@ -120,7 +133,7 @@ public actor HueAPIService {
             request.httpBody = body
         }
 
-        let (data, response) = try await session.data(for: request, delegate: sessionDelegate)
+        let (data, response) = try await restSession.data(for: request, delegate: restSessionDelegate)
 
         // Validate HTTP response
         guard let httpResponse = response as? HTTPURLResponse else {
@@ -161,6 +174,15 @@ public actor HueAPIService {
     /// Returns: HueGroupedLightsResponse containing array of grouped lights
     public func fetchGroupedLights() async throws -> HueGroupedLightsResponse {
         return try await request(endpoint: "/clip/v2/resource/grouped_light")
+    }
+
+    /// Fetch a single grouped light by ID
+    /// Returns: The grouped light, or nil if not found
+    public func fetchGroupedLight(groupedLightId: String) async throws -> HueGroupedLight? {
+        let response: HueGroupedLightsResponse = try await request(
+            endpoint: "/clip/v2/resource/grouped_light/\(groupedLightId)"
+        )
+        return response.data.first
     }
 
     // MARK: - Control Methods
@@ -211,7 +233,7 @@ public actor HueAPIService {
         request.timeoutInterval = 10.0
         request.httpBody = jsonData
 
-        let (_, response) = try await session.data(for: request, delegate: sessionDelegate)
+        let (_, response) = try await restSession.data(for: request, delegate: restSessionDelegate)
 
         // Validate HTTP response
         guard let httpResponse = response as? HTTPURLResponse else {
@@ -255,7 +277,7 @@ public actor HueAPIService {
         request.timeoutInterval = 10.0
         request.httpBody = jsonData
 
-        let (_, response) = try await session.data(for: request, delegate: sessionDelegate)
+        let (_, response) = try await restSession.data(for: request, delegate: restSessionDelegate)
 
         // Validate HTTP response
         guard let httpResponse = response as? HTTPURLResponse else {
@@ -302,7 +324,7 @@ public actor HueAPIService {
         request.timeoutInterval = 10.0
         request.httpBody = jsonData
 
-        let (_, response) = try await session.data(for: request, delegate: sessionDelegate)
+        let (_, response) = try await restSession.data(for: request, delegate: restSessionDelegate)
 
         // Validate HTTP response
         guard let httpResponse = response as? HTTPURLResponse else {
@@ -348,7 +370,7 @@ public actor HueAPIService {
         request.timeoutInterval = 10.0
         request.httpBody = jsonData
 
-        let (_, response) = try await session.data(for: request, delegate: sessionDelegate)
+        let (_, response) = try await restSession.data(for: request, delegate: restSessionDelegate)
 
         // Validate HTTP response
         guard let httpResponse = response as? HTTPURLResponse else {
@@ -377,7 +399,7 @@ public actor HueAPIService {
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.timeoutInterval = 10.0
 
-        let (_, response) = try await session.data(for: request, delegate: sessionDelegate)
+        let (_, response) = try await restSession.data(for: request, delegate: restSessionDelegate)
 
         // Validate HTTP response
         guard let httpResponse = response as? HTTPURLResponse else {
@@ -423,7 +445,7 @@ public actor HueAPIService {
         streamStateSubject.send(.connecting)
 
         do {
-            let (bytes, response) = try await session.bytes(for: request, delegate: sessionDelegate)
+            let (bytes, response) = try await streamSession.bytes(for: request, delegate: streamSessionDelegate)
 
             // Validate HTTP response
             guard let httpResponse = response as? HTTPURLResponse else {
