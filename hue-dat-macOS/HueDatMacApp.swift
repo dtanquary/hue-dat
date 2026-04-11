@@ -30,7 +30,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     // Strong references to prevent premature deallocation
     var hostingController: NSHostingController<AnyView>?
-    var popoverEnvironment: PopoverEnvironment?
+    var resizeHandle: PopoverResizeHandle?
 
     // Re-entrancy guard for closePopover (prevents crash from simultaneous close triggers)
     private var isClosingPopover = false
@@ -127,16 +127,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         debugLog("🚀 showPopover() - creating content view")
 
-        // Store popover environment as property to prevent premature deallocation
-        debugLog("🚀 showPopover() - creating PopoverEnvironment")
-        popoverEnvironment = PopoverEnvironment(popover: popover)
-        debugLog("🚀 showPopover() - PopoverEnvironment created")
-
         // Recreate content view controller for fresh material rendering
         debugLog("🚀 showPopover() - creating MenuBarPanelView")
         let contentView = MenuBarPanelView()
             .environment(bridgeManager)
-            .environment(popoverEnvironment!)
 
         // Store hosting controller as property to ensure it stays alive
         debugLog("🚀 showPopover() - creating NSHostingController")
@@ -150,6 +144,22 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         popover.contentSize = savedSize
         popover.contentViewController = hostingController
         debugLog("🚀 showPopover() - NSHostingController created and assigned with saved size: \(savedSize)")
+
+        // Add resize handle as native AppKit subview (outside SwiftUI lifecycle).
+        // This avoids the NSViewRepresentable updateNSView feedback loop.
+        let handle = PopoverResizeHandle()
+        handle.popover = popover
+        handle.translatesAutoresizingMaskIntoConstraints = false
+        let hostView = hostingController!.view
+        hostView.addSubview(handle, positioned: .above, relativeTo: nil)
+        NSLayoutConstraint.activate([
+            handle.leadingAnchor.constraint(equalTo: hostView.leadingAnchor),
+            handle.trailingAnchor.constraint(equalTo: hostView.trailingAnchor),
+            handle.bottomAnchor.constraint(equalTo: hostView.bottomAnchor),
+            handle.heightAnchor.constraint(equalToConstant: 8)
+        ])
+        resizeHandle = handle
+        debugLog("🚀 showPopover() - native resize handle added")
 
         // Critical: Activate app to ensure transient behavior works
         debugLog("🚀 showPopover() - activating app")
@@ -213,18 +223,19 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // This prevents the popover's internal teardown from racing with our deallocation.
         popover?.contentViewController = nil
 
-        // Defer cleanup of SwiftUI hosting controller and environment to the next run loop
+        // Clean up native resize handle
+        resizeHandle?.removeFromSuperview()
+        resizeHandle = nil
+
+        // Defer cleanup of SwiftUI hosting controller to the next run loop
         // iteration, ensuring the popover's window animation and teardown complete first.
         // Then resume SSE event listeners once teardown is complete.
         let hc = hostingController
-        let pe = popoverEnvironment
         hostingController = nil
-        popoverEnvironment = nil
         DispatchQueue.main.async { [weak self] in
-            // These references are captured solely to extend their lifetime past the
-            // popover's close animation. They are released here after teardown completes.
+            // This reference is captured solely to extend its lifetime past the
+            // popover's close animation. It is released here after teardown completes.
             _ = hc
-            _ = pe
 
             // Resume SSE event listeners now that the view hierarchy is fully torn down.
             // Events will update BridgeManager state in the background for the next open.

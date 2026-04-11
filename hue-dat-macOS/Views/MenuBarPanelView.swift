@@ -10,8 +10,6 @@ import HueDatShared
 
 struct MenuBarPanelView: View {
     @Environment(BridgeManager.self) var bridgeManager
-    @Environment(PopoverEnvironment.self) var popoverEnvironment
-
     @State private var showBridgeSetup = false
     @State private var selectedRoomId: String?
     @State private var selectedZoneId: String?
@@ -85,15 +83,8 @@ struct MenuBarPanelView: View {
             }
         }
         .frame(width: 320)
-        .frame(minHeight: 292, maxHeight: 992)  // Account for 8pt handle
+        .frame(maxHeight: .infinity)
         .background(.ultraThinMaterial)
-        .overlay(alignment: .bottom) {
-            // Add resize handle at the bottom
-            if let popover = popoverEnvironment.popover {
-                ResizeHandleView(popover: popover)
-                    .frame(height: 8)
-            }
-        }
         .sheet(isPresented: $showBridgeSetup) {
             BridgeSetupView_macOS()
                 .environment(bridgeManager)
@@ -132,5 +123,4 @@ struct MenuBarPanelView: View {
 #Preview {
     MenuBarPanelView()
         .environment(BridgeManager())
-        .environment(PopoverEnvironment())
 }
