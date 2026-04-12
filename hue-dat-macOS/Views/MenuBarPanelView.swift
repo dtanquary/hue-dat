@@ -83,7 +83,7 @@ struct MenuBarPanelView: View {
             }
         }
         .frame(width: 320)
-        .frame(maxHeight: .infinity)
+        .frame(minHeight: 300, maxHeight: 1000)
         .background(.ultraThinMaterial)
         .sheet(isPresented: $showBridgeSetup) {
             BridgeSetupView_macOS()

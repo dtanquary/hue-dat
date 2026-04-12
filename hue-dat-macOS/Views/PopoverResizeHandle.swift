@@ -17,6 +17,13 @@ class PopoverResizeHandle: NSView {
 
     private let minHeight: CGFloat = 300
 
+    // Throttle resize updates to reduce layout churn
+    private var lastResizeTime: CFAbsoluteTime = 0
+    private let resizeInterval: CFAbsoluteTime = 1.0 / 60.0
+
+    // Track the target height so mouseUp can snap to exact position
+    private var pendingHeight: CGFloat = 0
+
     // Get dynamic max height based on screen
     private var maxHeight: CGFloat {
         PopoverSizeManager.shared.dynamicMaxHeight
@@ -92,40 +99,28 @@ class PopoverResizeHandle: NSView {
     override func mouseDown(with event: NSEvent) {
         isDragging = true
         dragStartMouseY = NSEvent.mouseLocation.y
-        dragStartHeight = popover?.contentViewController?.view.window?.frame.size.height
-            ?? popover?.contentSize.height ?? 480
+        dragStartHeight = popover?.contentSize.height ?? 480
+        pendingHeight = dragStartHeight
+        lastResizeTime = 0
         NSCursor.resizeUpDown.push()
-
-        // Disable window animations for the duration of the drag
-        if let window = popover?.contentViewController?.view.window {
-            window.animationBehavior = .none
-        }
     }
 
     override func mouseDragged(with event: NSEvent) {
-        guard isDragging,
-              let window = popover?.contentViewController?.view.window else { return }
+        guard isDragging, let popover = popover else { return }
 
         let currentMouseY = NSEvent.mouseLocation.y
         let deltaY = dragStartMouseY - currentMouseY
 
         // Direct manipulation: drag down (deltaY positive) = taller, drag up (deltaY negative) = shorter
         let newHeight = max(minHeight, min(maxHeight, dragStartHeight + deltaY))
+        pendingHeight = newHeight
 
-        // Resize the popover's underlying window directly.
-        // This bypasses popover.contentSize, which would trigger
-        // NSHostingController re-layout and cause flickering.
-        CATransaction.begin()
-        CATransaction.setDisableActions(true)
+        // Throttle: skip this frame if too soon since last update
+        let now = CFAbsoluteTimeGetCurrent()
+        guard now - lastResizeTime >= resizeInterval else { return }
+        lastResizeTime = now
 
-        var frame = window.frame
-        let heightDelta = newHeight - frame.size.height
-        // Popover grows downward from menu bar, so adjust origin upward
-        frame.origin.y -= heightDelta
-        frame.size.height = newHeight
-        window.setFrame(frame, display: true, animate: false)
-
-        CATransaction.commit()
+        applyHeight(newHeight, to: popover)
     }
 
     override func mouseUp(with event: NSEvent) {
@@ -133,21 +128,32 @@ class PopoverResizeHandle: NSView {
         isDragging = false
         NSCursor.pop()
 
-        guard let popover = popover,
-              let window = popover.contentViewController?.view.window else { return }
+        // Apply final height (un-throttled) to snap to exact drag position
+        if let popover = popover {
+            applyHeight(pendingHeight, to: popover)
+        }
 
-        let finalHeight = window.frame.size.height
+        PopoverSizeManager.shared.saveHeight(pendingHeight)
+    }
 
-        // Restore window animation behavior
-        window.animationBehavior = .utilityWindow
+    /// Apply a height to the popover with all animations suppressed.
+    private func applyHeight(_ height: CGFloat, to popover: NSPopover) {
+        let newSize = NSSize(width: 320, height: height)
 
-        // Commit the final size through popover.contentSize once (single layout pass)
+        // Suppress all implicit animations at both Core Animation and AppKit levels
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+
         NSAnimationContext.beginGrouping()
         NSAnimationContext.current.duration = 0
         NSAnimationContext.current.allowsImplicitAnimation = false
-        popover.contentSize = NSSize(width: 320, height: finalHeight)
-        NSAnimationContext.endGrouping()
 
-        PopoverSizeManager.shared.saveHeight(finalHeight)
+        // Set both contentSize and preferredContentSize to prevent the
+        // hosting controller's intrinsic size from fighting the popover
+        popover.contentViewController?.preferredContentSize = newSize
+        popover.contentSize = newSize
+
+        NSAnimationContext.endGrouping()
+        CATransaction.commit()
     }
 }
