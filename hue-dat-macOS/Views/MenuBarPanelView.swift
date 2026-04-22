@@ -16,74 +16,80 @@ struct MenuBarPanelView: View {
     @State private var showingSettings = false
 
     var body: some View {
-        ZStack {
-            if let roomId = selectedRoomId {
-                // Room detail view
-                GroupDetailView_macOS<HueRoom>(
-                    groupId: roomId,
-                    onBack: {
-                        withAnimation(.easeInOut(duration: 0.2)) {
-                            selectedRoomId = nil
+        VStack(spacing: 0) {
+            ZStack {
+                if let roomId = selectedRoomId {
+                    // Room detail view
+                    GroupDetailView_macOS<HueRoom>(
+                        groupId: roomId,
+                        onBack: {
+                            withAnimation(.easeInOut(duration: 0.2)) {
+                                selectedRoomId = nil
+                            }
                         }
-                    }
-                )
-                .transition(.asymmetric(
-                    insertion: .move(edge: .trailing),
-                    removal: .move(edge: .leading)
-                ))
-            } else if let zoneId = selectedZoneId {
-                // Zone detail view
-                GroupDetailView_macOS<HueZone>(
-                    groupId: zoneId,
-                    onBack: {
-                        withAnimation(.easeInOut(duration: 0.2)) {
-                            selectedZoneId = nil
+                    )
+                    .transition(.asymmetric(
+                        insertion: .move(edge: .trailing),
+                        removal: .move(edge: .leading)
+                    ))
+                } else if let zoneId = selectedZoneId {
+                    // Zone detail view
+                    GroupDetailView_macOS<HueZone>(
+                        groupId: zoneId,
+                        onBack: {
+                            withAnimation(.easeInOut(duration: 0.2)) {
+                                selectedZoneId = nil
+                            }
                         }
-                    }
-                )
-                .transition(.asymmetric(
-                    insertion: .move(edge: .trailing),
-                    removal: .move(edge: .leading)
-                ))
-            } else if showingSettings {
-                // Settings view
-                SettingsView_macOS(
-                    onBack: {
-                        withAnimation(.easeInOut(duration: 0.2)) {
-                            showingSettings = false
+                    )
+                    .transition(.asymmetric(
+                        insertion: .move(edge: .trailing),
+                        removal: .move(edge: .leading)
+                    ))
+                } else if showingSettings {
+                    // Settings view
+                    SettingsView_macOS(
+                        onBack: {
+                            withAnimation(.easeInOut(duration: 0.2)) {
+                                showingSettings = false
+                            }
                         }
-                    }
-                )
-                .transition(.asymmetric(
-                    insertion: .move(edge: .trailing),
-                    removal: .move(edge: .leading)
-                ))
-            } else if bridgeManager.isConnected {
-                // Connected state - show rooms and zones list
-                RoomsZonesListView_macOS(
-                    onRoomSelected: { room in
-                        withAnimation(.easeInOut(duration: 0.2)) {
-                            selectedRoomId = room.id
+                    )
+                    .transition(.asymmetric(
+                        insertion: .move(edge: .trailing),
+                        removal: .move(edge: .leading)
+                    ))
+                } else if bridgeManager.isConnected {
+                    // Connected state - show rooms and zones list
+                    RoomsZonesListView_macOS(
+                        onRoomSelected: { room in
+                            withAnimation(.easeInOut(duration: 0.2)) {
+                                selectedRoomId = room.id
+                            }
+                        },
+                        onZoneSelected: { zone in
+                            withAnimation(.easeInOut(duration: 0.2)) {
+                                selectedZoneId = zone.id
+                            }
+                        },
+                        onSettingsSelected: {
+                            withAnimation(.easeInOut(duration: 0.2)) {
+                                showingSettings = true
+                            }
                         }
-                    },
-                    onZoneSelected: { zone in
-                        withAnimation(.easeInOut(duration: 0.2)) {
-                            selectedZoneId = zone.id
-                        }
-                    },
-                    onSettingsSelected: {
-                        withAnimation(.easeInOut(duration: 0.2)) {
-                            showingSettings = true
-                        }
-                    }
-                )
-            } else {
-                // Not connected - show setup
-                disconnectedView
+                    )
+                } else {
+                    // Not connected - show setup
+                    disconnectedView
+                }
             }
+            .frame(maxHeight: .infinity)
+
+            // Resize handle bar at the bottom
+            resizeBar
         }
         .frame(width: 320)
-        .frame(minHeight: 300, maxHeight: 1000)
+        .frame(maxHeight: .infinity)
         .background(.ultraThinMaterial)
         .sheet(isPresented: $showBridgeSetup) {
             BridgeSetupView_macOS()
@@ -92,6 +98,19 @@ struct MenuBarPanelView: View {
         // Note: About dialog is shown via NSWindow in AppDelegate (accessed from context menu)
         // Note: SSE lifecycle is now managed by AppDelegate for persistent background connection
         // The panel only needs to show connection status, not manage the stream
+    }
+
+    /// Visual-only resize bar. Drag interaction is handled by the AppDelegate's event monitor.
+    private var resizeBar: some View {
+        VStack(spacing: 0) {
+            Divider()
+            RoundedRectangle(cornerRadius: 2)
+                .fill(Color.secondary.opacity(0.4))
+                .frame(width: 36, height: 4)
+                .padding(.vertical, 6)
+        }
+        .frame(maxWidth: .infinity)
+        .frame(height: 16)
     }
 
     private var disconnectedView: some View {

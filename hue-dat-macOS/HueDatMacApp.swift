@@ -30,6 +30,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     // Strong references to prevent premature deallocation
     var hostingController: NSHostingController<AnyView>?
+    var containerViewController: NSViewController?
     var resizeHandle: PopoverResizeHandle?
 
     // Re-entrancy guard for closePopover (prevents crash from simultaneous close triggers)
@@ -132,34 +133,59 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         let contentView = MenuBarPanelView()
             .environment(bridgeManager)
 
-        // Store hosting controller as property to ensure it stays alive
+        // Build view hierarchy:
+        //   containerController.view (plain NSView)
+        //   ├── hostingController.view (NSHostingView for SwiftUI content) — fills container
+        //   └── resizeHandle (NSView) — bottom 16pt, positioned above
+        //
+        // Making the handle a SIBLING of the NSHostingView (not a subview of it)
+        // keeps it outside SwiftUI's hit-test path — NSHostingView in recent SDKs
+        // can swallow or reroute events destined for its own descendant subviews,
+        // which is why adding the handle inside the hosting view wasn't working.
         debugLog("🚀 showPopover() - creating NSHostingController")
         hostingController = NSHostingController(rootView: AnyView(contentView))
+        hostingController!.sizingOptions = []  // Prevent SwiftUI layout from overriding popover size
 
-        // Set preferred size BEFORE assigning to popover — otherwise NSPopover
-        // adopts the hosting controller's intrinsic size (from SwiftUI frame modifiers),
-        // discarding the user's saved height.
         let savedSize = PopoverSizeManager.shared.contentSize
-        hostingController!.preferredContentSize = savedSize
-        popover.contentSize = savedSize
-        popover.contentViewController = hostingController
-        debugLog("🚀 showPopover() - NSHostingController created and assigned with saved size: \(savedSize)")
 
-        // Add resize handle as native AppKit subview (outside SwiftUI lifecycle).
-        // This avoids the NSViewRepresentable updateNSView feedback loop.
+        // Plain NSView container
+        let container = NSView(frame: NSRect(origin: .zero, size: savedSize))
+        container.autoresizingMask = [.width, .height]
+
+        let containerController = NSViewController()
+        containerController.view = container
+        containerController.preferredContentSize = savedSize
+        containerController.addChild(hostingController!)
+
+        // SwiftUI content fills the container
+        let hostView = hostingController!.view
+        hostView.translatesAutoresizingMaskIntoConstraints = false
+        container.addSubview(hostView)
+        NSLayoutConstraint.activate([
+            hostView.leadingAnchor.constraint(equalTo: container.leadingAnchor),
+            hostView.trailingAnchor.constraint(equalTo: container.trailingAnchor),
+            hostView.topAnchor.constraint(equalTo: container.topAnchor),
+            hostView.bottomAnchor.constraint(equalTo: container.bottomAnchor)
+        ])
+
+        // Resize handle as sibling on top, pinned to the bottom 16pt
         let handle = PopoverResizeHandle()
         handle.popover = popover
         handle.translatesAutoresizingMaskIntoConstraints = false
-        let hostView = hostingController!.view
-        hostView.addSubview(handle, positioned: .above, relativeTo: nil)
+        container.addSubview(handle, positioned: .above, relativeTo: nil)
         NSLayoutConstraint.activate([
-            handle.leadingAnchor.constraint(equalTo: hostView.leadingAnchor),
-            handle.trailingAnchor.constraint(equalTo: hostView.trailingAnchor),
-            handle.bottomAnchor.constraint(equalTo: hostView.bottomAnchor),
-            handle.heightAnchor.constraint(equalToConstant: 8)
+            handle.leadingAnchor.constraint(equalTo: container.leadingAnchor),
+            handle.trailingAnchor.constraint(equalTo: container.trailingAnchor),
+            handle.bottomAnchor.constraint(equalTo: container.bottomAnchor),
+            handle.heightAnchor.constraint(equalToConstant: 16)
         ])
         resizeHandle = handle
-        debugLog("🚀 showPopover() - native resize handle added")
+
+        // Hand the container (not the raw hostingController) to the popover.
+        popover.contentSize = savedSize
+        popover.contentViewController = containerController
+        containerViewController = containerController
+        debugLog("🚀 showPopover() - container + hosting + handle assembled; savedSize: \(savedSize)")
 
         // Critical: Activate app to ensure transient behavior works
         debugLog("🚀 showPopover() - activating app")
@@ -223,9 +249,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // This prevents the popover's internal teardown from racing with our deallocation.
         popover?.contentViewController = nil
 
-        // Clean up native resize handle
+        // Clean up native resize handle and container controller
         resizeHandle?.removeFromSuperview()
         resizeHandle = nil
+        containerViewController = nil
 
         // Defer cleanup of SwiftUI hosting controller to the next run loop
         // iteration, ensuring the popover's window animation and teardown complete first.

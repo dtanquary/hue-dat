@@ -2,7 +2,9 @@
 //  PopoverResizeHandle.swift
 //  hue dat macOS
 //
-//  Custom NSView that provides a resize handle for the popover
+//  Transparent NSView overlaid on the bottom of the popover's hosting view.
+//  Captures drag to resize the popover; the visible handle UI is rendered
+//  by SwiftUI in MenuBarPanelView underneath this view.
 //
 
 import AppKit
@@ -14,17 +16,13 @@ class PopoverResizeHandle: NSView {
     private var isDragging = false
     private var dragStartMouseY: CGFloat = 0
     private var dragStartHeight: CGFloat = 0
+    private var pendingHeight: CGFloat = 0
 
     private let minHeight: CGFloat = 300
 
-    // Throttle resize updates to reduce layout churn
     private var lastResizeTime: CFAbsoluteTime = 0
     private let resizeInterval: CFAbsoluteTime = 1.0 / 60.0
 
-    // Track the target height so mouseUp can snap to exact position
-    private var pendingHeight: CGFloat = 0
-
-    // Get dynamic max height based on screen
     private var maxHeight: CGFloat {
         PopoverSizeManager.shared.dynamicMaxHeight
     }
@@ -43,19 +41,18 @@ class PopoverResizeHandle: NSView {
 
     private func setupView() {
         wantsLayer = true
-        // Transparent background - invisible but still captures mouse events
-        layer?.backgroundColor = NSColor.clear.cgColor
+        // DEBUG: semi-transparent red so we can visually confirm placement + z-order.
+        // Swap back to NSColor.clear once drag/cursor are confirmed working.
+        layer?.backgroundColor = NSColor.systemRed.withAlphaComponent(0.35).cgColor
     }
 
     override func updateTrackingAreas() {
         super.updateTrackingAreas()
 
-        // Remove old tracking area
         if let existingArea = trackingArea {
             removeTrackingArea(existingArea)
         }
 
-        // Create new tracking area for cursor updates
         let options: NSTrackingArea.Options = [
             .mouseEnteredAndExited,
             .mouseMoved,
@@ -63,46 +60,46 @@ class PopoverResizeHandle: NSView {
             .cursorUpdate
         ]
 
-        trackingArea = NSTrackingArea(
+        let area = NSTrackingArea(
             rect: bounds,
             options: options,
             owner: self,
             userInfo: nil
         )
-
-        if let area = trackingArea {
-            addTrackingArea(area)
-        }
+        addTrackingArea(area)
+        trackingArea = area
     }
 
     override func cursorUpdate(with event: NSEvent) {
+        debugLogSync("🟥 PopoverResizeHandle.cursorUpdate")
         NSCursor.resizeUpDown.set()
     }
 
     override func mouseEntered(with event: NSEvent) {
+        debugLogSync("🟥 PopoverResizeHandle.mouseEntered")
         NSCursor.resizeUpDown.set()
     }
 
     override func mouseExited(with event: NSEvent) {
+        debugLogSync("🟥 PopoverResizeHandle.mouseExited")
         NSCursor.arrow.set()
-    }
-
-    override func mouseMoved(with event: NSEvent) {
     }
 
     override var acceptsFirstResponder: Bool { true }
 
-    override func acceptsFirstMouse(for event: NSEvent?) -> Bool {
-        return true
-    }
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 
     override func mouseDown(with event: NSEvent) {
+        debugLogSync("🟥 PopoverResizeHandle.mouseDown")
         isDragging = true
         dragStartMouseY = NSEvent.mouseLocation.y
         dragStartHeight = popover?.contentSize.height ?? 480
         pendingHeight = dragStartHeight
         lastResizeTime = 0
         NSCursor.resizeUpDown.push()
+
+        // Disable NSPopover's animation during drag to eliminate flicker.
+        popover?.animates = false
     }
 
     override func mouseDragged(with event: NSEvent) {
@@ -111,11 +108,11 @@ class PopoverResizeHandle: NSView {
         let currentMouseY = NSEvent.mouseLocation.y
         let deltaY = dragStartMouseY - currentMouseY
 
-        // Direct manipulation: drag down (deltaY positive) = taller, drag up (deltaY negative) = shorter
+        // Drag down (deltaY positive) = taller, drag up = shorter.
         let newHeight = max(minHeight, min(maxHeight, dragStartHeight + deltaY))
         pendingHeight = newHeight
 
-        // Throttle: skip this frame if too soon since last update
+        // Throttle to ~60fps to reduce layout churn.
         let now = CFAbsoluteTimeGetCurrent()
         guard now - lastResizeTime >= resizeInterval else { return }
         lastResizeTime = now
@@ -128,28 +125,28 @@ class PopoverResizeHandle: NSView {
         isDragging = false
         NSCursor.pop()
 
-        // Apply final height (un-throttled) to snap to exact drag position
-        if let popover = popover {
-            applyHeight(pendingHeight, to: popover)
-        }
+        guard let popover = popover else { return }
+
+        // Apply final (un-throttled) height so the popover snaps to the exact release position.
+        applyHeight(pendingHeight, to: popover)
+        popover.animates = true
 
         PopoverSizeManager.shared.saveHeight(pendingHeight)
     }
 
-    /// Apply a height to the popover with all animations suppressed.
+    /// Apply a height to the popover with all implicit animations suppressed.
+    /// Sets both `contentSize` and the view controller's `preferredContentSize`
+    /// so NSPopover propagates the change through the window + content view
+    /// instead of just nudging the window frame.
     private func applyHeight(_ height: CGFloat, to popover: NSPopover) {
         let newSize = NSSize(width: 320, height: height)
 
-        // Suppress all implicit animations at both Core Animation and AppKit levels
         CATransaction.begin()
         CATransaction.setDisableActions(true)
-
         NSAnimationContext.beginGrouping()
         NSAnimationContext.current.duration = 0
         NSAnimationContext.current.allowsImplicitAnimation = false
 
-        // Set both contentSize and preferredContentSize to prevent the
-        // hosting controller's intrinsic size from fighting the popover
         popover.contentViewController?.preferredContentSize = newSize
         popover.contentSize = newSize
 

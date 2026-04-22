@@ -56,17 +56,17 @@
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
-		5538526B2EC6A63B00A20A8E /* hue dat macOS */ = {
+		5538526B2EC6A63B00A20A8E /* hue-dat-macOS */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			path = "hue-dat-macOS";
 			sourceTree = "<group>";
 		};
-		55911FF32EB1DCEC005CED54 /* hue dat Watch App */ = {
+		55911FF32EB1DCEC005CED54 /* hue-dat-Watch-App */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			path = "hue-dat-Watch-App";
 			sourceTree = "<group>";
 		};
-		55F135C92ECC08B90010F7E1 /* hue dat iOS */ = {
+		55F135C92ECC08B90010F7E1 /* hue-dat-iOS */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			path = "hue-dat-iOS";
 			sourceTree = "<group>";
@@ -105,9 +105,9 @@
 			isa = PBXGroup;
 			children = (
 				55A147472ECEB9840059EA7B /* Assets.xcassets */,
-				55911FF32EB1DCEC005CED54 /* hue dat Watch App */,
-				5538526B2EC6A63B00A20A8E /* hue dat macOS */,
-				55F135C92ECC08B90010F7E1 /* hue dat iOS */,
+				55911FF32EB1DCEC005CED54 /* hue-dat-Watch-App */,
+				5538526B2EC6A63B00A20A8E /* hue-dat-macOS */,
+				55F135C92ECC08B90010F7E1 /* hue-dat-iOS */,
 				55911FEA2EB1DCEC005CED54 /* Products */,
 				551B08932EC3DAF800018F3B /* AppIcon.icon */,
 				55FBB8282EC6953B008B438C /* Frameworks */,
@@ -151,7 +151,7 @@
 			dependencies = (
 			);
 			fileSystemSynchronizedGroups = (
-				5538526B2EC6A63B00A20A8E /* hue dat macOS */,
+				5538526B2EC6A63B00A20A8E /* hue-dat-macOS */,
 			);
 			name = "hue dat macOS";
 			packageProductDependencies = (
@@ -193,7 +193,7 @@
 			dependencies = (
 			);
 			fileSystemSynchronizedGroups = (
-				55911FF32EB1DCEC005CED54 /* hue dat Watch App */,
+				55911FF32EB1DCEC005CED54 /* hue-dat-Watch-App */,
 			);
 			name = "hue dat Watch App";
 			packageProductDependencies = (
@@ -216,7 +216,7 @@
 			dependencies = (
 			);
 			fileSystemSynchronizedGroups = (
-				55F135C92ECC08B90010F7E1 /* hue dat iOS */,
+				55F135C92ECC08B90010F7E1 /* hue-dat-iOS */,
 			);
 			name = "hue dat iOS";
 			packageProductDependencies = (
@@ -250,7 +250,7 @@
 					};
 				};
 			};
-			buildConfigurationList = 55911FE62EB1DCEB005CED54 /* Build configuration list for PBXProject "hue dat" */;
+			buildConfigurationList = 55911FE62EB1DCEB005CED54 /* Build configuration list for PBXProject "hue-dat" */;
 			developmentRegion = en;
 			hasScannedForEncodings = 0;
 			knownRegions = (
@@ -788,7 +788,7 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
-		55911FE62EB1DCEB005CED54 /* Build configuration list for PBXProject "hue dat" */ = {
+		55911FE62EB1DCEB005CED54 /* Build configuration list for PBXProject "hue-dat" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				55911FFA2EB1DCED005CED54 /* Debug */,
