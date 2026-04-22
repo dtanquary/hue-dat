@@ -8,6 +8,7 @@
 import SwiftUI
 import HueDatShared
 import AppKit
+import Combine
 
 @main
 struct HueDatMacApp: App {
@@ -43,6 +44,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private var lastWakeTimestamp: Date?
     private let minimumDelayAfterWake: TimeInterval = 3.0  // 3 seconds
 
+    // Subscription that keeps isSSEStreamActive in sync with the actual stream state.
+    // Without this, a mid-flight error leaves the flag stuck at true, blocking restart.
+    private var streamStateCancellable: AnyCancellable?
+
     func applicationDidFinishLaunching(_ notification: Notification) {
         // Initialize debug logger FIRST, then install crash handlers
         debugLog("🚀 applicationDidFinishLaunching - starting up")
@@ -69,6 +74,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         // Create popover for main panel
         setupPopover()
+
+        // Keep isSSEStreamActive in sync with real stream state. Must be installed
+        // before initializeSSEConnection so the subscription catches the first
+        // .connecting/.connected emissions.
+        observeStreamStateForActiveFlag()
 
         // Start SSE stream in background if bridge is connected
         Task {
@@ -586,6 +596,25 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private func handleConnectionLost() async {
         debugLog("🔌 Bridge disconnected - stopping SSE stream...")
         await stopSSEStream()
+    }
+
+    private func observeStreamStateForActiveFlag() {
+        Task { @MainActor [weak self] in
+            guard let self = self else { return }
+            let service = HueAPIService.shared
+            let subject = await service.streamStateSubject
+            self.streamStateCancellable = subject
+                .receive(on: DispatchQueue.main)
+                .sink { [weak self] state in
+                    guard let self = self else { return }
+                    switch state {
+                    case .disconnected, .error, .idle:
+                        self.isSSEStreamActive = false
+                    case .connected, .connecting:
+                        break
+                    }
+                }
+        }
     }
 
     private func startSSEStream() async {

@@ -73,8 +73,10 @@ public actor HueAPIService {
     public var baseURL = ""
     public var hueApplicationKey = ""
 
-    // Combine publisher for stream state changes (thread-safe)
-    public let streamStateSubject = PassthroughSubject<StreamState, Never>()
+    // Combine publisher for stream state changes (thread-safe).
+    // CurrentValueSubject replays the latest state to new subscribers — critical
+    // so that UI indicators rebuilt on popover open/close immediately reflect reality.
+    public let streamStateSubject = CurrentValueSubject<StreamState, Never>(.idle)
 
     // Combine publisher for parsed SSE events (thread-safe)
     public let eventPublisher = PassthroughSubject<[SSEEvent], Never>()
@@ -511,8 +513,10 @@ public actor HueAPIService {
             AppLogger.sse.info("SSE stream ended")
 
         } catch is CancellationError {
-            // Clean cancellation
-            streamStateSubject.send(.disconnected(nil))
+            // Intentional cancel. The caller that triggered the cancellation already
+            // owns the state transition (stopEventStream → .idle, or startEventStream
+            // about to publish .connecting on the new task). Publishing .disconnected
+            // here would race those transitions and trigger spurious reconnects.
             AppLogger.sse.info("SSE stream cancelled")
         } catch let error as URLError where error.code == .networkConnectionLost {
             // Network connection lost - common during network transitions

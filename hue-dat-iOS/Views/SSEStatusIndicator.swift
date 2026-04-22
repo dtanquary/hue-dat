@@ -27,13 +27,8 @@ struct SSEStatusIndicator: View {
         }
         .onAppear {
             debugLog("🟢 SSE Status Indicator appeared - subscribing to stream state")
-
-            // Set initial state based on BridgeManager's connection status
-            if bridgeManager.isSSEConnected {
-                streamState = .connected
-                debugLog("🟢 SSE Status Indicator: Initial state set to connected")
-            }
-
+            // CurrentValueSubject replays the current state on subscribe, so
+            // no manual initial-state hack is needed.
             subscribeToStreamState()
         }
         .onDisappear {

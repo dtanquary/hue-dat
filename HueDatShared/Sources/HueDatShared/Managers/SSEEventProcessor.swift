@@ -108,9 +108,33 @@ public class SSEEventProcessor {
                     .sink { [weak self] state in
                         guard let self = self, let bm = self.bridgeManager else { return }
 
+                        // Any successful connection clears the backoff counter, regardless
+                        // of which code path got us here (auto-reconnect, wake-from-sleep
+                        // restart, manual retry). Without this, the counter can accumulate
+                        // until < maxReconnectAttempts is false and reconnection dies silently.
+                        if state == .connected {
+                            bm.reconnectAttempts = 0
+                        }
                         bm.isSSEConnected = (state == .connected)
 
-                        if case .disconnected = state, bm.reconnectAttempts < self.maxReconnectAttempts {
+                        // Reconnect on any non-fatal terminal state. .disconnected covers
+                        // network loss and normal stream end; .error covers HTTP 5xx and
+                        // generic URL errors. Skip fatal config errors (bad URL, auth).
+                        let shouldReconnect: Bool = {
+                            switch state {
+                            case .disconnected:
+                                return true
+                            case .error(let message):
+                                if message == "Invalid URL" { return false }
+                                if message.hasPrefix("HTTP 401") { return false }
+                                if message.hasPrefix("HTTP 403") { return false }
+                                return true
+                            default:
+                                return false
+                            }
+                        }()
+
+                        if shouldReconnect, bm.reconnectAttempts < self.maxReconnectAttempts {
                             Task.detached { [weak self] in
                                 guard let self = self else { return }
                                 await self.handleReconnection()

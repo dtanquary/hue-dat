@@ -38,11 +38,8 @@ struct SSEStatusIndicator: View {
         }
         .help(tooltipForState)
         .onAppear {
-            // Set initial state based on BridgeManager's connection status
-            if bridgeManager.isSSEConnected {
-                streamState = .connected
-            }
-
+            // CurrentValueSubject replays the current state on subscribe, so
+            // no manual initial-state hack is needed.
             subscribeToStreamState()
         }
         .onDisappear {
