@@ -41,9 +41,7 @@ class PopoverResizeHandle: NSView {
 
     private func setupView() {
         wantsLayer = true
-        // DEBUG: semi-transparent red so we can visually confirm placement + z-order.
-        // Swap back to NSColor.clear once drag/cursor are confirmed working.
-        layer?.backgroundColor = NSColor.systemRed.withAlphaComponent(0.35).cgColor
+        layer?.backgroundColor = NSColor.clear.cgColor
     }
 
     override func updateTrackingAreas() {
@@ -71,17 +69,14 @@ class PopoverResizeHandle: NSView {
     }
 
     override func cursorUpdate(with event: NSEvent) {
-        debugLogSync("🟥 PopoverResizeHandle.cursorUpdate")
         NSCursor.resizeUpDown.set()
     }
 
     override func mouseEntered(with event: NSEvent) {
-        debugLogSync("🟥 PopoverResizeHandle.mouseEntered")
         NSCursor.resizeUpDown.set()
     }
 
     override func mouseExited(with event: NSEvent) {
-        debugLogSync("🟥 PopoverResizeHandle.mouseExited")
         NSCursor.arrow.set()
     }
 
@@ -90,7 +85,6 @@ class PopoverResizeHandle: NSView {
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 
     override func mouseDown(with event: NSEvent) {
-        debugLogSync("🟥 PopoverResizeHandle.mouseDown")
         isDragging = true
         dragStartMouseY = NSEvent.mouseLocation.y
         dragStartHeight = popover?.contentSize.height ?? 480
