@@ -28,6 +28,8 @@ HueDat is a multi-platform Swift application providing seamless control of Phili
 - **Bulk Light Control** - Manage all lights in rooms/zones simultaneously
 - **Launch at Login** - Optional startup configuration
 
+<img width="349" height="650" alt="Screenshot 2026-04-26 at 6 13 27 AM" src="https://github.com/user-attachments/assets/ff7b03dd-4834-43d0-b43d-d538663a673f" />
+
 ### iOS
 - **Multi-Step Loading** - Visual progress indicators with step-by-step feedback ("Step X of Y")
 - **Animated Bridge Discovery** - Rotating search icon during network discovery
