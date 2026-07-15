@@ -18,12 +18,15 @@ struct PanelHeader<Accessories: View>: View {
     @ViewBuilder var accessories: () -> Accessories
 
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.panelBack) private var panelBack
 
     var body: some View {
         VStack(spacing: 8) {
             HStack(spacing: 6) {
                 if showsBack {
-                    Button(action: { dismiss() }) {
+                    // \.dismiss resolves to nothing inside the NSPopover-hosted
+                    // NavigationStack, so prefer the panel's explicit pop action.
+                    Button(action: { (panelBack ?? { dismiss() })() }) {
                         Image(systemName: "chevron.left")
                             .font(.body.weight(.medium))
                     }
@@ -80,6 +83,21 @@ struct PanelHeader<Accessories: View>: View {
         .padding(.horizontal, 12)
         .padding(.vertical, 10)
         .glassEffect(in: .rect)
+    }
+}
+
+// MARK: - Panel Back Action
+
+/// Pops the panel's NavigationStack path. Supplied by MenuBarPanelView because
+/// \.dismiss doesn't pop a NavigationStack hosted inside an NSPopover.
+private struct PanelBackKey: EnvironmentKey {
+    static let defaultValue: (() -> Void)? = nil
+}
+
+extension EnvironmentValues {
+    var panelBack: (() -> Void)? {
+        get { self[PanelBackKey.self] }
+        set { self[PanelBackKey.self] = newValue }
     }
 }
 

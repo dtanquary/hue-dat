@@ -45,6 +45,9 @@ struct MenuBarPanelView: View {
                     }
                 }
             }
+            .environment(\.panelBack) {
+                if !path.isEmpty { path.removeLast() }
+            }
             .frame(maxHeight: .infinity)
 
             // Resize handle bar at the bottom
