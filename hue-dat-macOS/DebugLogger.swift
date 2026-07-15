@@ -101,8 +101,37 @@ class DebugLogger {
             .appendingPathComponent("huedat_debug_previous.log").path
     }
 
+    // MARK: - Crash auto-relaunch
+
+    // Pre-built at install time so crash handlers never touch Bundle/String/Date APIs.
+    private static let startEpoch = time(nil)
+    private static let relaunchArgv: [UnsafeMutablePointer<CChar>?] = {
+        // sleep lets the dying instance exit first (avoids duplicate menu bar icons)
+        let cmd = "sleep 2; /usr/bin/open \"\(Bundle.main.bundlePath)\""
+        return ["/bin/sh", "-c", cmd].map { strdup($0) } + [nil]
+    }()
+    private static var relaunchScheduled = false
+
+    /// Relaunch the app after a crash so the menu bar item comes back.
+    /// Uses only time()/posix_spawn with pre-built C strings — best-effort
+    /// async-signal-safety, same caveat as the logging in these handlers.
+    /// ponytail: self-relaunch from crash handler; launchd KeepAlive agent if this proves flaky
+    static func scheduleRelaunch() {
+        // One-shot: the exception handler and the SIGABRT handler both fire for the same crash
+        guard !relaunchScheduled else { return }
+        // Crash-loop guard: never relaunch if we crashed within 30s of startup
+        guard time(nil) - startEpoch > 30 else { return }
+        relaunchScheduled = true
+        var pid: pid_t = 0
+        posix_spawn(&pid, relaunchArgv[0], nil, nil, relaunchArgv, nil)
+    }
+
     /// Install signal handlers to capture crash info before the process dies
     func installCrashHandlers() {
+        // Force-init relaunch statics now — lazy static init inside a signal handler could deadlock
+        _ = DebugLogger.startEpoch
+        _ = DebugLogger.relaunchArgv
+
         let signals: [Int32] = [SIGABRT, SIGSEGV, SIGBUS, SIGILL, SIGFPE, SIGTRAP]
         for sig in signals {
             signal(sig) { signalNumber in
@@ -113,6 +142,7 @@ class DebugLogger {
                     try? handle.write(contentsOf: data)
                     try? handle.synchronize()
                 }
+                DebugLogger.scheduleRelaunch()
                 // Re-raise to get default crash behavior (generates crash report)
                 signal(signalNumber, SIG_DFL)
                 raise(signalNumber)
@@ -133,6 +163,7 @@ class DebugLogger {
                 try? handle.write(contentsOf: data)
                 try? handle.synchronize()
             }
+            DebugLogger.scheduleRelaunch()
         }
     }
 
