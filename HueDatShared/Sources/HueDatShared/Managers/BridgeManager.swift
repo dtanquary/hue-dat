@@ -864,23 +864,6 @@ public class BridgeManager {
         }
     }
 
-    /// Update a single GroupedLightContainer in a collection without affecting other items
-    private func updateSingle<T: GroupedLightContainer>(_ item: T, in collection: inout [T], save: () -> Void) {
-        if let index = collection.firstIndex(where: { $0.id == item.id }) {
-            // Update existing item only if data has changed
-            if collection[index] != item {
-                collection[index] = item
-                AppLogger.bridge.debug("Updated \(T.apiGroupType, privacy: .public): \(item.displayName, privacy: .public)")
-                save()
-            }
-        } else {
-            // Item doesn't exist yet - append it
-            collection.append(item)
-            AppLogger.bridge.debug("Added new \(T.apiGroupType, privacy: .public): \(item.displayName, privacy: .public)")
-            save()
-        }
-    }
-
     /// Smart update rooms array - only update changed items to minimize UI flicker
     private func smartUpdateRooms(with newRooms: [HueRoom]) {
         smartUpdate(&rooms, with: newRooms)
@@ -888,21 +871,11 @@ public class BridgeManager {
         saveRoomsToStorage()
     }
 
-    /// Update a single room in the array without affecting other rooms
-    private func updateSingleRoom(_ room: HueRoom) {
-        updateSingle(room, in: &rooms, save: saveRoomsToStorage)
-    }
-
     /// Smart update zones array - only update changed items to minimize UI flicker
     private func smartUpdateZones(with newZones: [HueZone]) {
         smartUpdate(&zones, with: newZones)
         sseProcessor.rebuildGroupedLightToZoneMap()
         saveZonesToStorage()
-    }
-
-    /// Update a single zone in the array without affecting other zones
-    private func updateSingleZone(_ zone: HueZone) {
-        updateSingle(zone, in: &zones, save: saveZonesToStorage)
     }
 
     /// Manual refresh trigger - can be called from UI when control actions occur
