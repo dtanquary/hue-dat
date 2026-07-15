@@ -7,8 +7,6 @@
 
 import SwiftUI
 import HueDatShared
-import AVFoundation
-import AVKit
 
 struct MainMenuView: View {
     var bridgeManager: BridgeManager
@@ -17,13 +15,6 @@ struct MainMenuView: View {
     @State private var showManualEntry = false
     @State private var showRegistrationForManualBridge = false
     @State private var manualBridgeInfo: BridgeInfo?
-
-    // Video player state
-    @State private var player = AVPlayer()
-    @State private var isVideoSetup = false
-    @State private var isViewActive = true
-    @State private var loopObserver: NSObjectProtocol?
-    @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
         Group {
@@ -56,7 +47,6 @@ struct MainMenuView: View {
                                     if discoveryService.isLoading {
                                         ProgressView()
                                             .scaleEffect(0.8)
-                                            .tint(.white)
                                     } else {
                                         Image(systemName: "magnifyingglass")
                                     }
@@ -67,7 +57,7 @@ struct MainMenuView: View {
                             }
                             .disabled(discoveryService.isLoading)
                             .accessibilityLabel("Discover Hue bridges on network")
-                            .glassEffect()
+                            .buttonStyle(.glassProminent)
                             
                             Button {
                                 showManualEntry = true
@@ -81,7 +71,7 @@ struct MainMenuView: View {
                             }
                             .disabled(discoveryService.isLoading)
                             .accessibilityLabel("Manually add a Hue bridge on your network")
-                            .glassEffect()
+                            .buttonStyle(.glass)
                         }
                     }
                     .padding()
@@ -91,34 +81,6 @@ struct MainMenuView: View {
                 }
                 .navigationTitle("Hue Control")
                 .navigationBarTitleDisplayMode(.automatic)
-                .task {
-                    isViewActive = true
-                    await setupVideoAsync()
-                }
-                .onAppear {
-                    isViewActive = true
-                    // Resume playback if already setup
-                    if isVideoSetup && player.rate == 0 {
-                        player.play()
-                    }
-                }
-                .onDisappear {
-                    isViewActive = false
-                    if let observer = loopObserver {
-                        NotificationCenter.default.removeObserver(observer)
-                        loopObserver = nil
-                    }
-                }
-                .onChange(of: scenePhase) { _, newPhase in
-                    switch newPhase {
-                    case .active:
-                        player.play()
-                    case .background, .inactive:
-                        player.pause()
-                    @unknown default:
-                        break
-                    }
-                }
             }
         }
         .sheet(isPresented: $showBridgesList, onDismiss: {
@@ -162,65 +124,7 @@ struct MainMenuView: View {
     // MARK: - Background View
 
     private var backgroundView: some View {
-        ZStack {
-            // Fallback gradient background (shows immediately)
-            LinearGradient(
-                colors: [Color.primary, Color.blue.opacity(0.3), Color.primary],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-
-            // Video overlay if available
-            if isVideoSetup {
-                LoopingVideoPlayer_watchOS(player: player)
-                    .ignoresSafeArea()
-                    .opacity(1)
-            }
-
-            // Dark overlay for button readability
-            Color.black
-                .ignoresSafeArea()
-                .opacity(0.3)
-        }
-    }
-
-    // MARK: - Video Setup
-
-    private func setupVideoAsync() async {
-        guard !isVideoSetup else { return }
-
-        // Load video from asset catalog
-        let videoURL = LoopingVideoPlayer_watchOS.loadVideoURL(named: "light")
-
-        guard let videoURL = videoURL else {
-            debugLog("❌ Failed to load video URL")
-            return
-        }
-
-        await MainActor.run {
-            let playerItem = AVPlayerItem(url: videoURL)
-
-            // Configure player - completely silent to avoid audio interference
-            player.isMuted = true
-            player.volume = 0.0 // Extra safety - ensure no audio
-            player.replaceCurrentItem(with: playerItem)
-
-            // Setup manual looping using notification (AVPlayerLooper not available on watchOS)
-            loopObserver = NotificationCenter.default.addObserver(
-                forName: .AVPlayerItemDidPlayToEndTime,
-                object: playerItem,
-                queue: .main
-            ) { _ in
-                player.seek(to: .zero)
-                player.play()
-            }
-
-            // Mark as setup and start playing immediately
-            isVideoSetup = true
-
-            // Start playing automatically
-            player.play()
-            debugLog("✅ Video player started")
-        }
+        ColorOrbsBackground(brightness: 60, isOn: true)
+            .ignoresSafeArea()
     }
 }

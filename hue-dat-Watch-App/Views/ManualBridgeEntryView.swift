@@ -58,7 +58,7 @@ struct ManualBridgeEntryView: View {
                             .padding(.vertical, 8)
                     }
                     .disabled(ipAddress.isEmpty)
-                    .glassEffect()
+                    .buttonStyle(.glassProminent)
 
                     // Cancel button
                     Button {
@@ -68,7 +68,7 @@ struct ManualBridgeEntryView: View {
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 8)
                     }
-                    .glassEffect()
+                    .buttonStyle(.glass)
                 }
                 .padding()
             }

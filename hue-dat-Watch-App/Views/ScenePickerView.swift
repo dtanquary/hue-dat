@@ -31,7 +31,7 @@ struct ScenePickerView: View {
                         )
                     }
                     .padding(14)
-                    .glassEffect()
+                    .glassEffect(.regular.interactive())
                     .listRowBackground(Color.clear)
                 }
                 .listRowInsets(.init(top: 0, leading: 0, bottom: 0, trailing: 0))
@@ -62,7 +62,7 @@ struct SceneRowView: View {
                 // Scene name
                 Text(scene.metadata.name)
                     .font(.subheadline)
-                    .foregroundStyle(.white)
+                    .foregroundStyle(.primary)
             }
 
             Spacer()

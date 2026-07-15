@@ -94,6 +94,7 @@ struct GroupDetailView<T: GroupedLightContainer>: View {
     @ViewBuilder
     private func groupContent(for group: T) -> some View {
         GeometryReader { outerGeometry in
+            GlassEffectContainer {
             ZStack {
                 // Layer 1: Brightness-controlled orange/grey orb background
                 let groupedLight = group.groupedLights?.first
@@ -116,13 +117,13 @@ struct GroupDetailView<T: GroupedLightContainer>: View {
                     } label: {
                         Image(systemName: "power")
                             .font(.system(size: 48, weight: .bold))
-                            .foregroundStyle(displayIsOn ? .yellow : .gray)
-                            .shadow(color: .black.opacity(0.3), radius: 2, x: 0, y: 1)
+                            .foregroundStyle(displayIsOn ? .yellow : .secondary)
                             .fixedSize() // Prevent icon truncation
                             .padding(20)
                             .contentShape(Circle()) // Circular tap area
                     }
                     .buttonStyle(.plain)
+                    .glassEffect(.regular.interactive(), in: .circle)
                     .handGestureShortcut(.primaryAction, isEnabled: !isTogglingPower)
                     .allowsHitTesting(!isTogglingPower)
                     .onLongPressGesture(minimumDuration: 1.0) {
@@ -155,11 +156,10 @@ struct GroupDetailView<T: GroupedLightContainer>: View {
                                 Image(systemName: "wand.and.stars")
                                     .font(.system(size: 16))
                                     .foregroundStyle(.white)
-                                    .background(Color.clear)
                             }
                             .buttonStyle(.borderless)
                             .padding(8)
-                            .glassEffect()
+                            .glassEffect(.regular.interactive())
 
                             Spacer()
                         }
@@ -175,6 +175,7 @@ struct GroupDetailView<T: GroupedLightContainer>: View {
                         .transition(.opacity.combined(with: .scale(scale: 0.8)))
                         .allowsHitTesting(false) // Popover doesn't need interaction
                 }
+            }
             }
         }
         .sheet(isPresented: $showScenePicker) {
@@ -601,16 +602,15 @@ struct GroupDetailView<T: GroupedLightContainer>: View {
                 Spacer()
 
                 ZStack(alignment: .bottom) {
-                    // Empty bar background
-                    RoundedRectangle(cornerRadius: 4)
-                        .fill(Color.gray.opacity(0.3))
-                        .frame(width: 8)
-
                     // Filled portion based on brightness
-                    RoundedRectangle(cornerRadius: 4)
+                    Rectangle()
                         .fill(displayIsOn ? Color.yellow : Color.gray.opacity(0.5))
-                        .frame(width: 8, height: geometry.size.height * CGFloat(brightness / 100))
+                        .frame(height: geometry.size.height * CGFloat(brightness / 100))
                 }
+                .frame(width: 14)
+                .frame(maxHeight: .infinity)
+                .clipShape(Capsule())
+                .glassEffect(in: .capsule)
                 .padding(.trailing, 8)
                 .contentShape(Rectangle())
                 .gesture(
@@ -638,10 +638,7 @@ struct GroupDetailView<T: GroupedLightContainer>: View {
                     .fontWeight(.medium)
                     .padding(.horizontal, 12)
                     .padding(.vertical, 6)
-                    .background(
-                        RoundedRectangle(cornerRadius: 12)
-                            .fill(.regularMaterial)
-                    )
+                    .glassEffect()
                     .offset(
                         x: -20,
                         y: geometry.size.height * CGFloat(1 - brightness / 100) - 12

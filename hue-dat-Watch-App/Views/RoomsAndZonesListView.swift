@@ -42,7 +42,7 @@ struct RoomsAndZonesListView: View {
                             await refreshData()
                         }
                     }
-                    .buttonStyle(.bordered)
+                    .buttonStyle(.glass)
                 }
                 .padding()
             } else {
@@ -156,19 +156,16 @@ struct RoomsAndZonesListView: View {
         }
         .overlay {
             if !hasLoadedData && bridgeManager.rooms.isEmpty && bridgeManager.zones.isEmpty {
-                ZStack {
-                    Color.black.opacity(0.3)
-                        .ignoresSafeArea()
-
-                    VStack(spacing: loadingSpacing) {
-                        ProgressView()
-                            .progressViewStyle(.circular)
-                            .scaleEffect(1.2)
-                        Text("Loading...")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
+                VStack(spacing: loadingSpacing) {
+                    ProgressView()
+                        .progressViewStyle(.circular)
+                        .scaleEffect(1.2)
+                    Text("Loading...")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
+                .padding(20)
+                .glassEffect(in: .rect(cornerRadius: 16))
             }
         }
         .task {

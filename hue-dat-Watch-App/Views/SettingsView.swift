@@ -57,7 +57,7 @@ struct SettingsView: View {
                                             .font(.caption2)
                                     }
                                 }
-                                .buttonStyle(.bordered)
+                                .buttonStyle(.glass)
                                 .tint(.blue)
                             }
                             
