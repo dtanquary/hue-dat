@@ -11,7 +11,6 @@ import HueDatShared
 
 struct GroupDetailView_macOS<T: GroupedLightContainer>: View {
     let groupId: String
-    let onBack: () -> Void
 
     @Environment(BridgeManager.self) var bridgeManager
 
@@ -53,130 +52,87 @@ struct GroupDetailView_macOS<T: GroupedLightContainer>: View {
         optimisticBrightness ?? brightness
     }
 
-    private var groupIcon: String {
-        if T.isRoom {
-            return iconForArchetype(group?.metadata.archetype ?? "")
-        } else {
-            return "square.grid.2x2"
-        }
-    }
-
     private var unknownName: String {
         T.isRoom ? "Unknown Room" : "Unknown Zone"
     }
 
+    /// Scenes for this group, pinned scenes first (in pin order)
     private var groupScenes: [HueScene] {
-        bridgeManager.scenes.filter { $0.group.rid == groupId }
+        let all = bridgeManager.scenes.filter { $0.group.rid == groupId }
+        let pinnedIds = bridgeManager.getPinnedScenes(forGroupId: groupId).map(\.id)
+        let pinnedIdSet = Set(pinnedIds)
+        let pinned = pinnedIds.compactMap { id in all.first(where: { $0.id == id }) }
+        return pinned + all.filter { !pinnedIdSet.contains($0.id) }
     }
 
     var body: some View {
         VStack(spacing: 0) {
-            // Header with back button
-            HStack {
-                Button(action: onBack) {
-                    HStack(spacing: 4) {
-                        Image(systemName: "chevron.left")
-                            .font(.body.weight(.medium))
-                        Text("Back")
-                    }
-                }
-                .buttonStyle(.borderless)
-
-                Spacer()
-
-                HStack(spacing: 8) {
-                    Image(systemName: groupIcon)
-                        .foregroundStyle(Color.accentColor)
-                    Text(group?.metadata.name ?? unknownName)
-                        .font(.headline)
-                }
-
-                Spacer()
-
-                // Invisible spacer to center title
-                Button("") { }
-                    .buttonStyle(.plain)
-                    .opacity(0)
-                    .disabled(true)
-                    .allowsHitTesting(false)
-            }
-            .padding()
-            .zIndex(999)  // Ensure header is always on top for hit testing
-
-            Divider()
+            PanelHeader(title: group?.metadata.name ?? unknownName, showsBack: true)
 
             // Layered controls section with ColorOrbsBackground
-            ZStack {
-                // Layer 0: ColorOrbsBackground
-                ColorOrbsBackground_macOS(
-                    brightness: displayBrightness,
-                    isOn: displayIsOn
-                )
-                .frame(height: 280)
-                .allowsHitTesting(false)  // Don't block header clicks
+            GlassEffectContainer {
+                ZStack {
+                    // Layer 0: ColorOrbsBackground
+                    ColorOrbsBackground_macOS(
+                        brightness: displayBrightness,
+                        isOn: displayIsOn
+                    )
+                    .frame(height: 280)
 
-                // Layer 1: Centered power toggle button
-                VStack {
-                    Spacer()
-
+                    // Layer 1: Centered power toggle button
                     Button(action: {
                         togglePower(!displayIsOn)
                     }) {
-                        Image(systemName: displayIsOn ? "power.circle.fill" : "power.circle")
-                            .font(.system(size: 48))
-                            .foregroundStyle(displayIsOn ? .white : .gray)
-                            .shadow(color: .black.opacity(0.3), radius: 4)
+                        Image(systemName: "power")
+                            .font(.system(size: 28, weight: .semibold))
+                            .foregroundStyle(displayIsOn ? .white : .white.opacity(0.5))
+                            .frame(width: 64, height: 64)
                     }
                     .buttonStyle(.plain)
+                    .glassEffect(.regular.interactive(), in: .circle)
+                    .accessibilityLabel(displayIsOn ? "Turn Off" : "Turn On")
 
-                    Spacer()
-                }
-
-                // Layer 2: Brightness percentage overlay
-                VStack {
-                    HStack {
-                        Spacer()
-
+                    // Layer 2: Brightness percentage overlay
+                    VStack {
                         Text(displayBrightness.truncatingRemainder(dividingBy: 1) == 0 ? "\(Int(displayBrightness))%" : String(format: "%.1f%%", displayBrightness))
                             .font(.headline)
                             .foregroundStyle(.white)
                             .padding(.horizontal, 12)
                             .padding(.vertical, 6)
-                            .background(Color.black.opacity(0.6))
-                            .clipShape(Capsule())
-                            .shadow(color: .black.opacity(0.3), radius: 4)
+                            .glassEffect()
+                            .padding(.top, 16)
 
                         Spacer()
                     }
-                    .padding(.top, 16)
 
-                    Spacer()
-                }
+                    // Layer 3: Horizontal slider at bottom
+                    VStack {
+                        Spacer()
 
-                // Layer 3: Horizontal slider at bottom
-                VStack {
-                    Spacer()
+                        HStack(spacing: 12) {
+                            Image(systemName: "sun.min")
+                                .foregroundStyle(.white.opacity(0.8))
+                                .font(.body)
 
-                    HStack(spacing: 12) {
-                        Image(systemName: "sun.min")
-                            .foregroundStyle(.white.opacity(0.8))
-                            .font(.body)
+                            Slider(value: Binding(
+                                get: { displayBrightness },
+                                set: { newValue in
+                                    setBrightness(newValue)
+                                }
+                            ), in: 0...100)
+                            .disabled(!displayIsOn)
+                            .tint(.white)
 
-                        Slider(value: Binding(
-                            get: { displayBrightness },
-                            set: { newValue in
-                                setBrightness(newValue)
-                            }
-                        ), in: 0...100)
-                        .disabled(!displayIsOn)
-                        .tint(.white)
-
-                        Image(systemName: "sun.max.fill")
-                            .foregroundStyle(.white.opacity(0.8))
-                            .font(.body)
+                            Image(systemName: "sun.max.fill")
+                                .foregroundStyle(.white.opacity(0.8))
+                                .font(.body)
+                        }
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 10)
+                        .glassEffect(in: .capsule)
+                        .padding(.horizontal, 16)
+                        .padding(.bottom, 12)
                     }
-                    .padding(.horizontal, 24)
-                    .padding(.bottom, 16)
                 }
             }
             .frame(height: 280)
@@ -347,8 +303,12 @@ struct GroupDetailView_macOS<T: GroupedLightContainer>: View {
         SceneCardView_macOS(
             scene: scene,
             isActive: scene.status?.active == "active",
+            isPinned: bridgeManager.isScenePinned(sceneId: scene.id, forGroupId: groupId),
             isHovered: hoveredSceneId == scene.id,
             onTap: { activateScene(scene) },
+            onTogglePin: {
+                bridgeManager.toggleScenePin(sceneId: scene.id, forGroupId: groupId)
+            },
             onHoverChange: { isHovered in
                 hoveredSceneId = isHovered ? scene.id : nil
             }
@@ -362,8 +322,10 @@ struct GroupDetailView_macOS<T: GroupedLightContainer>: View {
 struct SceneCardView_macOS: View {
     let scene: HueScene
     let isActive: Bool
+    let isPinned: Bool
     let isHovered: Bool
     let onTap: () -> Void
+    let onTogglePin: () -> Void
     let onHoverChange: (Bool) -> Void
 
     @Environment(BridgeManager.self) var bridgeManager
@@ -395,21 +357,31 @@ struct SceneCardView_macOS: View {
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 6)
                 .padding(.horizontal, 8)
-                .background(.ultraThinMaterial.opacity(0.9))
+                .background(.ultraThinMaterial)
 
-                // Checkmark for active scene (top-right)
-                if isActive {
-                    VStack {
-                        HStack {
-                            Spacer()
+                VStack {
+                    HStack {
+                        // Pin indicator (top-left, matches iOS)
+                        if isPinned {
+                            Image(systemName: "pin.fill")
+                                .foregroundStyle(.white)
+                                .font(.caption)
+                                .shadow(color: .black.opacity(0.3), radius: 2)
+                                .padding(8)
+                        }
+
+                        Spacer()
+
+                        // Checkmark for active scene (top-right)
+                        if isActive {
                             Image(systemName: "checkmark.circle.fill")
                                 .foregroundStyle(.white)
                                 .font(.body)
                                 .shadow(color: .black.opacity(0.3), radius: 2)
                                 .padding(8)
                         }
-                        Spacer()
                     }
+                    Spacer()
                 }
             }
             .aspectRatio(1.0, contentMode: .fit)
@@ -425,6 +397,12 @@ struct SceneCardView_macOS: View {
             .animation(.easeInOut(duration: 0.15), value: isHovered)
         }
         .buttonStyle(.plain)
+        .contextMenu {
+            Button(action: onTogglePin) {
+                Label(isPinned ? "Unpin Scene" : "Pin Scene",
+                      systemImage: isPinned ? "pin.slash" : "pin")
+            }
+        }
         .onHover(perform: onHoverChange)
         .onAppear {
             // Extract colors only once when view appears
@@ -460,10 +438,9 @@ struct SceneCardView_macOS: View {
         return mgr
     }()
 
-    GroupDetailView_macOS<HueRoom>(
-        groupId: "preview-room-1",
-        onBack: {}
-    )
+    NavigationStack {
+        GroupDetailView_macOS<HueRoom>(groupId: "preview-room-1")
+    }
     .environment(manager)
     .frame(width: 320, height: 480)
 }
@@ -493,10 +470,9 @@ struct SceneCardView_macOS: View {
         return mgr
     }()
 
-    GroupDetailView_macOS<HueZone>(
-        groupId: "preview-zone-1",
-        onBack: {}
-    )
+    NavigationStack {
+        GroupDetailView_macOS<HueZone>(groupId: "preview-zone-1")
+    }
     .environment(manager)
     .frame(width: 320, height: 480)
 }

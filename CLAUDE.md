@@ -145,21 +145,32 @@ xcodebuild -project hue-dat.xcodeproj -scheme "hue dat iOS" -sdk iphonesimulator
 
 **HueDatMacApp** - Entry point with AppDelegate
 - **NSApplicationDelegate**: Full AppKit control for menu bar
-- **NSPopover**: 320×480pt panel with `.ultraThinMaterial`
+- **NSPopover**: 320pt-wide panel (height resizable, persisted via PopoverSizeManager); native popover glass, no extra material
 - **EventMonitor**: Click-outside-to-dismiss detection
 - **LSUIElement = YES**: Hidden from dock/Cmd+Tab
 - **SSE lifecycle**: Runs in background, auto-reconnects after wake from sleep
 - **Wake-from-sleep handling**: Observes `NSWorkspace.didWakeNotification`, adds 3s delay before auto-refresh, validates connection before refresh
 
 **MenuBarPanelView** - Main container
-- Shows RoomsZonesListView_macOS when connected
-- Bridge setup & about dialogs
+- NavigationStack with `PanelRoute` enum (room/zone/settings) for push navigation
+- Shows RoomsZonesListView_macOS when connected; pops to root on bridge disconnect
+- Bridge setup sheet; no panel-level material (NSPopover supplies native glass)
 
-**Detail Views** (macOS)
-- RoomDetailView_macOS, ZoneDetailView_macOS
-- Mouse/trackpad optimized
-- Scene activation uses optimistic UI updates
-- Optional SSE-aware refresh: `activateSceneWithConditionalRefresh()` only refreshes when SSE disconnected
+**PanelHeader** - Shared glass header bar
+- Used by all panel views via `.safeAreaInset(edge: .top)` or as first row
+- Back button (via `dismiss`), title/subtitle, optional search field, accessory buttons
+- **CRITICAL**: NavigationStack toolbars and `.accessoryBar`/`.searchable` do NOT render/receive clicks inside an NSPopover — use PanelHeader + `.buttonStyle(.borderless)` + `headerButtonHover()` instead
+
+**RoomsZonesListView_macOS** - Primary list
+- Search field (PanelHeader) wired to shared SearchManager: filters rooms/zones, shows matching scenes with room/zone context
+- Rows are `Button`s with `.plain` style (keyboard accessible)
+
+**GroupDetailView_macOS** - Unified room/zone control (replaces old RoomDetailView_macOS/ZoneDetailView_macOS)
+- Liquid Glass controls over ColorOrbsBackground: `.glassEffect()` brightness pill, glass circle power button, glass capsule slider row, wrapped in `GlassEffectContainer`
+- Scene cards: click activates, right-click context menu pins/unpins, pin icon top-left, pinned scenes sort first
+- Optimistic UI + 300ms brightness debounce
+
+**SettingsView_macOS** - Native grouped Form (`.formStyle(.grouped)`) with LabeledContent rows
 
 **SSEStatusIndicator** - Connection status
 - Color-coded: green/blue/red/gray
@@ -492,7 +503,11 @@ clearAllPinnedScenes()                  // Clear all pins across all bridges
   - Tap vs long-press differentiation via gesture handlers
   - Files: RoomDetailView_iOS.swift, ZoneDetailView_iOS.swift
 - **watchOS**: ⏳ Not yet implemented
-- **macOS**: ⏳ Not yet implemented
+- **macOS**: ✅ Fully implemented
+  - Right-click context menu ("Pin Scene"/"Unpin Scene") on scene cards
+  - White pin icon in top-left corner of scene cards (matches iOS)
+  - Pinned scenes sort first in the scene grid
+  - File: GroupDetailView_macOS.swift (SceneCardView_macOS)
 
 **iOS Gesture Implementation:**
 ```swift
@@ -547,20 +562,25 @@ hue-dat-Watch-App/                         # watchOS Target
     └── ManualBridgeEntryView.swift
 
 hue-dat-macOS/                             # macOS Target
-├── HueDatMacApp.swift                    # AppKit menu bar
+├── HueDatMacApp.swift                    # AppKit menu bar + NSPopover
 ├── EventMonitor.swift
+├── DebugLogger.swift
+├── PopoverSizeManager.swift              # Popover height persistence
 ├── LaunchAtLoginManager.swift            # Startup configuration
 ├── DeviceIdentifierProvider_macOS.swift
 ├── Extensions/
-│   └── ViewExtensions.swift              # glassEffect()
+│   └── ViewExtensions.swift              # skeletonLoader()
 └── Views/
-    ├── MenuBarPanelView.swift
+    ├── MenuBarPanelView.swift             # NavigationStack + PanelRoute
+    ├── PanelHeader.swift                  # Shared glass header (see macOS Views)
+    ├── PopoverResizeHandle.swift          # Drag-to-resize NSView
     ├── AboutView_macOS.swift
     ├── BridgeSetupView_macOS.swift
-    ├── RoomsZonesListView_macOS.swift
-    ├── RoomDetailView_macOS.swift
-    ├── ZoneDetailView_macOS.swift
-    ├── SettingsView_macOS.swift
+    ├── ManualBridgeEntryView_macOS.swift  # Manual IP entry
+    ├── RoomsZonesListView_macOS.swift     # List + search
+    ├── GroupDetailView_macOS.swift        # Unified room/zone detail + pinning
+    ├── ColorOrbsBackground_macOS.swift
+    ├── SettingsView_macOS.swift           # Grouped Form
     └── SSEStatusIndicator.swift
 
 hue-dat-iOS/                               # iOS Target

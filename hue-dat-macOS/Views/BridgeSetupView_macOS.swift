@@ -55,8 +55,18 @@ struct BridgeSetupView_macOS: View {
         .task {
             await discoveryService.discoverBridges()
         }
-        .alert("Success", isPresented: .constant(registrationService.successfulBridge != nil)) {
-            Button("OK") {
+        .sheet(isPresented: $showManualEntry) {
+            ManualBridgeEntryView_macOS { bridge in
+                Task {
+                    await registrationService.registerWithBridge(bridge)
+                }
+            }
+        }
+        // Save happens in the binding's setter so Esc-dismissal behaves the same as OK.
+        .alert("Success", isPresented: Binding(
+            get: { registrationService.successfulBridge != nil },
+            set: { isPresented in
+                guard !isPresented else { return }
                 if let bridge = registrationService.successfulBridge,
                    let response = registrationService.registrationResponse {
                     bridgeManager.saveConnection(bridge: bridge, registrationResponse: response)
@@ -64,6 +74,8 @@ struct BridgeSetupView_macOS: View {
                     dismiss()
                 }
             }
+        )) {
+            Button("OK") { }
         } message: {
             if let bridge = registrationService.successfulBridge {
                 Text("Successfully connected to \(bridge.displayName)")
@@ -83,10 +95,11 @@ struct BridgeSetupView_macOS: View {
         } message: {
             Text("Press the link button on your Hue bridge, then click Retry.")
         }
-        .alert("Error", isPresented: .constant(registrationService.error != nil)) {
-            Button("OK") {
-                registrationService.error = nil
-            }
+        .alert("Error", isPresented: Binding(
+            get: { registrationService.error != nil },
+            set: { if !$0 { registrationService.error = nil } }
+        )) {
+            Button("OK") { }
         } message: {
             if let error = registrationService.error {
                 Text(error.localizedDescription)

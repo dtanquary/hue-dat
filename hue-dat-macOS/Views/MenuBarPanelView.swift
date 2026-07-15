@@ -8,79 +8,41 @@
 import SwiftUI
 import HueDatShared
 
+/// Navigation destinations within the panel
+enum PanelRoute: Hashable {
+    case room(String)
+    case zone(String)
+    case settings
+}
+
 struct MenuBarPanelView: View {
     @Environment(BridgeManager.self) var bridgeManager
     @State private var showBridgeSetup = false
-    @State private var selectedRoomId: String?
-    @State private var selectedZoneId: String?
-    @State private var showingSettings = false
+    @State private var path: [PanelRoute] = []
 
     var body: some View {
         VStack(spacing: 0) {
-            ZStack {
-                if let roomId = selectedRoomId {
-                    // Room detail view
-                    GroupDetailView_macOS<HueRoom>(
-                        groupId: roomId,
-                        onBack: {
-                            withAnimation(.easeInOut(duration: 0.2)) {
-                                selectedRoomId = nil
-                            }
-                        }
-                    )
-                    .transition(.asymmetric(
-                        insertion: .move(edge: .trailing),
-                        removal: .move(edge: .leading)
-                    ))
-                } else if let zoneId = selectedZoneId {
-                    // Zone detail view
-                    GroupDetailView_macOS<HueZone>(
-                        groupId: zoneId,
-                        onBack: {
-                            withAnimation(.easeInOut(duration: 0.2)) {
-                                selectedZoneId = nil
-                            }
-                        }
-                    )
-                    .transition(.asymmetric(
-                        insertion: .move(edge: .trailing),
-                        removal: .move(edge: .leading)
-                    ))
-                } else if showingSettings {
-                    // Settings view
-                    SettingsView_macOS(
-                        onBack: {
-                            withAnimation(.easeInOut(duration: 0.2)) {
-                                showingSettings = false
-                            }
-                        }
-                    )
-                    .transition(.asymmetric(
-                        insertion: .move(edge: .trailing),
-                        removal: .move(edge: .leading)
-                    ))
-                } else if bridgeManager.isConnected {
-                    // Connected state - show rooms and zones list
-                    RoomsZonesListView_macOS(
-                        onRoomSelected: { room in
-                            withAnimation(.easeInOut(duration: 0.2)) {
-                                selectedRoomId = room.id
-                            }
-                        },
-                        onZoneSelected: { zone in
-                            withAnimation(.easeInOut(duration: 0.2)) {
-                                selectedZoneId = zone.id
-                            }
-                        },
-                        onSettingsSelected: {
-                            withAnimation(.easeInOut(duration: 0.2)) {
-                                showingSettings = true
-                            }
-                        }
-                    )
-                } else {
-                    // Not connected - show setup
-                    disconnectedView
+            NavigationStack(path: $path) {
+                Group {
+                    if bridgeManager.isConnected {
+                        RoomsZonesListView_macOS(
+                            onRoomSelected: { room in path.append(.room(room.id)) },
+                            onZoneSelected: { zone in path.append(.zone(zone.id)) },
+                            onSettingsSelected: { path.append(.settings) }
+                        )
+                    } else {
+                        disconnectedView
+                    }
+                }
+                .navigationDestination(for: PanelRoute.self) { route in
+                    switch route {
+                    case .room(let id):
+                        GroupDetailView_macOS<HueRoom>(groupId: id)
+                    case .zone(let id):
+                        GroupDetailView_macOS<HueZone>(groupId: id)
+                    case .settings:
+                        SettingsView_macOS()
+                    }
                 }
             }
             .frame(maxHeight: .infinity)
@@ -90,7 +52,10 @@ struct MenuBarPanelView: View {
         }
         .frame(width: 320)
         .frame(maxHeight: .infinity)
-        .background(.ultraThinMaterial)
+        .onChange(of: bridgeManager.isConnected) { _, connected in
+            // Pop any pushed detail/settings view when the bridge disconnects
+            if !connected { path = [] }
+        }
         .sheet(isPresented: $showBridgeSetup) {
             BridgeSetupView_macOS()
                 .environment(bridgeManager)

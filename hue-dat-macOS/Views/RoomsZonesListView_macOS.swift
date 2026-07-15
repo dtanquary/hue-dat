@@ -18,120 +18,84 @@ struct RoomsZonesListView_macOS: View {
     @State private var isTurningOffAll = false
     @State private var showError = false
     @State private var errorMessage = ""
+    @State private var searchText = ""
+    @State private var searchManager: SearchManager?
 
-    // Hover states for header buttons
-    @State private var isTurnOffHovered = false
-    @State private var isRefreshHovered = false
-    @State private var isSettingsHovered = false
+    private var isSearching: Bool {
+        !searchText.trimmingCharacters(in: .whitespaces).isEmpty
+    }
+
+    private var searchResults: SearchResults? {
+        guard isSearching else { return nil }
+        return searchManager?.search(searchText)
+    }
+
+    private var displayedRooms: [HueRoom] {
+        searchResults?.rooms ?? bridgeManager.rooms
+    }
+
+    private var displayedZones: [HueZone] {
+        searchResults?.zones ?? bridgeManager.zones
+    }
 
     var body: some View {
-        ZStack(alignment: .topLeading) {
-            VStack {
-                // Show list with skeleton loaders when refreshing with cached data
-                // Show loading view only when loading with no cached data
-                let hasData = !bridgeManager.rooms.isEmpty || !bridgeManager.zones.isEmpty
-                let isLoading = bridgeManager.isLoadingRooms || bridgeManager.isLoadingZones
+        Group {
+            // Show list with skeleton loaders when refreshing with cached data
+            // Show loading view only when loading with no cached data
+            let hasData = !bridgeManager.rooms.isEmpty || !bridgeManager.zones.isEmpty
+            let isLoading = bridgeManager.isLoadingRooms || bridgeManager.isLoadingZones
 
-                if hasData {
-                    // Show list (with skeleton if loading)
-                    listContent.contentMargins(.top, 60)
-                } else if isLoading {
-                    // Show loading view only when no cached data
-                    loadingView.contentMargins(.top, 60)
-                } else {
-                    // Show empty view when not loading and no data
-                    emptyView.contentMargins(.top, 60)
-                }
-
+            if hasData {
+                listContent
+            } else if isLoading {
+                loadingView
+            } else {
+                emptyView
             }
-            VStack(spacing: 0) {
-                // Header with title and buttons
-                HStack {
-                    VStack(alignment: .leading) {
-                        Text("Rooms & Zones")
-                            .font(.title3)
-                            .fontWeight(.semibold)
-                        if (bridgeManager.isLoadingZones) {
-                            Text("Loading...")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        } else {
-                            Text("\(bridgeManager.rooms.count) Room\(bridgeManager.rooms.count == 1 ? "" : "s") & \(bridgeManager.zones.count) Zone\(bridgeManager.zones.count == 1 ? "" : "s")")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-                        
-                    }
+        }
+        .safeAreaInset(edge: .top, spacing: 0) {
+            PanelHeader(title: "Rooms & Zones", subtitle: subtitle, searchText: $searchText) {
+                SSEStatusIndicator()
+                    .environment(bridgeManager)
+                    .padding(.trailing, 4)
 
-                    Spacer()
-
-                    // SSE status indicator
-                    SSEStatusIndicator()
-                        .environment(bridgeManager)
-                        .padding(6)
-                    
-                    Button(action: {
-                        Task {
-                            isTurningOffAll = true
-                            let result = await bridgeManager.turnOffAllLights()
-                            isTurningOffAll = false
-                            
-                            switch result {
-                            case .success:
-                                break // Success - no alert needed
-                            case .failure(let error):
-                                errorMessage = "Failed to turn off all lights: \(error.localizedDescription)"
-                                showError = true
-                            }
-                        }
-                    }) {
-                        Image(systemName: "moon.fill")
-                            .padding(6)
-                            .background(
-                                RoundedRectangle(cornerRadius: 36)
-                                    .fill(Color.primary.opacity(isTurnOffHovered ? 0.1 : 0))
-                            )
-                    }
-                    .buttonStyle(.borderless)
-                    .disabled(bridgeManager.isRefreshing || isTurningOffAll)
-                    .help("Turn Off All Lights")
-                    .onHover { isTurnOffHovered = $0 }
-                    .animation(.easeInOut(duration: 0.15), value: isTurnOffHovered)
-                    
-                    Button(action: {
-                        Task {
-                            await bridgeManager.refreshAllData(forceRefresh: true)
-                        }
-                    }) {
-                        Image(systemName: "arrow.clockwise")
-                            .symbolEffect(.rotate, isActive: bridgeManager.isRefreshing)
-                            .padding(6)
-                            .background(
-                                RoundedRectangle(cornerRadius: 36)
-                                    .fill(Color.primary.opacity(isRefreshHovered ? 0.1 : 0))
-                            )
-                    }
-                    .buttonStyle(.borderless)
-                    .disabled(bridgeManager.isRefreshing)
-                    .help("Refresh")
-                    .onHover { isRefreshHovered = $0 }
-                    .animation(.easeInOut(duration: 0.15), value: isRefreshHovered)
-                    
-                    Button(action: onSettingsSelected) {
-                        Image(systemName: "gear")
-                            .padding(6)
-                            .background(
-                                RoundedRectangle(cornerRadius: 36)
-                                    .fill(Color.primary.opacity(isSettingsHovered ? 0.1 : 0))
-                            )
-                    }
-                    .buttonStyle(.borderless)
-                    .help("Settings")
-                    .onHover { isSettingsHovered = $0 }
-                    .animation(.easeInOut(duration: 0.15), value: isSettingsHovered)
+                Button {
+                    turnOffAllLights()
+                } label: {
+                    Image(systemName: "moon.fill")
                 }
-                .padding()
-                .glassEffect(in: .rect)
+                .buttonStyle(.borderless)
+                .headerButtonHover()
+                .disabled(bridgeManager.isRefreshing || isTurningOffAll)
+                .help("Turn Off All Lights")
+                .accessibilityLabel("Turn Off All Lights")
+
+                Button {
+                    Task {
+                        await bridgeManager.refreshAllData(forceRefresh: true)
+                    }
+                } label: {
+                    Image(systemName: "arrow.clockwise")
+                        .symbolEffect(.rotate, isActive: bridgeManager.isRefreshing)
+                }
+                .buttonStyle(.borderless)
+                .headerButtonHover()
+                .disabled(bridgeManager.isRefreshing)
+                .help("Refresh")
+                .accessibilityLabel("Refresh")
+
+                Button(action: onSettingsSelected) {
+                    Image(systemName: "gear")
+                }
+                .buttonStyle(.borderless)
+                .headerButtonHover()
+                .help("Settings")
+                .accessibilityLabel("Settings")
+            }
+        }
+        .onAppear {
+            if searchManager == nil {
+                searchManager = SearchManager(bridgeManager: bridgeManager)
             }
         }
         .task {
@@ -147,6 +111,29 @@ struct RoomsZonesListView_macOS: View {
             }
         } message: {
             Text(errorMessage)
+        }
+    }
+
+    private var subtitle: String {
+        if bridgeManager.isLoadingZones {
+            return "Loading..."
+        }
+        return "\(bridgeManager.rooms.count) Room\(bridgeManager.rooms.count == 1 ? "" : "s") & \(bridgeManager.zones.count) Zone\(bridgeManager.zones.count == 1 ? "" : "s")"
+    }
+
+    private func turnOffAllLights() {
+        Task {
+            isTurningOffAll = true
+            let result = await bridgeManager.turnOffAllLights()
+            isTurningOffAll = false
+
+            switch result {
+            case .success:
+                break // Success - no alert needed
+            case .failure(let error):
+                errorMessage = "Failed to turn off all lights: \(error.localizedDescription)"
+                showError = true
+            }
         }
     }
 
@@ -187,40 +174,91 @@ struct RoomsZonesListView_macOS: View {
         return ScrollView {
             VStack(alignment: .leading, spacing: 12) {
                 // Rooms Section
-                if !bridgeManager.rooms.isEmpty {
-                    sectionHeader("Rooms", count: bridgeManager.rooms.count)
+                if !displayedRooms.isEmpty {
+                    sectionHeader("Rooms", count: displayedRooms.count)
 
-                    ForEach(bridgeManager.rooms) { room in
-                        GroupRowView_macOS(group: room, isLoading: isLoading)
-                            .contentShape(Rectangle())
-                            .onTapGesture {
-                                // Disable tap during loading
-                                if !isLoading {
-                                    onRoomSelected(room)
-                                }
-                            }
+                    ForEach(displayedRooms) { room in
+                        Button {
+                            onRoomSelected(room)
+                        } label: {
+                            GroupRowView_macOS(group: room, isLoading: isLoading)
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(isLoading)
                     }
                 }
 
                 // Zones Section
-                if !bridgeManager.zones.isEmpty {
-                    sectionHeader("Zones", count: bridgeManager.zones.count)
-                        .padding(.top, bridgeManager.rooms.isEmpty ? 0 : 8)
+                if !displayedZones.isEmpty {
+                    sectionHeader("Zones", count: displayedZones.count)
+                        .padding(.top, displayedRooms.isEmpty ? 0 : 8)
 
-                    ForEach(bridgeManager.zones) { zone in
-                        GroupRowView_macOS(group: zone, isLoading: isLoading)
-                            .contentShape(Rectangle())
-                            .onTapGesture {
-                                // Disable tap during loading
-                                if !isLoading {
-                                    onZoneSelected(zone)
-                                }
-                            }
+                    ForEach(displayedZones) { zone in
+                        Button {
+                            onZoneSelected(zone)
+                        } label: {
+                            GroupRowView_macOS(group: zone, isLoading: isLoading)
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(isLoading)
                     }
+                }
+
+                // Scenes Section (search results only) - navigates to the owning room/zone
+                if let sceneResults = searchResults?.scenes, !sceneResults.isEmpty {
+                    sectionHeader("Scenes", count: sceneResults.count)
+                        .padding(.top, (displayedRooms.isEmpty && displayedZones.isEmpty) ? 0 : 8)
+
+                    ForEach(sceneResults, id: \.scene.id) { result in
+                        Button {
+                            if let room = result.associatedRoom {
+                                onRoomSelected(room)
+                            } else if let zone = result.associatedZone {
+                                onZoneSelected(zone)
+                            }
+                        } label: {
+                            sceneResultRow(result)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+
+                if isSearching, searchResults?.isEmpty ?? false {
+                    ContentUnavailableView.search(text: searchText)
+                        .padding(.top, 24)
                 }
             }
             .padding()
         }
+    }
+
+    private func sceneResultRow(_ result: SceneSearchResult) -> some View {
+        HStack(spacing: 12) {
+            Image(systemName: "theatermasks")
+                .font(.title3)
+                .foregroundStyle(.secondary)
+                .frame(width: 24)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(result.scene.metadata.name)
+                    .font(.body)
+                    .fontWeight(.medium)
+
+                if let context = result.contextDescription {
+                    Text(context)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+
+            Spacer()
+        }
+        .padding(.vertical, 8)
+        .padding(.horizontal, 12)
+        .background(
+            RoundedRectangle(cornerRadius: 8)
+                .fill(Color.primary.opacity(0.05))
+        )
     }
 
     private func sectionHeader(_ title: String, count: Int) -> some View {
@@ -368,11 +406,13 @@ struct GroupRowView_macOS<T: GroupedLightContainer>: View {
         return mgr
     }()
 
-    RoomsZonesListView_macOS(
-        onRoomSelected: { _ in },
-        onZoneSelected: { _ in },
-        onSettingsSelected: {}
-    )
+    NavigationStack {
+        RoomsZonesListView_macOS(
+            onRoomSelected: { _ in },
+            onZoneSelected: { _ in },
+            onSettingsSelected: {}
+        )
+    }
     .environment(manager)
     .frame(width: 320, height: 480)
 }
