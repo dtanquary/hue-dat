@@ -12,9 +12,16 @@ import Combine
 struct SSEStatusIndicator: View {
     @Environment(BridgeManager.self) var bridgeManager
     @State private var streamState: StreamState = .idle
+    @State private var displayedState: StreamState = .idle
     @State private var cancellable: AnyCancellable?
+    @State private var pendingTransitionTask: Task<Void, Never>?
     @State private var isHovering: Bool = false
     @State private var isAnimating: Bool = false
+
+    // The Hue bridge periodically closes the long-lived SSE stream (NAT keepalive,
+    // bridge-side stream age). Reconnect typically completes inside this window,
+    // so holding the previous color avoids a red flash on each cycle.
+    private static let disconnectDebounceInterval: Duration = .seconds(2)
 
     var body: some View {
         Group {
@@ -45,6 +52,8 @@ struct SSEStatusIndicator: View {
         .onDisappear {
             cancellable?.cancel()
             cancellable = nil
+            pendingTransitionTask?.cancel()
+            pendingTransitionTask = nil
         }
     }
 
@@ -52,14 +61,14 @@ struct SSEStatusIndicator: View {
         Image(systemName: "antenna.radiowaves.left.and.right")
             .foregroundStyle(colorForState)
             .frame(width: 8, height: 8)
-            .opacity(streamState == .connecting ? (isAnimating ? 0.3 : 1.0) : 1.0)
+            .opacity(displayedState == .connecting ? (isAnimating ? 0.3 : 1.0) : 1.0)
             .animation(
-                streamState == .connecting
+                displayedState == .connecting
                     ? .easeInOut(duration: 0.6).repeatForever(autoreverses: true)
                     : .default,
                 value: isAnimating
             )
-            .onChange(of: streamState) { _, newState in
+            .onChange(of: displayedState) { _, newState in
                 if case .connecting = newState {
                     isAnimating = true
                 } else {
@@ -69,7 +78,7 @@ struct SSEStatusIndicator: View {
     }
 
     private var isClickable: Bool {
-        switch streamState {
+        switch displayedState {
         case .disconnected, .error, .idle:
             return true
         case .connected, .connecting:
@@ -99,14 +108,37 @@ struct SSEStatusIndicator: View {
                 cancellable = streamSubject
                     .receive(on: DispatchQueue.main)
                     .sink { state in
-                        streamState = state
+                        applyStateChange(state)
                     }
             }
         }
     }
 
+    // Hold green/blue through brief disconnect→reconnect cycles. .connected,
+    // .connecting, and .idle settle immediately; .disconnected/.error wait
+    // out the debounce window before painting red. Any new state during the
+    // wait cancels the pending transition.
+    @MainActor
+    private func applyStateChange(_ newState: StreamState) {
+        streamState = newState  // keep live for diagnostics
+        pendingTransitionTask?.cancel()
+        pendingTransitionTask = nil
+
+        switch newState {
+        case .connected, .connecting, .idle:
+            displayedState = newState
+        case .disconnected, .error:
+            let target = newState
+            pendingTransitionTask = Task { @MainActor in
+                try? await Task.sleep(for: Self.disconnectDebounceInterval)
+                guard !Task.isCancelled else { return }
+                displayedState = target
+            }
+        }
+    }
+
     private var colorForState: Color {
-        switch streamState {
+        switch displayedState {
         case .connected:
             return .green
         case .connecting:
@@ -119,7 +151,7 @@ struct SSEStatusIndicator: View {
     }
 
     private var tooltipForState: String {
-        switch streamState {
+        switch displayedState {
         case .connected:
             return "Live updates active"
         case .connecting:

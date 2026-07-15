@@ -12,7 +12,14 @@ import Combine
 struct SSEStatusIndicator: View {
     var bridgeManager: BridgeManager
     @State private var streamState: StreamState = .idle
+    @State private var displayedState: StreamState = .idle
     @State private var cancellable: AnyCancellable?
+    @State private var pendingTransitionTask: Task<Void, Never>?
+
+    // The Hue bridge periodically closes the long-lived SSE stream (NAT keepalive,
+    // bridge-side stream age). Reconnect typically completes inside this window,
+    // so holding the previous color avoids a red flash on each cycle.
+    private static let disconnectDebounceInterval: Duration = .seconds(2)
 
     var body: some View {
         Group {
@@ -34,6 +41,8 @@ struct SSEStatusIndicator: View {
         .onDisappear {
             cancellable?.cancel()
             cancellable = nil
+            pendingTransitionTask?.cancel()
+            pendingTransitionTask = nil
         }
     }
 
@@ -42,7 +51,7 @@ struct SSEStatusIndicator: View {
             Image(systemName: "antenna.radiowaves.left.and.right")
                 .foregroundStyle(colorForState)
 
-            if streamState == .connecting {
+            if displayedState == .connecting {
                 ProgressView()
                     .scaleEffect(0.7)
             }
@@ -50,7 +59,7 @@ struct SSEStatusIndicator: View {
     }
 
     private var isClickable: Bool {
-        switch streamState {
+        switch displayedState {
         case .disconnected, .error, .idle:
             return true
         case .connected, .connecting:
@@ -82,14 +91,37 @@ struct SSEStatusIndicator: View {
                     .receive(on: DispatchQueue.main)
                     .sink { state in
                         debugLog("🟢 SSE Status Indicator: State changed to \(state)")
-                        streamState = state
+                        applyStateChange(state)
                     }
             }
         }
     }
 
+    // Hold green/blue through brief disconnect→reconnect cycles. .connected,
+    // .connecting, and .idle settle immediately; .disconnected/.error wait
+    // out the debounce window before painting red. Any new state during the
+    // wait cancels the pending transition.
+    @MainActor
+    private func applyStateChange(_ newState: StreamState) {
+        streamState = newState  // keep live for diagnostics
+        pendingTransitionTask?.cancel()
+        pendingTransitionTask = nil
+
+        switch newState {
+        case .connected, .connecting, .idle:
+            displayedState = newState
+        case .disconnected, .error:
+            let target = newState
+            pendingTransitionTask = Task { @MainActor in
+                try? await Task.sleep(for: Self.disconnectDebounceInterval)
+                guard !Task.isCancelled else { return }
+                displayedState = target
+            }
+        }
+    }
+
     private var colorForState: Color {
-        switch streamState {
+        switch displayedState {
         case .connected:
             return .green
         case .connecting:
