@@ -327,7 +327,7 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "# Kill any running instances of the app before launching new build\nkillall \"hue dat macOS\" 2>/dev/null || true\n";
+			shellScript = "# Kill dev-build instances before launching new build (leave the /Applications copy running)\npkill -f \"DerivedData.*hue dat macOS.app\" 2>/dev/null || true\n";
 			showEnvVarsInLog = 0;
 		};
 /* End PBXShellScriptBuildPhase section */
