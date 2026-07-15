@@ -19,11 +19,8 @@ public enum AppLogger {
     public static let pinning = Logger(subsystem: "com.huedat", category: "pinning")
 }
 
-/// Debug-only print wrapper. Compiles to no-op in release builds.
-/// Uses @autoclosure so string interpolation is never evaluated in release.
-@inline(__always)
-public func debugLog(_ message: @autoclosure () -> String) {
-    #if DEBUG
-    print(message())
-    #endif
-}
+// NOTE: No global debugLog here on purpose. A shared debugLog overload used to
+// live in this file and Swift's overload resolution preferred it over the macOS
+// target's file-logging debugLog (DebugLogger.swift) in every file importing
+// HueDatShared — silently turning the macOS Release file log into a no-op.
+// iOS/watchOS each define their own debugLog shim locally.

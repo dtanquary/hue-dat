@@ -26,6 +26,14 @@ public class SSEEventProcessor {
     private var streamStateSubscription: AnyCancellable?
     private let maxReconnectAttempts = 5
 
+    /// Pending backoff-counter reset; only fires after the connection proves stable.
+    private var backoffResetTask: Task<Void, Never>?
+
+    /// Single-flight guard: at most one reconnection may be pending at a time.
+    /// Multiple seeders exist (auto-reconnect, wake handler, refreshAllData's
+    /// post-refresh check) and stacked reconnections cancel each other's streams.
+    private var isReconnectScheduled = false
+
     /// Cached map: grouped_light ID -> room ID for fast SSE lookup
     internal var groupedLightToRoomMap: [String: String] = [:]
 
@@ -108,12 +116,20 @@ public class SSEEventProcessor {
                     .sink { [weak self] state in
                         guard let self = self, let bm = self.bridgeManager else { return }
 
-                        // Any successful connection clears the backoff counter, regardless
-                        // of which code path got us here (auto-reconnect, wake-from-sleep
-                        // restart, manual retry). Without this, the counter can accumulate
-                        // until < maxReconnectAttempts is false and reconnection dies silently.
+                        // A connection clears the backoff counter only after it proves
+                        // stable for 10s, regardless of which code path got us here
+                        // (auto-reconnect, wake-from-sleep restart, manual retry).
+                        // Immediate reset would let a connect→die-within-1s cycle
+                        // hammer the bridge at the minimum delay forever; no reset at
+                        // all lets the counter accumulate across unrelated disconnects
+                        // until reconnection dies silently.
+                        self.backoffResetTask?.cancel()
                         if state == .connected {
-                            bm.reconnectAttempts = 0
+                            self.backoffResetTask = Task { @MainActor [weak self] in
+                                try? await Task.sleep(nanoseconds: 10_000_000_000)
+                                guard !Task.isCancelled else { return }
+                                self?.bridgeManager?.reconnectAttempts = 0
+                            }
                         }
                         bm.isSSEConnected = (state == .connected)
 
@@ -134,7 +150,9 @@ public class SSEEventProcessor {
                             }
                         }()
 
-                        if shouldReconnect, bm.reconnectAttempts < self.maxReconnectAttempts {
+                        if shouldReconnect, !self.isReconnectScheduled,
+                           bm.reconnectAttempts < self.maxReconnectAttempts {
+                            self.isReconnectScheduled = true
                             Task.detached { [weak self] in
                                 guard let self = self else { return }
                                 await self.handleReconnection()
@@ -152,6 +170,8 @@ public class SSEEventProcessor {
         streamStateSubscription?.cancel()
         eventSubscription = nil
         streamStateSubscription = nil
+        backoffResetTask?.cancel()
+        backoffResetTask = nil
 
         if let bm = bridgeManager {
             bm.isSSEConnected = false
@@ -289,6 +309,10 @@ public class SSEEventProcessor {
     /// Handle auto-reconnection with exponential backoff.
     /// Called from a detached Task to prevent blocking MainActor.
     private func handleReconnection() async {
+        // Allow the next disconnect/error event to schedule a fresh attempt
+        // once this one has fully finished (including the backoff sleep).
+        defer { isReconnectScheduled = false }
+
         let shouldSkip = await MainActor.run { [weak self] () -> Bool in
             guard let self = self, let bm = self.bridgeManager else { return true }
             return bm.isDemoMode || bm.connectedBridge == nil
@@ -322,10 +346,10 @@ public class SSEEventProcessor {
 
         do {
             try await HueAPIService.shared.startEventStream()
+            // NOTE: startEventStream() only spawns the stream task — returning is
+            // not success, so do NOT reset reconnectAttempts here. The stream-state
+            // sink resets the counter once the connection proves stable.
             AppLogger.sse.info("SSE stream reconnected")
-            await MainActor.run { [weak self] in
-                self?.bridgeManager?.reconnectAttempts = 0
-            }
         } catch {
             AppLogger.sse.error("Failed to reconnect SSE stream: \(error.localizedDescription, privacy: .public)")
         }

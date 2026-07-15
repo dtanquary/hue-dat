@@ -518,6 +518,14 @@ public actor HueAPIService {
             // about to publish .connecting on the new task). Publishing .disconnected
             // here would race those transitions and trigger spurious reconnects.
             AppLogger.sse.info("SSE stream cancelled")
+        } catch let error as URLError where error.code == .cancelled {
+            // startEventStream()'s cancel of the previous task surfaces from
+            // URLSession as URLError(.cancelled) (-999), NOT CancellationError.
+            // Same ownership rule as above: the canceller owns the state
+            // transition. Publishing .error here made every restart schedule a
+            // phantom reconnection that cancelled the healthy new stream 1s
+            // later — a self-sustaining connect/cancel loop.
+            AppLogger.sse.info("SSE stream cancelled (URLError)")
         } catch let error as URLError where error.code == .networkConnectionLost {
             // Network connection lost - common during network transitions
             AppLogger.sse.warning("SSE stream: Network connection lost (bridge may have reset connection)")
