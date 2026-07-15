@@ -63,6 +63,12 @@ class LaunchAtLoginManager {
             if !shouldBeEnabled {
                 // System has it enabled but user preference says disabled
                 try? disable()
+            } else if Bundle.main.bundlePath.hasPrefix("/Applications/") {
+                // Re-register from the canonical install so the login item
+                // never points at a stale dev build (a stale DerivedData
+                // login item previously caused sleep/wake crashes). Dev
+                // builds skip this so they never steal the registration.
+                try? SMAppService.mainApp.register()
             }
         case .notRegistered:
             if shouldBeEnabled {
