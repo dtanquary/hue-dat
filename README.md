@@ -4,7 +4,7 @@ Modern Philips Hue controller for watchOS, macOS, and iOS with native platform i
 
 ## Overview
 
-HueDat is a multi-platform Swift application providing seamless control of Philips Hue lights through native watchOS, macOS, and iOS applications. Built with SwiftUI and modern Swift concurrency, it features real-time updates via SSE, optimistic UI updates, and platform-specific optimizations including Digital Crown integration, macOS glass effects, and iOS touch-optimized controls with multi-step loading indicators.
+HueDat is a multi-platform Swift application providing seamless control of Philips Hue lights through native watchOS, macOS, and iOS applications. Built with SwiftUI and modern Swift concurrency, it features real-time updates via SSE, optimistic UI updates, the Liquid Glass design language across all three platforms, and platform-specific optimizations including Digital Crown integration, a resizable macOS menu bar panel, and iOS touch-optimized controls.
 
 ## Features
 
@@ -20,28 +20,32 @@ HueDat is a multi-platform Swift application providing seamless control of Phili
 
 ### macOS
 - **Menu Bar Integration** - Persistent menu bar app (hidden from dock)
-- **Glass Effect Panel** - 320×480pt floating panel with `.ultraThinMaterial`
-- **NSGlassEffectView** - Native glass effects for About dialog with private variant API support (0-19)
+- **Liquid Glass Panel** - 320pt-wide floating panel with native popover glass and drag-to-resize height (persisted)
+- **Push Navigation** - NavigationStack with shared glass PanelHeader and working back button inside the NSPopover
+- **Search** - Header search field filtering rooms, zones, and scenes with room/zone context
 - **Click-Outside Dismissal** - Natural UX with global event monitoring
 - **Scene Grid Cards** - Visual scene selection with instant feedback
+- **Scene Pinning** - Right-click context menu to pin favorites; pinned scenes sort first
 - **SSE Status Indicator** - Color-coded connection status (green/blue/red/gray)
 - **Bulk Light Control** - Manage all lights in rooms/zones simultaneously
-- **Launch at Login** - Optional startup configuration
+- **Launch at Login** - Optional startup configuration, self-heals to the /Applications copy on launch
 
 <img width="349" height="650" alt="Screenshot 2026-04-26 at 6 13 27 AM" src="https://github.com/user-attachments/assets/ff7b03dd-4834-43d0-b43d-d538663a673f" />
 
 ### iOS
-- **Multi-Step Loading** - Visual progress indicators with step-by-step feedback ("Step X of Y")
+- **Liquid Glass Controls** - Glass brightness pill, power button, and slider over dynamic color orbs
 - **Animated Bridge Discovery** - Rotating search icon during network discovery
+- **Animated MeshGradient Background** - Slow-drifting Hue-ish colors on the main menu (light/dark palettes)
 - **Touch-Optimized Controls** - Native slider controls for brightness adjustment
-- **Video Background** - Looping ambient video on main menu with scene phase management
-- **Pull-to-Refresh** - Integrated gesture-based data refresh
+- **Native Search** - `.searchable` list with inline results and search term highlighting
 - **Scene Grid** - Visual scene cards with tap activation
+- **Scene Pinning** - Long-press to pin favorites with haptic feedback
+- **Pull-to-Refresh** - Integrated gesture-based data refresh
+- **Glass Loading Card** - Spinner + message overlay during parallel TaskGroup data fetch
 - **SSE Status Indicator** - Real-time connection monitoring
 - **Validation Gating** - Smart loading that prevents premature data fetches
 - **Instant Main Menu** - Zero-delay display when no bridge configured
 - **App Resume Handling** - Automatic SSE reconnection with network stabilization delay
-- **Smooth Animations** - Fade transitions between loading and loaded states
 
 ### Shared Features
 - **Real-time SSE Streaming** - Instant updates from physical switches and other apps
@@ -50,6 +54,8 @@ HueDat is a multi-platform Swift application providing seamless control of Phili
 - **60-second Auto-refresh** - Background data updates with lifecycle awareness
 - **Rate Limiting** - 1-second minimum between grouped light updates
 - **Bridge Discovery** - Automatic discovery via `https://discovery.meethue.com`
+- **In-Memory Search** - SearchManager with case-insensitive matching across rooms, zones, and scenes (< 10ms, no API calls)
+- **Scene Pinning** - Bridge-specific favorites with order preservation and automatic stale-pin cleanup
 - **Demo Mode** - Full offline testing capability with cached data
 - **Caching** - UserDefaults persistence for rooms, zones, scenes, and connections
 
@@ -127,17 +133,16 @@ Core functionality is shared between platforms via a Swift Package Manager packa
 
 #### macOS App
 - AppKit menu bar integration with NSApplicationDelegate
-- NSPopover-based floating panel (320×480pt)
+- NSPopover-based floating panel (320pt wide, height resizable and persisted)
+- NavigationStack push navigation with shared glass PanelHeader
 - EventMonitor for click-outside detection
 - IOKit hardware UUID for device identification
-- NSGlassEffectView wrapper with private variant API
 - LaunchAtLoginManager for startup configuration
 
 #### iOS App
 - SwiftUI App lifecycle with ContentView root manager
 - Touch-optimized slider controls for brightness
-- LoadingStepIndicator for multi-step progress tracking
-- LoopingVideoPlayer with AVPlayerLooper for background video
+- Glass LoadingCard overlay during parallel TaskGroup data fetch
 - UIDevice.current.identifierForVendor for device identification
 - Validation gating to prevent premature data loading
 - App resume handling with network stabilization delay
@@ -176,7 +181,10 @@ hue-dat/
 │       │   ├── HueAPIService.swift        # Actor-based API + SSE
 │       │   └── InsecureURLSessionDelegate.swift
 │       └── Managers/
-│           └── BridgeManager.swift        # State & persistence
+│           ├── BridgeManager.swift        # State & persistence
+│           ├── ScenePinningManager.swift  # Pinned scene favorites
+│           ├── SearchManager.swift        # In-memory search
+│           └── SSEEventProcessor.swift    # SSE event handling
 │
 ├── hue-dat-Watch-App/                     # watchOS Target
 │   ├── Views/
@@ -189,12 +197,16 @@ hue-dat/
 ├── hue-dat-macOS/                         # macOS Target
 │   ├── HueDatMacApp.swift                # Menu bar + NSApplicationDelegate
 │   ├── EventMonitor.swift                # Click-outside detection
+│   ├── PopoverSizeManager.swift          # Popover height persistence
 │   ├── LaunchAtLoginManager.swift        # Startup configuration
 │   ├── Views/
-│   │   ├── MenuBarPanelView.swift
-│   │   ├── GlassEffectView.swift         # NSGlassEffectView wrapper
+│   │   ├── MenuBarPanelView.swift        # NavigationStack + routes
+│   │   ├── PanelHeader.swift             # Shared glass header + back button
+│   │   ├── RoomsZonesListView_macOS.swift # Primary list + search
+│   │   ├── GroupDetailView_macOS.swift   # Unified room/zone detail + pinning
+│   │   ├── PopoverResizeHandle.swift     # Drag-to-resize handle
 │   │   ├── SSEStatusIndicator.swift      # Connection status
-│   │   └── [6 other views]
+│   │   └── [5 other views]
 │   └── DeviceIdentifierProvider_macOS.swift
 │
 └── hue-dat-iOS/                           # iOS Target
@@ -203,13 +215,12 @@ hue-dat/
     ├── DeviceIdentifierProvider_iOS.swift
     ├── Assets.xcassets/                   # App icons
     └── Views/
-        ├── MainMenuView_iOS.swift         # Bridge discovery + video
-        ├── RoomsAndZonesListView_iOS.swift # Primary data view
-        ├── RoomDetailView_iOS.swift       # Touch controls
-        ├── ZoneDetailView_iOS.swift       # Touch controls
-        ├── LoadingStepIndicator.swift     # Multi-step progress
-        ├── LoopingVideoPlayer.swift       # Background video
-        └── [7 other views]
+        ├── MainMenuView_iOS.swift         # Bridge discovery + MeshGradient
+        ├── RoomsAndZonesListView_iOS.swift # Primary data view + search
+        ├── GroupDetailView_iOS.swift      # Unified room/zone detail + pinning
+        ├── GroupRowView_iOS.swift         # Unified room/zone list row
+        ├── LoadingStepIndicator.swift     # Glass LoadingCard
+        └── [8 other views]
 ```
 
 ## Technical Highlights
@@ -255,15 +266,13 @@ Single URLSession handles both REST and SSE on separate streams:
 - **View debouncing**: 500ms in detail views
 - **Reason**: Prevents overwhelming bridge, which becomes unresponsive under load
 
-### Multi-Step Loading System (iOS)
+### Liquid Glass Design Language
 
-**Problem**: Users perceive frozen app during data loading without feedback
-**Solution**: LoadingStepIndicator with TaskGroup-based progress tracking
+All three platforms adopt the SDK's built-in `glassEffect()` modifier:
 
-- Visual step dots show current progress (1-4 filled circles)
-- Descriptive messages per step ("Preparing...", "Loading rooms...", "Loading zones...", "Loading scenes...")
-- Parallel data fetching with TaskGroup monitors individual completion
-- Smooth spring animations on step transitions
+- Glass brightness pill, power button, and slider over dynamic ColorOrbsBackground (iOS + macOS detail views)
+- Shared glass PanelHeader on macOS (NavigationStack toolbars don't render inside an NSPopover)
+- Glass LoadingCard overlay during parallel TaskGroup data fetch (iOS)
 - **Validation gating**: Prevents showing loading when no bridge configured
 
 ## API Integration
