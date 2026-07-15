@@ -39,6 +39,10 @@ struct ColorOrbsBackground_macOS: View {
                 .animation(.easeInOut(duration: 0.3), value: brightness)
                 .animation(.easeInOut(duration: 0.3), value: isOn)
             }
+            // The orb is 2.5x the container; without clipping it draws over
+            // sibling views, and its frame would swallow their clicks too.
+            .clipped()
         }
+        .allowsHitTesting(false)
     }
 }
