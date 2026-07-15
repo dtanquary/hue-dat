@@ -74,7 +74,6 @@
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "55911FEE2EB1DCEC005CED54"
             BuildableName = "hue dat Watch App.app"
-            BlueprintName = "hue dat Watch App"
             ReferencedContainer = "container:hue-dat.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>
@@ -91,7 +90,6 @@
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "55911FEE2EB1DCEC005CED54"
             BuildableName = "hue dat Watch App.app"
-            BlueprintName = "hue dat Watch App"
             ReferencedContainer = "container:hue-dat.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>
