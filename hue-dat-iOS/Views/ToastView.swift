@@ -25,9 +25,7 @@ struct ToastModifier: ViewModifier {
                             .font(.body)
                     }
                     .padding()
-                    .background(.ultraThinMaterial)
-                    .cornerRadius(10)
-                    .shadow(radius: 5)
+                    .glassEffect()
                     .padding(.bottom, 50)
                 }
                 .transition(.move(edge: .bottom).combined(with: .opacity))

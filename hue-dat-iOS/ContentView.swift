@@ -28,10 +28,6 @@ struct ContentView: View {
     private let idleTimeoutThreshold: TimeInterval = 5 * 60  // 5 minutes
     @State private var lastBackgroundTimestamp: Date?
 
-    // NotificationCenter observer tokens
-    @State private var roomNavObserver: NSObjectProtocol?
-    @State private var zoneNavObserver: NSObjectProtocol?
-
     var body: some View {
         ZStack {
             NavigationStack(path: $navigationPath) {
@@ -56,41 +52,12 @@ struct ContentView: View {
 
             // Initial validation loading overlay
             if isValidatingConnection {
-                Color.black.opacity(0.3)
-                    .ignoresSafeArea()
-                    .transition(.opacity)
-
-                LoadingStepIndicator(
-                    currentStep: 1,
-                    totalSteps: 1,
-                    message: validationMessage
-                )
-                .transition(.opacity.combined(with: .scale(scale: 0.9)))
+                LoadingCard(message: validationMessage)
+                    .transition(.opacity.combined(with: .scale(scale: 0.9)))
             }
         }
         .animation(.easeInOut(duration: 0.3), value: isValidatingConnection)
         .onAppear {
-            // Listen for navigation notifications from search
-            roomNavObserver = NotificationCenter.default.addObserver(
-                forName: NSNotification.Name("NavigateToRoom"),
-                object: nil,
-                queue: .main
-            ) { notification in
-                if let room = notification.userInfo?["room"] as? HueRoom {
-                    navigationPath.append(room)
-                }
-            }
-
-            zoneNavObserver = NotificationCenter.default.addObserver(
-                forName: NSNotification.Name("NavigateToZone"),
-                object: nil,
-                queue: .main
-            ) { notification in
-                if let zone = notification.userInfo?["zone"] as? HueZone {
-                    navigationPath.append(zone)
-                }
-            }
-
             // When the view appears (app launch or wake), validate any restored connection
             if bridgeManager.connectedBridge != nil {
                 // Check if we have cached rooms or zones
@@ -124,16 +91,6 @@ struct ContentView: View {
             } else {
                 // No bridge connected - skip validation loading
                 isValidatingConnection = false
-            }
-        }
-        .onDisappear {
-            if let obs = roomNavObserver {
-                NotificationCenter.default.removeObserver(obs)
-                roomNavObserver = nil
-            }
-            if let obs = zoneNavObserver {
-                NotificationCenter.default.removeObserver(obs)
-                zoneNavObserver = nil
             }
         }
         .onChange(of: scenePhase) { oldPhase, newPhase in

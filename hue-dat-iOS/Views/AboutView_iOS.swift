@@ -168,7 +168,7 @@ private extension AboutView_iOS {
 
 private extension AboutView_iOS {
     var featuresSection: some View {
-        AboutCardViewLiquidGlass(
+        AboutCardView(
             title: "What Does This App Do?",
             systemImage: "checkmark.circle.fill",
             tint: .green
@@ -191,7 +191,7 @@ private extension AboutView_iOS {
 
 private extension AboutView_iOS {
     var limitationsSection: some View {
-        AboutCardViewLiquidGlass(
+        AboutCardView(
             title: "What This App Doesn't Do:",
             systemImage: "xmark.circle.fill",
             tint: .orange
@@ -241,29 +241,6 @@ private extension AboutView_iOS {
 
 // MARK: - Supporting Views
 
-struct AboutCardView<Content: View>: View {
-    let title: String
-    let systemImage: String
-    let tint: Color
-    @ViewBuilder let content: Content
-    
-    var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            Label(title, systemImage: systemImage)
-                .font(.headline)
-                .foregroundStyle(tint)
-            
-            content
-        }
-        .padding(20)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background {
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .fill(.ultraThinMaterial)
-        }
-    }
-}
-
 struct FeatureRow: View {
     let icon: String
     let text: String
@@ -283,12 +260,7 @@ struct FeatureRow: View {
     }
 }
 
-// MARK: - iOS 26+ Liquid Glass Version
-
-/// Use this version when targeting iOS 26+ / macOS Tahoe exclusively
-/// Uncomment and replace the standard AboutCardView
-@available(iOS 26.0, macOS 26.0, *)
-struct AboutCardViewLiquidGlass<Content: View>: View {
+struct AboutCardView<Content: View>: View {
     let title: String
     let systemImage: String
     let tint: Color

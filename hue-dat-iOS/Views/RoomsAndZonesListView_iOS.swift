@@ -17,23 +17,14 @@ struct RoomsAndZonesListView_iOS: View {
     @State private var isTurningOffLights = false
     @State private var roomsCount = 0
     @State private var zonesCount = 0
-    @State private var loadingStep = 0
-    @State private var loadingMessage = ""
     @State private var searchText = ""
-
-    enum FocusedField {
-        case search
-    }
-    @FocusState private var focusedField: FocusedField?
 
     @Namespace var animation
 
     // Search functionality
-    @State private var showSearchOverlay = false
     @State private var searchManager: SearchManager?
     @State private var toastMessage: String?
     @State private var showToast = false
-    @State private var searchResults = SearchResults(rooms: [], zones: [], scenes: [])
 
     // SSE status tracking
     @State private var sseStreamState: StreamState = .idle
@@ -47,6 +38,10 @@ struct RoomsAndZonesListView_iOS: View {
             return "Updated \(formatter.localizedString(for: lastUpdate, relativeTo: Date()))"
         }
         return ""
+    }
+
+    private var searchResults: SearchResults {
+        searchManager?.search(searchText) ?? SearchResults(rooms: [], zones: [], scenes: [])
     }
 
     // MARK: - SSE Status Properties
@@ -115,74 +110,11 @@ struct RoomsAndZonesListView_iOS: View {
 
     @ViewBuilder
     private var listContentView: some View {
-        let isLoading = bridgeManager.isLoadingRooms || bridgeManager.isLoadingZones
-
         List {
-            // Rooms section
-            if !bridgeManager.rooms.isEmpty {
-                Section {
-                    ForEach(bridgeManager.rooms) { room in
-                        ZStack {
-                            NavigationLink(value: room) {
-                                EmptyView()
-                            }
-                            .opacity(0)
-
-                            GroupRowView_iOS(group: room, isLoading: isLoading)
-                        }
-                        .disabled(isLoading)
-                        .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 6, trailing: 16))
-                        .listRowSeparator(.hidden)
-                        .listRowBackground(Color.clear)
-                    }
-                } header: {
-                    Text("ROOMS (\(roomsCount))")
-                        .font(.caption)
-                        .fontWeight(.semibold)
-                        .foregroundStyle(.secondary)
-                        .padding(.leading, 0)
-                }
-                .id("rooms-section")
-            }
-
-            // Zones section
-            if !bridgeManager.zones.isEmpty {
-                Section {
-                    ForEach(bridgeManager.zones) { zone in
-                        ZStack {
-                            NavigationLink(value: zone) {
-                                EmptyView()
-                            }
-                            .opacity(0)
-
-                            GroupRowView_iOS(group: zone, isLoading: isLoading)
-                        }
-                        .disabled(isLoading)
-                        .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 6, trailing: 16))
-                        .listRowSeparator(.hidden)
-                        .listRowBackground(Color.clear)
-                    }
-                } header: {
-                    Text("ZONES (\(zonesCount))")
-                        .font(.caption)
-                        .fontWeight(.semibold)
-                        .foregroundStyle(.secondary)
-                        .padding(.leading, 0)
-                }
-                .id("zones-section")
-            }
-
-            // Last update timestamp
-            if !lastUpdateText.isEmpty {
-                Section {
-                    Text(lastUpdateText)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .frame(maxWidth: .infinity, alignment: .center)
-                        .listRowInsets(EdgeInsets())
-                        .listRowSeparator(.hidden)
-                        .listRowBackground(Color.clear)
-                }
+            if searchText.isEmpty {
+                roomsAndZonesSections
+            } else {
+                searchResultsSections
             }
         }
         .listStyle(.plain)
@@ -191,29 +123,161 @@ struct RoomsAndZonesListView_iOS: View {
         }
     }
 
+    @ViewBuilder
+    private var roomsAndZonesSections: some View {
+        let isLoading = bridgeManager.isLoadingRooms || bridgeManager.isLoadingZones
+
+        // Rooms section
+        if !bridgeManager.rooms.isEmpty {
+            Section {
+                ForEach(bridgeManager.rooms) { room in
+                    groupRow(for: room, isLoading: isLoading)
+                        .disabled(isLoading)
+                }
+            } header: {
+                sectionHeader("ROOMS (\(roomsCount))")
+            }
+            .id("rooms-section")
+        }
+
+        // Zones section
+        if !bridgeManager.zones.isEmpty {
+            Section {
+                ForEach(bridgeManager.zones) { zone in
+                    groupRow(for: zone, isLoading: isLoading)
+                        .disabled(isLoading)
+                }
+            } header: {
+                sectionHeader("ZONES (\(zonesCount))")
+            }
+            .id("zones-section")
+        }
+
+        // Last update timestamp
+        if !lastUpdateText.isEmpty {
+            Section {
+                Text(lastUpdateText)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .center)
+                    .listRowInsets(EdgeInsets())
+                    .listRowSeparator(.hidden)
+                    .listRowBackground(Color.clear)
+            }
+        }
+    }
+
+    // MARK: - Search Results
+
+    @ViewBuilder
+    private var searchResultsSections: some View {
+        let results = searchResults
+
+        if results.isEmpty {
+            Section {
+                VStack(spacing: 12) {
+                    Image(systemName: "magnifyingglass")
+                        .font(.largeTitle)
+                        .foregroundStyle(.secondary)
+                    Text("No results for '\(searchText)'")
+                        .font(.headline)
+                        .foregroundStyle(.secondary)
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 40)
+                .listRowSeparator(.hidden)
+                .listRowBackground(Color.clear)
+            }
+        } else {
+            if !results.rooms.isEmpty {
+                Section {
+                    ForEach(results.rooms) { room in
+                        groupRow(for: room, isLoading: false)
+                    }
+                } header: {
+                    sectionHeader("ROOMS (\(results.rooms.count))")
+                }
+            }
+
+            if !results.zones.isEmpty {
+                Section {
+                    ForEach(results.zones) { zone in
+                        groupRow(for: zone, isLoading: false)
+                    }
+                } header: {
+                    sectionHeader("ZONES (\(results.zones.count))")
+                }
+            }
+
+            if !results.scenes.isEmpty {
+                Section {
+                    ForEach(results.scenes, id: \.scene.id) { sceneResult in
+                        sceneResultRow(sceneResult)
+                    }
+                } header: {
+                    sectionHeader("SCENES (\(results.scenes.count))")
+                }
+            }
+        }
+    }
+
+    private func groupRow(for group: some GroupedLightContainer, isLoading: Bool) -> some View {
+        ZStack {
+            NavigationLink(value: group) {
+                EmptyView()
+            }
+            .opacity(0)
+
+            GroupRowView_iOS(group: group, isLoading: isLoading)
+        }
+        .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 6, trailing: 16))
+        .listRowSeparator(.hidden)
+        .listRowBackground(Color.clear)
+    }
+
+    private func sceneResultRow(_ sceneResult: SceneSearchResult) -> some View {
+        Button {
+            activateScene(sceneResult)
+        } label: {
+            HStack {
+                Image(systemName: "lightbulb.fill")
+                    .foregroundStyle(.yellow)
+                    .frame(width: 24)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    HighlightedText(
+                        text: sceneResult.scene.metadata.name,
+                        highlight: searchText
+                    )
+                    .foregroundStyle(.primary)
+
+                    if let context = sceneResult.contextDescription {
+                        Text(context)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+
+                Spacer()
+
+                Image(systemName: "wand.and.stars")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            .padding(.vertical, 4)
+        }
+        .listRowSeparator(.hidden)
+    }
+
+    private func sectionHeader(_ title: String) -> some View {
+        Text(title)
+            .font(.caption)
+            .fontWeight(.semibold)
+            .foregroundStyle(.secondary)
+    }
 
     var body: some View {
         contentWithNavigation
-            .onChange(of: focusedField) { _, newField in
-                let isFocused = newField == .search
-                withAnimation {
-                    showSearchOverlay = isFocused
-                }
-                if isFocused {
-                    searchResults = performSearch()
-                }
-            }
-            .onChange(of: searchText) { _, newText in
-                // Update search results
-                searchResults = performSearch()
-
-                // Show overlay if field is focused OR there's text
-                if focusedField == .search || !newText.isEmpty {
-                    withAnimation {
-                        showSearchOverlay = true
-                    }
-                }
-            }
             .sheet(isPresented: $showSettings) {
                 NavigationStack {
                     SettingsView_iOS(bridgeManager: bridgeManager)
@@ -287,33 +351,14 @@ struct RoomsAndZonesListView_iOS: View {
         mainContent
             .navigationTitle("Rooms & Zones")
             .navigationBarTitleDisplayMode(.inline)
+            .searchable(text: $searchText, prompt: "Rooms, Zones, and Scenes")
             .toolbar {
                 toolbarContent
-            }
-            .toolbar {
-                if (!bridgeManager.rooms.isEmpty || !bridgeManager.zones.isEmpty)
-                    && hasLoadedData {
-                    searchToolbarContent
-                }
             }
             .opacity((bridgeManager.isRefreshing && !hasLoadedData) ? 0.5 : 1.0)
             .animation(.easeInOut(duration: 0.3), value: bridgeManager.isRefreshing)
             .overlay {
-                ZStack {
-                    loadingOverlay
-
-                    if showSearchOverlay {
-                        SearchResultsOverlay(
-                            searchResults: searchResults,
-                            searchQuery: searchText,
-                            onRoomTap: navigateToRoom,
-                            onZoneTap: navigateToZone,
-                            onSceneTap: activateScene
-                        )
-                        .transition(.opacity)
-                        .zIndex(100)
-                    }
-                }
+                loadingOverlay
             }
             .toast(isShowing: $showToast, message: toastMessage ?? "")
     }
@@ -364,9 +409,9 @@ struct RoomsAndZonesListView_iOS: View {
                 Image(systemName: "pin.fill")
             }
         }
-        
+
         ToolbarSpacer(placement: .topBarTrailing)
-        
+
         ToolbarItem(placement: .topBarTrailing) {
             Menu {
                 Button {
@@ -377,7 +422,7 @@ struct RoomsAndZonesListView_iOS: View {
                     Label("Turn off all lights", systemImage: "moon.fill")
                 }
                 .disabled(isTurningOffLights || bridgeManager.connectedBridge == nil)
-                
+
                 Button {
                     Task {
                         await refreshData(forceRefresh: true)
@@ -385,10 +430,10 @@ struct RoomsAndZonesListView_iOS: View {
                 } label: {
                     Label("Refresh Data", systemImage: "arrow.clockwise")
                         .symbolEffect(.rotate, isActive: bridgeManager.isRefreshing)
-                        
+
                 }
                 .disabled(bridgeManager.isRefreshing || bridgeManager.connectedBridge == nil)
-                
+
                 Button("Settings", systemImage: "gear"){
                     showSettings = true
                 }
@@ -398,111 +443,26 @@ struct RoomsAndZonesListView_iOS: View {
             .matchedTransitionSource(id: "Settings", in: animation)
         }
     }
-    
-    @ToolbarContentBuilder
-    private var searchToolbarContent: some ToolbarContent {
-        ToolbarItem(placement: .bottomBar) {
-            searchBarView
-        }
-        if (showSearchOverlay) {
-            ToolbarSpacer(.flexible, placement: .bottomBar)
-            ToolbarItem(placement: .bottomBar) {
-                Button("Close", systemImage: "xmark"){
-                    focusedField = nil
-                    searchText = ""
-                    withAnimation {
-                        showSearchOverlay = false
-                    }
-                }
-            }
-        }
-    }
-    
-    @ViewBuilder
-    private var searchBarView: some View {
-        HStack(spacing: 12) {
-            // Search field container
-            HStack(spacing: 8) {
-                Image(systemName: "magnifyingglass")
-                    .foregroundStyle(.secondary)
-
-                TextField("Rooms, Zones, and Scenes", text: $searchText)
-                    .focused($focusedField, equals: .search)
-                    .textInputAutocapitalization(.never)
-                    .autocorrectionDisabled()
-                    .onSubmit { }
-            }
-        }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 8)
-    }
 
     @ViewBuilder
     private var loadingOverlay: some View {
         if bridgeManager.isRefreshing && !hasLoadedData {
-            ZStack {
-                Color.black.opacity(0.3)
-                    .ignoresSafeArea()
-                    .transition(.opacity)
-
-                LoadingStepIndicator(
-                    currentStep: max(1, loadingStep),
-                    totalSteps: 4,
-                    message: loadingMessage.isEmpty ? "Preparing..." : loadingMessage
-                )
+            LoadingCard(message: "Loading rooms & zones...")
                 .transition(.opacity.combined(with: .scale(scale: 0.9)))
-            }
-            .animation(.easeInOut(duration: 0.3), value: loadingStep)
         }
     }
 
     private func refreshData(forceRefresh: Bool) async {
-        // Reset loading state
-        loadingStep = 1
-        loadingMessage = "Preparing..."
-
-        // Use TaskGroup to track progress of parallel operations
-        await withTaskGroup(of: String.self) { group in
-            // Add all three tasks
+        // Fetch rooms, zones, and scenes in parallel
+        await withTaskGroup(of: Void.self) { group in
             group.addTask {
                 await bridgeManager.getRooms(forceRefresh: forceRefresh)
-                return "rooms"
             }
             group.addTask {
                 await bridgeManager.getZones(forceRefresh: forceRefresh)
-                return "zones"
             }
             group.addTask {
                 await bridgeManager.fetchScenes()
-                return "scenes"
-            }
-
-            // Track completion of each task
-            var completedCount = 0
-            for await completed in group {
-                completedCount += 1
-
-                // Update UI based on which task completed
-                await MainActor.run {
-                    withAnimation(.easeInOut(duration: 0.3)) {
-                        loadingStep = completedCount + 1
-                        switch completed {
-                        case "rooms":
-                            loadingMessage = "Loaded rooms..."
-                        case "zones":
-                            loadingMessage = "Loaded zones..."
-                        case "scenes":
-                            loadingMessage = "Loaded scenes..."
-                        default:
-                            break
-                        }
-
-                        // Show final message when all complete
-                        if completedCount == 3 {
-                            loadingMessage = "Finishing up..."
-                        }
-                    }
-                }
             }
         }
 
@@ -554,50 +514,6 @@ struct RoomsAndZonesListView_iOS: View {
         }
     }
 
-    // MARK: - Search Functions
-
-    private func performSearch() -> SearchResults {
-        guard let searchManager = searchManager else {
-            return SearchResults(rooms: [], zones: [], scenes: [])
-        }
-        return searchManager.search(searchText)
-    }
-
-    // MARK: - Navigation Handlers
-
-    private func navigateToRoom(_ room: HueRoom) {
-        // Close search
-        searchText = ""
-        focusedField = nil
-        withAnimation {
-            showSearchOverlay = false
-        }
-
-        // Note: Navigation will be handled by ContentView's navigationDestination
-        // We'll use a Notification to trigger navigation
-        NotificationCenter.default.post(
-            name: NSNotification.Name("NavigateToRoom"),
-            object: nil,
-            userInfo: ["room": room]
-        )
-    }
-
-    private func navigateToZone(_ zone: HueZone) {
-        // Close search
-        searchText = ""
-        focusedField = nil
-        withAnimation {
-            showSearchOverlay = false
-        }
-
-        // Note: Navigation will be handled by ContentView's navigationDestination
-        NotificationCenter.default.post(
-            name: NSNotification.Name("NavigateToZone"),
-            object: nil,
-            userInfo: ["zone": zone]
-        )
-    }
-
     // MARK: - Scene Activation
 
     private func activateScene(_ sceneResult: SceneSearchResult) {
@@ -611,13 +527,7 @@ struct RoomsAndZonesListView_iOS: View {
                 toastMessage = "Scene '\(sceneResult.scene.metadata.name)' applied"
                 withAnimation {
                     showToast = true
-                    // CONFIGURABLE: Set this to false to keep search open
-                    let closeSearchOnSuccess = true
-                    if closeSearchOnSuccess {
-                        searchText = ""
-                        focusedField = nil
-                        showSearchOverlay = false
-                    }
+                    searchText = ""
                 }
             } catch {
                 // Error - show error alert, keep search open

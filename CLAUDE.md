@@ -188,51 +188,43 @@ xcodebuild -project hue-dat.xcodeproj -scheme "hue dat iOS" -sdk iphonesimulator
 - **isConnectionValidated**: Gates view transition to prevent premature data loading
 - **SSE lifecycle**: Manages reconnection after app resume
 - **Scene phase handling**: Stops SSE/refresh on background, restarts on active
-- **1s network delay**: Waits for network stabilization after app resume
+- **3s network delay**: Waits for network stabilization after app resume
 - **Background validation**: Validates bridge in background even when cached data shown
 
 **MainMenuView_iOS** - Bridge discovery
-- **Video background**: Looping light.mp4 with ambient audio mixing
+- **Animated MeshGradient background**: Slow-drifting Hue-ish colors, light/dark palettes (private `AnimatedMeshBackground`)
 - **Animated search**: Rotating icon during bridge discovery
 - **Sheet presentations**: BridgesList, ManualEntry, Registration flows
-- **LoopingVideoPlayer**: AVPlayerLooper with scene phase lifecycle
+- **Glass buttons**: `.glassEffect()` on discovery/manual-entry buttons
 
 **RoomsAndZonesListView_iOS** - Primary data view
-- **Multi-step loading**: LoadingStepIndicator with progress tracking
-- **TaskGroup-based loading**: Parallel fetch with completion tracking
-- **Loading states**: Step 1-4 with descriptive messages (Preparing, Loading rooms, Loading zones, Loading scenes)
+- **Loading**: Parallel TaskGroup fetch (rooms/zones/scenes) with glass `LoadingCard` overlay
 - **Pull-to-refresh**: Integrated refresh control
-- **SSE status indicator**: Real-time connection monitoring
-- **Turn off all lights**: Bulk control with separate loading state
-- **Section headers**: Room/zone counts with status dots
-- **Search bar**: Bottom search using `.safeAreaInset(edge: .bottom)` (NOT toolbar - see Known Issues)
+- **SSE status**: Inline toolbar Menu (colored antenna icon + reconnect button)
+- **Turn off all lights**: Bulk control via toolbar menu
+- **Section headers**: Room/zone counts
+- **Search**: Native `.searchable`; results render inline in the List — rooms/zones as NavigationLinks (reusing GroupRowView_iOS), scenes tap-to-activate with toast + `HighlightedText`
 
-**RoomDetailView_iOS / ZoneDetailView_iOS** - Control interfaces
-- **Touch-optimized**: Slider controls for brightness (0-100%)
-- **Scene grid**: 2-column LazyVGrid with scene cards
+**GroupDetailView_iOS** - Unified room/zone control (generic over `GroupedLightContainer`; replaced RoomDetailView_iOS/ZoneDetailView_iOS)
+- **Liquid Glass controls** over ColorOrbsBackground: glass brightness pill, interactive glass circle power button, glass capsule slider row, wrapped in `GlassEffectContainer`
+- **Scene grid**: 2-column LazyVGrid with scene cards (glass name strip) over the orbs
 - **Scene card gestures**:
   - **Tap**: Activates scene (quick press)
   - **Long press (0.5s)**: Toggles pin with haptic feedback
 - **Pin indicators**: White pin icon (top-left) + active checkmark (top-right)
-- **ColorOrbsBackground**: Opacity tied to brightness
 - **Optimistic UI**: Immediate visual feedback
-- **500ms debouncing**: Prevents excessive API calls
-- **Turn off button**: Per-room/zone power control
-- **Scene pinning**: Fully functional via long-press gesture
+- **300ms brightness debouncing**: Prevents excessive API calls
 
-**LoadingStepIndicator** - Multi-step progress component (NEW)
-- **Visual step dots**: Animated circles showing progress
-- **Step counter**: "Step X of Y" display
-- **Descriptive messages**: Context-aware loading text
-- **Smooth animations**: Spring effects on dot transitions
-- **.regularMaterial**: Native iOS glass effect background
+**LoadingCard** (LoadingStepIndicator.swift) - Glass loading card
+- Spinner + message in `.glassEffect(in: .rect(cornerRadius: 16))`
 
 **Other views:**
-- RoomRowView, ZoneRowView - List row components
+- GroupRowView_iOS - Unified room/zone list row (replaced RoomRowView/ZoneRowView)
+- PinnedScenesListView - Pinned scenes as toolbar Menu items
 - BridgesListView_iOS - Discovered bridges with registration
 - ManualBridgeEntryView_iOS - Manual IP entry
 - SettingsView_iOS - App configuration
-- SSEStatusIndicator - Connection status (shared with macOS)
+- AboutView_iOS - Liquid Glass about page
 
 ### State Management
 - **MainActor**: BridgeManager, BridgeDiscoveryService
@@ -501,7 +493,7 @@ clearAllPinnedScenes()                  // Clear all pins across all bridges
   - White pin icon in top-left corner of scene cards
   - Medium haptic feedback on pin/unpin
   - Tap vs long-press differentiation via gesture handlers
-  - Files: RoomDetailView_iOS.swift, ZoneDetailView_iOS.swift
+  - File: GroupDetailView_iOS.swift
 - **watchOS**: ⏳ Not yet implemented
 - **macOS**: ✅ Fully implemented
   - Right-click context menu ("Pin Scene"/"Unpin Scene") on scene cards
@@ -587,24 +579,23 @@ hue-dat-iOS/                               # iOS Target
 ├── HueDatiOSApp.swift                    # SwiftUI App entry
 ├── ContentView.swift                      # Lifecycle manager + SSE
 ├── DeviceIdentifierProvider_iOS.swift
+├── DebugLog_iOS.swift
+├── ViewExtensions.swift                   # skeletonLoader()
 ├── Assets.xcassets/                       # App icons
 └── Views/
-    ├── MainMenuView_iOS.swift             # Bridge discovery + video
-    ├── RoomsAndZonesListView_iOS.swift    # Primary data view + search
-    ├── RoomDetailView_iOS.swift           # Touch controls
-    ├── ZoneDetailView_iOS.swift           # Touch controls
-    ├── SearchResultsOverlay.swift         # Full-screen search results
+    ├── MainMenuView_iOS.swift             # Bridge discovery + animated MeshGradient
+    ├── RoomsAndZonesListView_iOS.swift    # Primary data view + native search
+    ├── GroupDetailView_iOS.swift          # Unified room/zone detail + pinning
+    ├── GroupRowView_iOS.swift             # Unified room/zone list row
+    ├── PinnedScenesListView.swift         # Pinned scenes menu content
     ├── HighlightedText.swift              # Search term highlighting
-    ├── LoadingStepIndicator.swift         # Multi-step progress
-    ├── LoopingVideoPlayer.swift           # Background video
+    ├── LoadingStepIndicator.swift         # LoadingCard glass loading card
     ├── ToastView.swift                    # Toast notifications
     ├── ColorOrbsBackground_iOS.swift      # Dynamic orbs
-    ├── RoomRowView.swift                  # List row
-    ├── ZoneRowView.swift                  # List row
     ├── BridgesListView_iOS.swift          # Discovery results
     ├── ManualBridgeEntryView_iOS.swift    # Manual IP entry
     ├── SettingsView_iOS.swift             # App settings
-    └── SSEStatusIndicator.swift           # Connection status
+    └── AboutView_iOS.swift                # Liquid Glass about page
 ```
 
 ## Search Functionality

@@ -7,8 +7,6 @@
 
 import SwiftUI
 import HueDatShared
-import AVKit
-import AVFoundation
 
 struct MainMenuView_iOS: View {
     @Environment(\.colorScheme) var colorScheme
@@ -18,22 +16,15 @@ struct MainMenuView_iOS: View {
     @State private var showManualEntry = false
     @State private var showRegistrationForManualBridge = false
     @State private var manualBridgeInfo: BridgeInfo?
-    
-    @State private var playerLooper: AVPlayerLooper?
-    @State private var player = AVQueuePlayer()
-    @State private var isVideoSetup = false
-    @State private var isViewActive = true
-    
+
     @Namespace var animation
     @State private var showAboutSheet = false
-    
-    @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
         // Show discovery UI immediately (ContentView only shows this when no bridge is connected)
         VStack(alignment: .leading, spacing: 0) {
             Spacer()
-            
+
             Text("Control your Philips Hue lights")
                 .font(.largeTitle.bold())
                 .foregroundStyle(colorScheme == .dark ? .white : .black)
@@ -101,7 +92,7 @@ struct MainMenuView_iOS: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background {
-            backgroundView
+            AnimatedMeshBackground()
         }
         .navigationTitle("")
         .navigationBarTitleDisplayMode(.inline)
@@ -115,23 +106,6 @@ struct MainMenuView_iOS: View {
         }
         .sheet(isPresented: $showAboutSheet) {
             AboutView_iOS().navigationTransition(.zoom(sourceID: "About", in: animation))
-        }
-        .task {
-            debugLog("MainMenuView task started")
-            isViewActive = true
-            await setupVideoAsync()
-        }
-        .onAppear {
-            debugLog("MainMenuView appeared")
-            isViewActive = true
-            // Resume playback if already setup
-            if isVideoSetup && player.rate == 0 {
-                player.play()
-            }
-        }
-        .onDisappear {
-            debugLog("MainMenuView disappeared")
-            isViewActive = false
         }
         .sheet(isPresented: $showBridgesList, onDismiss: {
             // Cancel any ongoing discovery when sheet is dismissed
@@ -188,97 +162,48 @@ struct MainMenuView_iOS: View {
         } message: {
             Text("No Hue bridges could be found on your network. Make sure your bridge is connected and try again.")
         }
-        .onChange(of: scenePhase) { _, newPhase in
-            switch newPhase {
-            case .active:
-                player.play()
-            case .background, .inactive:
-                player.pause()
-            @unknown default:
-                break
-            }
+    }
+}
+
+// MARK: - Animated Mesh Background
+
+/// Slow-drifting mesh gradient in Hue-ish colors. Replaces the old looping video background.
+private struct AnimatedMeshBackground: View {
+    @Environment(\.colorScheme) private var colorScheme
+
+    private var colors: [Color] {
+        if colorScheme == .dark {
+            return [
+                .black, .indigo, .black,
+                .purple, Color(red: 0.15, green: 0.1, blue: 0.3), .teal,
+                .black, Color(red: 0.8, green: 0.4, blue: 0.1), .black
+            ]
+        } else {
+            return [
+                .white, .indigo.opacity(0.4), .white,
+                .purple.opacity(0.35), Color(red: 0.85, green: 0.8, blue: 0.95), .teal.opacity(0.4),
+                .white, .orange.opacity(0.3), .white
+            ]
         }
     }
 
-    // MARK: - Background View
-
-    private var backgroundView: some View {
-        ZStack {
-            // Fallback gradient background (shows immediately)
-            LinearGradient(
-                colors: [Color.primary, Color.blue.opacity(0.3), Color.primary],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
+    var body: some View {
+        TimelineView(.animation(minimumInterval: 1.0 / 20.0)) { timeline in
+            let t = timeline.date.timeIntervalSinceReferenceDate / 6
+            MeshGradient(
+                width: 3,
+                height: 3,
+                points: [
+                    [0, 0], [Float(0.5 + 0.2 * sin(t * 0.7)), 0], [1, 0],
+                    [0, Float(0.5 + 0.2 * cos(t * 0.8))],
+                    [Float(0.5 + 0.3 * sin(t)), Float(0.5 + 0.3 * cos(t * 0.9))],
+                    [1, Float(0.5 + 0.2 * sin(t * 0.6))],
+                    [0, 1], [Float(0.5 + 0.2 * cos(t * 0.5)), 1], [1, 1]
+                ],
+                colors: colors
             )
-
-            // Video overlay if available
-            if isVideoSetup {
-                LoopingVideoPlayer(player: player)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .ignoresSafeArea()
-                    .opacity(1)
-            }
-            
-            // Background Color
-            if (colorScheme == .dark) {
-                Color.black
-                    .ignoresSafeArea()
-                    .opacity(0.3)
-            } else {
-                Color.white
-                    .ignoresSafeArea()
-                    .opacity(0.6)
-            }
         }
-    }
-
-    private func setupVideoAsync() async {
-        guard !isVideoSetup else {
-            debugLog("Video already setup")
-            return
-        }
-
-        debugLog("Setting up video async...")
-
-        // Load video from asset catalog
-        let videoURL = await MainActor.run {
-            let videoName = colorScheme == .light ? "light-lightTheme" : "light"
-            return LoopingVideoPlayer.loadVideoURL(named: videoName)
-        }
-
-        guard let videoURL = videoURL else {
-            debugLog("❌ Failed to load video URL")
-            return
-        }
-        debugLog("✅ Video URL loaded: \(videoURL)")
-
-        await MainActor.run {
-            // Configure audio session to mix with other audio (e.g., Music)
-            do {
-                try AVAudioSession.sharedInstance().setCategory(.ambient, mode: .default)
-                try AVAudioSession.sharedInstance().setActive(true)
-                debugLog("✅ Audio session configured for ambient playback")
-            } catch {
-                debugLog("⚠️ Failed to configure audio session: \(error)")
-            }
-
-            let playerItem = AVPlayerItem(url: videoURL)
-
-            // Configure player
-            player.isMuted = true
-            player.allowsExternalPlayback = false
-
-            // Setup looping
-            playerLooper = AVPlayerLooper(player: player, templateItem: playerItem)
-            debugLog("✅ Player looper setup complete")
-
-            // Mark as setup and start playing if view is active
-            isVideoSetup = true
-            if isViewActive {
-                player.play()
-                debugLog("✅ Player started")
-            }
-        }
+        .ignoresSafeArea()
     }
 }
 

@@ -82,76 +82,79 @@ struct GroupDetailView_iOS<T: GroupedLightContainer>: View {
 
             VStack(spacing: 0) {
                 // Controls section
-                VStack(spacing: 24) {
-                    Spacer()
+                GlassEffectContainer {
+                    VStack(spacing: 24) {
+                        Spacer()
 
-                    // Brightness percentage display
-                    Text(displayBrightness.truncatingRemainder(dividingBy: 1) == 0 ? "\(Int(displayBrightness))%" : String(format: "%.1f%%", displayBrightness))
-                        .font(.title.bold())
-                        .foregroundStyle(.white)
+                        // Brightness percentage display
+                        Text(displayBrightness.truncatingRemainder(dividingBy: 1) == 0 ? "\(Int(displayBrightness))%" : String(format: "%.1f%%", displayBrightness))
+                            .font(.title.bold())
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 20)
+                            .padding(.vertical, 10)
+                            .glassEffect()
+
+                        Spacer()
+
+                        // Power toggle button
+                        Button(action: {
+                            togglePower(!displayIsOn)
+                        }) {
+                            Image(systemName: "power")
+                                .font(.system(size: 56, weight: .bold))
+                                .foregroundStyle(displayIsOn ? .white : .gray)
+                                .padding(28)
+                                .contentShape(Circle())
+                        }
+                        .buttonStyle(.plain)
+                        .glassEffect(.regular.interactive(), in: .circle)
+
+                        Spacer()
+
+                        // Brightness slider
+                        HStack(spacing: 16) {
+                            Image(systemName: "sun.min")
+                                .foregroundStyle(.white.opacity(0.8))
+                                .font(.title2)
+
+                            Slider(value: Binding(
+                                get: { displayBrightness },
+                                set: { newValue in
+                                    setBrightness(newValue)
+                                }
+                            ), in: 1...100)
+                            .disabled(!displayIsOn)
+                            .tint(.white)
+
+                            Image(systemName: "sun.max.fill")
+                                .foregroundStyle(.white.opacity(0.8))
+                                .font(.title2)
+                        }
                         .padding(.horizontal, 20)
-                        .padding(.vertical, 10)
-                        .background(Color.black.opacity(0.6))
-                        .clipShape(Capsule())
-                        .shadow(color: .black.opacity(0.3), radius: 4)
-
-                    Spacer()
-
-                    // Power toggle button
-                    Button(action: {
-                        togglePower(!displayIsOn)
-                    }) {
-                        Image(systemName: displayIsOn ? "power.circle.fill" : "power.circle")
-                            .font(.system(size: 80))
-                            .foregroundStyle(displayIsOn ? .white : .gray)
-                            .shadow(color: .black.opacity(0.3), radius: 4)
+                        .padding(.vertical, 14)
+                        .glassEffect(in: .capsule)
+                        .padding(.horizontal, 24)
+                        .padding(.bottom, 8)
                     }
-                    .buttonStyle(.plain)
-
-                    Spacer()
-
-                    // Brightness slider
-                    HStack(spacing: 16) {
-                        Image(systemName: "sun.min")
-                            .foregroundStyle(.white.opacity(0.8))
-                            .font(.title2)
-
-                        Slider(value: Binding(
-                            get: { displayBrightness },
-                            set: { newValue in
-                                setBrightness(newValue)
-                            }
-                        ), in: 1...100)
-                        .disabled(!displayIsOn)
-                        .tint(.white)
-
-                        Image(systemName: "sun.max.fill")
-                            .foregroundStyle(.white.opacity(0.8))
-                            .font(.title2)
-                    }
-                    .padding(.horizontal, 24)
-                    .padding(.bottom, 8)
+                    .frame(height: 350)
                 }
-                .frame(height: 350)
 
                 // Scenes section
                 if !groupScenes.isEmpty {
-                    Divider()
-
                     ScrollView {
                         VStack(alignment: .leading, spacing: 12) {
                             // Header
                             HStack {
                                 Text("Scenes")
                                     .font(.headline)
+                                    .foregroundStyle(.white)
                                 Spacer()
                                 Text("\(groupScenes.count)")
                                     .font(.caption)
-                                    .foregroundStyle(.secondary)
+                                    .foregroundStyle(.white)
                                     .padding(.horizontal, 8)
                                     .padding(.vertical, 4)
-                                    .background(Color.secondary.opacity(0.15))
-                                    .clipShape(Capsule())
+                                    .glassEffect()
                             }
 
                             // Grid of scene cards
@@ -166,7 +169,6 @@ struct GroupDetailView_iOS<T: GroupedLightContainer>: View {
                         }
                         .padding()
                     }
-                    .background(Color(uiColor: .systemGroupedBackground))
                 }
             }
         }
@@ -360,7 +362,7 @@ struct GroupDetailView_iOS<T: GroupedLightContainer>: View {
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 8)
                 .padding(.horizontal, 8)
-                .background(.ultraThinMaterial.opacity(0.9))
+                .glassEffect(in: .rect)
 
                 // Pin indicator (top-left)
                 if isPinned {
