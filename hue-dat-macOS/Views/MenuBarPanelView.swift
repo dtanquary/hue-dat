@@ -22,7 +22,9 @@ struct MenuBarPanelView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            NavigationStack(path: $path) {
+            // Custom ZStack router: NavigationStack doesn't animate pushes inside an
+            // NSPopover, so we slide views manually for the iOS-style push transition.
+            ZStack {
                 Group {
                     if bridgeManager.isConnected {
                         RoomsZonesListView_macOS(
@@ -34,17 +36,27 @@ struct MenuBarPanelView: View {
                         disconnectedView
                     }
                 }
-                .navigationDestination(for: PanelRoute.self) { route in
-                    switch route {
-                    case .room(let id):
-                        GroupDetailView_macOS<HueRoom>(groupId: id)
-                    case .zone(let id):
-                        GroupDetailView_macOS<HueZone>(groupId: id)
-                    case .settings:
-                        SettingsView_macOS()
+                // iOS-style parallax: list drifts left and dims while a detail is pushed
+                .offset(x: path.isEmpty ? 0 : -100)
+                .overlay(Color.black.opacity(path.isEmpty ? 0 : 0.15))
+
+                if let route = path.last {
+                    Group {
+                        switch route {
+                        case .room(let id):
+                            GroupDetailView_macOS<HueRoom>(groupId: id)
+                        case .zone(let id):
+                            GroupDetailView_macOS<HueZone>(groupId: id)
+                        case .settings:
+                            SettingsView_macOS()
+                        }
                     }
+                    .background() // opaque so the list doesn't show through during the slide
+                    .transition(.move(edge: .trailing))
                 }
             }
+            .animation(.spring(duration: 0.35), value: path)
+            .clipped()
             .environment(\.panelBack) {
                 if !path.isEmpty { path.removeLast() }
             }
