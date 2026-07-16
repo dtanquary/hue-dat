@@ -34,8 +34,8 @@ Package.pins
 Package.resolved
 *.xcodeproj/project.xcworkspace/xcuserdata/
 
-## Claude Code
-.claude/
+## Claude Code (shared config is tracked; only personal local settings are ignored)
+.claude/settings.local.json
 
 ## Secrets & credentials
 .env
