@@ -2,47 +2,59 @@
 //  ColorOrbsBackground_macOS.swift
 //  hue dat macOS
 //
-//  Brightness-controlled background orb for macOS
+//  Ambient animated mesh backdrop driven by the group's live light color.
+//  Pauses when Reduce Motion is on, the panel is inactive, or lights are off
+//  (a paused TimelineView still renders one static frame).
 //
 
 import SwiftUI
 import HueDatShared
 
 struct ColorOrbsBackground_macOS: View {
+    let baseColor: Color
     let brightness: Double  // 0-100
     let isOn: Bool
+    let isActive: Bool
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    private var meshColors: [Color] {
+        let c = isOn ? baseColor : Color.gray
+        return [
+            .black, c.opacity(0.55), .black,
+            c.opacity(0.4), c, c.opacity(0.5),
+            .black, c.opacity(0.35), .black
+        ]
+    }
 
     var body: some View {
-        GeometryReader { geometry in
-            ZStack {
-                // Black background
-                Color.black
+        ZStack {
+            Color.black
 
-                // Single centered orb
-                let orbSize = min(geometry.size.width, geometry.size.height) * 2.5
-                let orbColor = isOn ? Color.orange : Color.gray
-                let orbOpacity = isOn ? (brightness / 100.0) : 0.2
-
-                RadialGradient(
-                    gradient: Gradient(colors: [
-                        orbColor.opacity(orbOpacity),
-                        orbColor.opacity(orbOpacity * 0.3),
-                        .clear
-                    ]),
-                    center: .center,
-                    startRadius: 0,
-                    endRadius: orbSize / 2
+            TimelineView(.animation(minimumInterval: 1.0 / 20.0,
+                                    paused: reduceMotion || !isActive || !isOn)) { timeline in
+                let t = timeline.date.timeIntervalSinceReferenceDate / 8
+                MeshGradient(
+                    width: 3,
+                    height: 3,
+                    points: [
+                        [0, 0], [Float(0.5 + 0.2 * sin(t * 0.7)), 0], [1, 0],
+                        [0, Float(0.5 + 0.2 * cos(t * 0.8))],
+                        [Float(0.5 + 0.3 * sin(t)), Float(0.5 + 0.3 * cos(t * 0.9))],
+                        [1, Float(0.5 + 0.2 * sin(t * 0.6))],
+                        [0, 1], [Float(0.5 + 0.2 * cos(t * 0.5)), 1], [1, 1]
+                    ],
+                    colors: meshColors
                 )
-                .frame(width: orbSize, height: orbSize)
-                .position(x: geometry.size.width / 2, y: geometry.size.height / 2)
-                .blendMode(.screen)
-                .animation(.easeInOut(duration: 0.3), value: brightness)
-                .animation(.easeInOut(duration: 0.3), value: isOn)
             }
-            // The orb is 2.5x the container; without clipping it draws over
-            // sibling views, and its frame would swallow their clicks too.
-            .clipped()
+            .opacity(isOn ? 0.35 + 0.5 * (brightness / 100.0) : 0.15)
+            .animation(.easeInOut(duration: 0.6), value: isOn)
+            .animation(.easeInOut(duration: 0.6), value: brightness)
+            .animation(.easeInOut(duration: 1.2), value: baseColor)
         }
+        // The mesh lives in a fixed band above the scenes scroll; without
+        // clipping it would draw over sibling views (see commit 33f2724).
+        .clipped()
         .allowsHitTesting(false)
     }
 }

@@ -20,6 +20,9 @@ struct GroupDetailView_macOS<T: GroupedLightContainer>: View {
     @State private var errorMessage = ""
     @State private var hoveredSceneId: String?
     @State private var isApplyingScene = false
+    @State private var activatingSceneId: String?
+
+    @Namespace private var glassNamespace
 
     // Optimistic state for immediate UI feedback
     @State private var optimisticIsOn: Bool?
@@ -42,6 +45,11 @@ struct GroupDetailView_macOS<T: GroupedLightContainer>: View {
 
     private var groupedLightId: String? {
         group?.services?.first(where: { $0.rtype == "grouped_light" })?.rid
+    }
+
+    /// Live color the group's lights are actually showing right now
+    private var groupColor: Color {
+        groupedLight?.displayColor ?? .orange
     }
 
     private var displayIsOn: Bool {
@@ -74,8 +82,10 @@ struct GroupDetailView_macOS<T: GroupedLightContainer>: View {
                 ZStack {
                     // Layer 0: ColorOrbsBackground
                     ColorOrbsBackground_macOS(
+                        baseColor: groupColor,
                         brightness: displayBrightness,
-                        isOn: displayIsOn
+                        isOn: displayIsOn,
+                        isActive: isViewActive
                     )
                     .frame(height: 280)
 
@@ -89,49 +99,58 @@ struct GroupDetailView_macOS<T: GroupedLightContainer>: View {
                             .frame(width: 64, height: 64)
                     }
                     .buttonStyle(.plain)
-                    .glassEffect(.regular.interactive(), in: .circle)
+                    .glassEffect(.regular.tint(displayIsOn ? groupColor.opacity(0.65) : Color.clear).interactive(), in: .circle)
+                    .glassEffectID("power", in: glassNamespace)
                     .accessibilityLabel(displayIsOn ? "Turn Off" : "Turn On")
 
-                    // Layer 2: Brightness percentage overlay
-                    VStack {
-                        Text(displayBrightness.truncatingRemainder(dividingBy: 1) == 0 ? "\(Int(displayBrightness))%" : String(format: "%.1f%%", displayBrightness))
-                            .font(.headline)
-                            .foregroundStyle(.white)
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 6)
-                            .glassEffect()
-                            .padding(.top, 16)
+                    // Layer 2: Brightness percentage overlay (morphs into the
+                    // power circle when the lights go off)
+                    if displayIsOn {
+                        VStack {
+                            Text(displayBrightness.truncatingRemainder(dividingBy: 1) == 0 ? "\(Int(displayBrightness))%" : String(format: "%.1f%%", displayBrightness))
+                                .font(.headline)
+                                .foregroundStyle(.white)
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 6)
+                                .glassEffect()
+                                .glassEffectID("percent", in: glassNamespace)
+                                .padding(.top, 16)
 
-                        Spacer()
+                            Spacer()
+                        }
+                        .transition(.opacity)
                     }
 
                     // Layer 3: Horizontal slider at bottom
-                    VStack {
-                        Spacer()
+                    if displayIsOn {
+                        VStack {
+                            Spacer()
 
-                        HStack(spacing: 12) {
-                            Image(systemName: "sun.min")
-                                .foregroundStyle(.white.opacity(0.8))
-                                .font(.body)
+                            HStack(spacing: 12) {
+                                Image(systemName: "sun.min")
+                                    .foregroundStyle(.white.opacity(0.8))
+                                    .font(.body)
 
-                            Slider(value: Binding(
-                                get: { displayBrightness },
-                                set: { newValue in
-                                    setBrightness(newValue)
-                                }
-                            ), in: 0...100)
-                            .disabled(!displayIsOn)
-                            .tint(.white)
+                                Slider(value: Binding(
+                                    get: { displayBrightness },
+                                    set: { newValue in
+                                        setBrightness(newValue)
+                                    }
+                                ), in: 0...100)
+                                .tint(.white)
 
-                            Image(systemName: "sun.max.fill")
-                                .foregroundStyle(.white.opacity(0.8))
-                                .font(.body)
+                                Image(systemName: "sun.max.fill")
+                                    .foregroundStyle(.white.opacity(0.8))
+                                    .font(.body)
+                            }
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 10)
+                            .glassEffect(in: .capsule)
+                            .glassEffectID("slider", in: glassNamespace)
+                            .padding(.horizontal, 16)
+                            .padding(.bottom, 12)
                         }
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 10)
-                        .glassEffect(in: .capsule)
-                        .padding(.horizontal, 16)
-                        .padding(.bottom, 12)
+                        .transition(.opacity)
                     }
                 }
             }
@@ -157,8 +176,7 @@ struct GroupDetailView_macOS<T: GroupedLightContainer>: View {
                                     .foregroundStyle(.secondary)
                                     .padding(.horizontal, 8)
                                     .padding(.vertical, 4)
-                                    .background(Color.secondary.opacity(0.15))
-                                    .clipShape(Capsule())
+                                    .glassEffect(in: .capsule)
                             }
 
                             // Grid of scene cards
@@ -212,8 +230,11 @@ struct GroupDetailView_macOS<T: GroupedLightContainer>: View {
     private func togglePower(_ newValue: Bool) {
         guard let lightId = groupedLightId else { return }
 
-        // Optimistic update
-        optimisticIsOn = newValue
+        // Optimistic update; animated so the %/slider glass morphs into the
+        // power circle via the shared glassEffectIDs
+        withAnimation(.spring(duration: 0.45)) {
+            optimisticIsOn = newValue
+        }
 
         Task {
             do {
@@ -222,7 +243,9 @@ struct GroupDetailView_macOS<T: GroupedLightContainer>: View {
                 isOn = newValue
                 optimisticIsOn = nil
             } catch {
-                optimisticIsOn = nil
+                withAnimation(.spring(duration: 0.45)) {
+                    optimisticIsOn = nil
+                }
                 guard isViewActive else { return }
                 errorMessage = "Failed to toggle power: \(error.localizedDescription)"
                 showError = true
@@ -265,12 +288,16 @@ struct GroupDetailView_macOS<T: GroupedLightContainer>: View {
         let sceneBrightness = bridgeManager.extractAverageBrightnessFromScene(scene)
 
         // Optimistic updates - immediate UI feedback
-        optimisticIsOn = true
+        activatingSceneId = scene.id
+        withAnimation(.spring(duration: 0.45)) {
+            optimisticIsOn = true
+        }
         if let sceneBrightness = sceneBrightness {
             optimisticBrightness = sceneBrightness
         }
 
         Task {
+            defer { activatingSceneId = nil }
             do {
                 try await HueAPIService.shared.activateScene(sceneId: scene.id)
                 guard isViewActive else { return }
@@ -305,9 +332,12 @@ struct GroupDetailView_macOS<T: GroupedLightContainer>: View {
             isActive: scene.status?.active == "active",
             isPinned: bridgeManager.isScenePinned(sceneId: scene.id, forGroupId: groupId),
             isHovered: hoveredSceneId == scene.id,
+            isActivating: activatingSceneId == scene.id,
             onTap: { activateScene(scene) },
             onTogglePin: {
-                bridgeManager.toggleScenePin(sceneId: scene.id, forGroupId: groupId)
+                withAnimation(.bouncy) {
+                    bridgeManager.toggleScenePin(sceneId: scene.id, forGroupId: groupId)
+                }
             },
             onHoverChange: { isHovered in
                 hoveredSceneId = isHovered ? scene.id : nil
@@ -324,6 +354,7 @@ struct SceneCardView_macOS: View {
     let isActive: Bool
     let isPinned: Bool
     let isHovered: Bool
+    var isActivating: Bool = false
     let onTap: () -> Void
     let onTogglePin: () -> Void
     let onHoverChange: (Bool) -> Void
@@ -331,19 +362,21 @@ struct SceneCardView_macOS: View {
     @Environment(BridgeManager.self) var bridgeManager
     @State private var colors: [Color] = []
 
+    private var gradientColors: [Color] {
+        if colors.count >= 2 { return colors }
+        if let single = colors.first { return [single, single.opacity(0.55)] }
+        return [Color.gray.opacity(0.3), Color.gray.opacity(0.2)]
+    }
+
     var body: some View {
         Button(action: onTap) {
             ZStack(alignment: .bottom) {
-                // Background with color stripes or default material
-                if !colors.isEmpty {
-                    HStack(spacing: 0) {
-                        ForEach(0..<colors.count, id: \.self) { index in
-                            colors[index]
-                        }
-                    }
-                } else {
-                    Color.gray.opacity(0.3)
-                }
+                // Palette-derived gradient background
+                LinearGradient(
+                    colors: gradientColors,
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
 
                 // Scene name overlay at bottom
                 HStack {
@@ -368,6 +401,8 @@ struct SceneCardView_macOS: View {
                                 .font(.caption)
                                 .shadow(color: .black.opacity(0.3), radius: 2)
                                 .padding(8)
+                                .symbolEffect(.bounce, value: isPinned)
+                                .transition(.scale.combined(with: .opacity))
                         }
 
                         Spacer()
@@ -379,10 +414,12 @@ struct SceneCardView_macOS: View {
                                 .font(.body)
                                 .shadow(color: .black.opacity(0.3), radius: 2)
                                 .padding(8)
+                                .transition(.symbolEffect(.drawOn))
                         }
                     }
                     Spacer()
                 }
+                .animation(.spring(duration: 0.4), value: isActive)
             }
             .aspectRatio(1.0, contentMode: .fit)
             .clipShape(RoundedRectangle(cornerRadius: 8))
@@ -393,8 +430,9 @@ struct SceneCardView_macOS: View {
                         lineWidth: 2.5
                     )
             )
-            .scaleEffect(isHovered ? 1.02 : 1.0)
+            .scaleEffect(isActivating ? 0.96 : (isHovered ? 1.02 : 1.0))
             .animation(.easeInOut(duration: 0.15), value: isHovered)
+            .animation(.snappy(duration: 0.25), value: isActivating)
         }
         .buttonStyle(.plain)
         .contextMenu {
@@ -405,8 +443,11 @@ struct SceneCardView_macOS: View {
         }
         .onHover(perform: onHoverChange)
         .onAppear {
-            // Extract colors only once when view appears
-            colors = bridgeManager.extractColorsFromScene(scene)
+            colors = bridgeManager.extractGradientColorsFromScene(scene)
+        }
+        .onChange(of: scene.id) {
+            // LazyVGrid reuses cards; re-derive when the scene changes
+            colors = bridgeManager.extractGradientColorsFromScene(scene)
         }
     }
 }

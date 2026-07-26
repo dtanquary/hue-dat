@@ -121,6 +121,34 @@ struct RoomsZonesListView_macOS: View {
         return "\(bridgeManager.rooms.count) Room\(bridgeManager.rooms.count == 1 ? "" : "s") & \(bridgeManager.zones.count) Zone\(bridgeManager.zones.count == 1 ? "" : "s")"
     }
 
+    private func togglePower<G: GroupedLightContainer>(for group: G) {
+        guard let lightId = group.services?.first(where: { $0.rtype == "grouped_light" })?.rid,
+              let light = group.groupedLights?.first else { return }
+        let oldValue = light.on?.on ?? false
+        let newValue = !oldValue
+
+        // Optimistic update: rows render straight from bridgeManager.rooms/zones,
+        // SSE echo confirms (no post-action refresh, per project convention)
+        if G.isRoom {
+            bridgeManager.updateLocalRoomState(roomId: group.id, on: newValue)
+        } else {
+            bridgeManager.updateLocalZoneState(zoneId: group.id, on: newValue)
+        }
+
+        Task {
+            let result = await bridgeManager.setGroupedLightPower(id: lightId, on: newValue)
+            if case .failure(let error) = result {
+                if G.isRoom {
+                    bridgeManager.updateLocalRoomState(roomId: group.id, on: oldValue)
+                } else {
+                    bridgeManager.updateLocalZoneState(zoneId: group.id, on: oldValue)
+                }
+                errorMessage = "Couldn't toggle \(group.metadata.name): \(error.localizedDescription)"
+                showError = true
+            }
+        }
+    }
+
     private func turnOffAllLights() {
         Task {
             isTurningOffAll = true
@@ -181,9 +209,11 @@ struct RoomsZonesListView_macOS: View {
                         Button {
                             onRoomSelected(room)
                         } label: {
-                            GroupRowView_macOS(group: room, isLoading: isLoading)
+                            GroupRowView_macOS(group: room, isLoading: isLoading) {
+                                togglePower(for: room)
+                            }
                         }
-                        .buttonStyle(.plain)
+                        .buttonStyle(PressableRowStyle())
                         .disabled(isLoading)
                     }
                 }
@@ -197,9 +227,11 @@ struct RoomsZonesListView_macOS: View {
                         Button {
                             onZoneSelected(zone)
                         } label: {
-                            GroupRowView_macOS(group: zone, isLoading: isLoading)
+                            GroupRowView_macOS(group: zone, isLoading: isLoading) {
+                                togglePower(for: zone)
+                            }
                         }
-                        .buttonStyle(.plain)
+                        .buttonStyle(PressableRowStyle())
                         .disabled(isLoading)
                     }
                 }
@@ -275,11 +307,17 @@ struct RoomsZonesListView_macOS: View {
 struct GroupRowView_macOS<T: GroupedLightContainer>: View {
     let group: T
     var isLoading: Bool = false
+    var onTogglePower: (() -> Void)? = nil
     @Environment(BridgeManager.self) var bridgeManager
     @State private var isHovered: Bool = false
 
     private var groupedLight: HueGroupedLight? {
         group.groupedLights?.first
+    }
+
+    /// Live color the group's lights are actually showing right now
+    private var liveColor: Color {
+        groupedLight?.displayColor ?? .orange
     }
 
     private var isOn: Bool {
@@ -300,11 +338,22 @@ struct GroupRowView_macOS<T: GroupedLightContainer>: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            // Icon
-            Image(systemName: groupIcon)
-                .font(.title3)
-                .foregroundStyle(isOn ? .yellow : .secondary)
-                .frame(width: 24)
+            // Icon doubles as inline power toggle (innermost button wins the
+            // click; the surrounding row button still handles navigation)
+            Button {
+                onTogglePower?()
+            } label: {
+                Image(systemName: groupIcon)
+                    .font(.title3)
+                    .foregroundStyle(isOn ? liveColor : Color.secondary)
+                    .frame(width: 32, height: 32)
+                    .contentShape(Circle())
+            }
+            .buttonStyle(.plain)
+            .glassEffect(.regular.interactive(), in: .circle)
+            .help("Turn \(isOn ? "off" : "on")")
+            .accessibilityLabel("\(group.metadata.name) power")
+            .accessibilityValue(isOn ? "On" : "Off")
 
             // Name and status
             VStack(alignment: .leading, spacing: 2) {
@@ -335,11 +384,11 @@ struct GroupRowView_macOS<T: GroupedLightContainer>: View {
         .padding(.horizontal, 12)
         .background(
             ZStack {
-                // Brightness progress bar background
+                // Brightness progress bar tinted by the live light color
                 GeometryReader { geometry in
                     HStack(spacing: 0) {
                         Rectangle()
-                            .fill(Color.orange.opacity(0.15))
+                            .fill(liveColor.opacity(isOn ? 0.22 : 0.08))
                             .frame(width: geometry.size.width * (brightness ?? 0) / 100.0)
 
                         Spacer(minLength: 0)
@@ -352,10 +401,22 @@ struct GroupRowView_macOS<T: GroupedLightContainer>: View {
                     .fill(Color.primary.opacity(isHovered ? 0.10 : 0.05))
             }
             .clipShape(RoundedRectangle(cornerRadius: 8))
+            .shadow(color: isOn ? liveColor.opacity(0.25) : .clear, radius: 8, y: 2)
         )
         .skeletonLoader(isActive: isLoading)
         .animation(.easeInOut(duration: 0.15), value: isHovered)
+        .animation(.snappy(duration: 0.3), value: isOn)
         .onHover { isHovered = $0 }
+    }
+}
+
+// MARK: - Pressable Row Style
+
+private struct PressableRowStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed ? 0.97 : 1.0)
+            .animation(.spring(duration: 0.25), value: configuration.isPressed)
     }
 }
 
