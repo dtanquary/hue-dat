@@ -1067,6 +1067,27 @@ public class BridgeManager {
         return colors
     }
 
+    /// Colors for scene gradient rendering: curated palette first (richer for
+    /// dynamic scenes), per-action colors as fallback (static scenes).
+    public func extractGradientColorsFromScene(_ scene: HueScene) -> [Color] {
+        var colors: [Color] = []
+
+        if let paletteColors = scene.palette?.color {
+            colors += paletteColors.compactMap { entry -> Color? in
+                guard let xy = entry.color?.xy else { return nil }
+                return xyToRGB(x: xy.x, y: xy.y, brightness: entry.dimming?.brightness ?? 100.0)
+            }
+        }
+        if let paletteTemps = scene.palette?.colorTemperature {
+            colors += paletteTemps.compactMap { entry -> Color? in
+                guard let mirek = entry.colorTemperature?.mirek else { return nil }
+                return mirekToRGB(mirek: mirek, brightness: entry.dimming?.brightness ?? 100.0)
+            }
+        }
+
+        return colors.isEmpty ? extractColorsFromScene(scene) : colors
+    }
+
     /// Extract average brightness from a scene's actions
     public func extractAverageBrightnessFromScene(_ scene: HueScene) -> Double? {
         guard let actions = scene.actions else {
@@ -1149,7 +1170,9 @@ public class BridgeManager {
         groupId: String,
         in collection: inout [T],
         on: Bool?,
-        brightness: Double?
+        brightness: Double?,
+        colorXY: HueGroupedLight.GroupedLightColor.GroupedLightColorXY? = nil,
+        mirek: Int? = nil
     ) -> Bool {
         guard let index = collection.firstIndex(where: { $0.id == groupId }) else {
             AppLogger.bridge.warning("updateLocalGroupState: \(T.apiGroupType, privacy: .public) \(groupId, privacy: .public) not found in local cache")
@@ -1163,14 +1186,20 @@ public class BridgeManager {
             let updatedGroupedLights = groupedLights.map { light in
                 let newOn = on != nil ? HueGroupedLight.GroupedLightOn(on: on!) : light.on
                 let newDimming = brightness != nil ? HueGroupedLight.GroupedLightDimming(brightness: brightness!) : light.dimming
+                let newColor = colorXY != nil
+                    ? HueGroupedLight.GroupedLightColor(xy: colorXY, gamut: light.color?.gamut, gamutType: light.color?.gamutType)
+                    : light.color
+                let newColorTemperature = mirek != nil
+                    ? HueGroupedLight.GroupedLightColorTemperature(mirek: mirek, mirekValid: true, mirekSchema: light.colorTemperature?.mirekSchema)
+                    : light.colorTemperature
 
                 return HueGroupedLight(
                     id: light.id,
                     type: light.type,
                     on: newOn,
                     dimming: newDimming,
-                    colorTemperature: light.colorTemperature,
-                    color: light.color
+                    colorTemperature: newColorTemperature,
+                    color: newColor
                 )
             }
             updatedItem.groupedLights = updatedGroupedLights
@@ -1190,20 +1219,20 @@ public class BridgeManager {
 
     /// Update local room state optimistically after a successful control action
     /// This ensures the list view reflects changes immediately without waiting for a full refresh
-    public func updateLocalRoomState(roomId: String, on: Bool? = nil, brightness: Double? = nil) {
+    public func updateLocalRoomState(roomId: String, on: Bool? = nil, brightness: Double? = nil, colorXY: HueGroupedLight.GroupedLightColor.GroupedLightColorXY? = nil, mirek: Int? = nil) {
         // Mutation and save are separated to avoid Swift exclusivity violation:
         // the inout access on `rooms` must end before saveRoomsToStorage() reads `rooms`.
-        if updateLocalGroupState(groupId: roomId, in: &rooms, on: on, brightness: brightness) {
+        if updateLocalGroupState(groupId: roomId, in: &rooms, on: on, brightness: brightness, colorXY: colorXY, mirek: mirek) {
             saveRoomsToStorage()
         }
     }
 
     /// Update local zone state optimistically after a successful control action
     /// This ensures the list view reflects changes immediately without waiting for a full refresh
-    public func updateLocalZoneState(zoneId: String, on: Bool? = nil, brightness: Double? = nil) {
+    public func updateLocalZoneState(zoneId: String, on: Bool? = nil, brightness: Double? = nil, colorXY: HueGroupedLight.GroupedLightColor.GroupedLightColorXY? = nil, mirek: Int? = nil) {
         // Mutation and save are separated to avoid Swift exclusivity violation:
         // the inout access on `zones` must end before saveZonesToStorage() reads `zones`.
-        if updateLocalGroupState(groupId: zoneId, in: &zones, on: on, brightness: brightness) {
+        if updateLocalGroupState(groupId: zoneId, in: &zones, on: on, brightness: brightness, colorXY: colorXY, mirek: mirek) {
             saveZonesToStorage()
         }
     }

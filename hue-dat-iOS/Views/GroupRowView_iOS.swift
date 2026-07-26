@@ -12,6 +12,7 @@ import HueDatShared
 struct GroupRowView_iOS<T: GroupedLightContainer>: View {
     let group: T
     var isLoading: Bool = false
+    var onTogglePower: (() -> Void)? = nil
 
     private var lightStatus: (isOn: Bool, brightness: Double?) {
         guard let lights = group.groupedLights, !lights.isEmpty else {
@@ -22,6 +23,11 @@ struct GroupRowView_iOS<T: GroupedLightContainer>: View {
         let averageBrightness = lights.compactMap { $0.dimming?.brightness }.average()
 
         return (anyOn, averageBrightness)
+    }
+
+    /// Live color the group's lights are actually showing right now
+    private var liveColor: Color {
+        group.groupedLights?.first?.displayColor ?? .orange
     }
 
     private var icon: String {
@@ -36,10 +42,23 @@ struct GroupRowView_iOS<T: GroupedLightContainer>: View {
         let status = lightStatus  // Compute once and cache
 
         return HStack(spacing: 8) {
-            Image(systemName: icon)
-                .font(.headline)
-                .foregroundStyle(status.isOn ? .yellow : .secondary)
-                .padding(.leading, 12)
+            // Icon doubles as inline power toggle (innermost button wins the
+            // tap; the surrounding row button still handles navigation)
+            Button {
+                onTogglePower?()
+            } label: {
+                Image(systemName: icon)
+                    .font(.headline)
+                    .foregroundStyle(status.isOn ? liveColor : Color.secondary)
+                    .frame(width: 44, height: 44)
+                    .contentShape(Circle())
+            }
+            .buttonStyle(.plain)
+            .glassEffect(.regular.interactive(), in: .circle)
+            .padding(.leading, 8)
+            .accessibilityLabel("\(group.metadata.name) power")
+            .accessibilityValue(status.isOn ? "On" : "Off")
+            .accessibilityHint("Double tap to turn \(status.isOn ? "off" : "on")")
 
             VStack(alignment: .leading, spacing: 4) {
                 Text(group.metadata.name)
@@ -64,9 +83,9 @@ struct GroupRowView_iOS<T: GroupedLightContainer>: View {
             }
             .padding(.trailing, 12)
         }
-        .padding(.vertical, 12)
+        .padding(.vertical, 8)
         .background {
-            // Base background
+            // Base background with brightness bar tinted by the live light color
             RoundedRectangle(cornerRadius: 12)
                 .fill(Color.primary.opacity(0.1))
                 .overlay(alignment: .leading) {
@@ -74,13 +93,16 @@ struct GroupRowView_iOS<T: GroupedLightContainer>: View {
                     if !isLoading, let brightness = status.brightness {
                         GeometryReader { geometry in
                             Rectangle()
-                                .fill(Color.orange.opacity(0.15))
+                                .fill(liveColor.opacity(status.isOn ? 0.22 : 0.08))
                                 .frame(width: geometry.size.width * brightness / 100.0)
+                                .animation(.easeInOut(duration: 0.4), value: brightness)
                         }
                         .clipShape(RoundedRectangle(cornerRadius: 12))
                     }
                 }
+                .shadow(color: status.isOn ? liveColor.opacity(0.25) : .clear, radius: 8, y: 2)
         }
+        .animation(.snappy(duration: 0.3), value: status.isOn)
         .skeletonLoader(isActive: isLoading)
     }
 

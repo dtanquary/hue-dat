@@ -239,21 +239,25 @@ public class SSEEventProcessor {
         AppLogger.sse.debug("Grouped light update: \(data.debugDescription, privacy: .public)")
 
         let groupedLightId = data.id
+        let on = data.on?.on
+        let brightness = data.dimming?.brightness
+        // Forward color so live-color UI stays in sync (mirek only when non-nil:
+        // the bridge sends mirek: null while in xy mode)
+        let colorXY = data.color.map {
+            HueGroupedLight.GroupedLightColor.GroupedLightColorXY(x: $0.xy.x, y: $0.xy.y)
+        }
+        let mirek = data.colorTemperature?.mirek
 
         if let roomId = groupedLightToRoomMap[groupedLightId] {
-            let on = data.on?.on
-            let brightness = data.dimming?.brightness
             await MainActor.run {
-                bm.updateLocalRoomState(roomId: roomId, on: on, brightness: brightness)
+                bm.updateLocalRoomState(roomId: roomId, on: on, brightness: brightness, colorXY: colorXY, mirek: mirek)
             }
             AppLogger.sse.debug("Updated room \(roomId, privacy: .public)")
         }
 
         if let zoneId = groupedLightToZoneMap[groupedLightId] {
-            let on = data.on?.on
-            let brightness = data.dimming?.brightness
             await MainActor.run {
-                bm.updateLocalZoneState(zoneId: zoneId, on: on, brightness: brightness)
+                bm.updateLocalZoneState(zoneId: zoneId, on: on, brightness: brightness, colorXY: colorXY, mirek: mirek)
             }
             AppLogger.sse.debug("Updated zone \(zoneId, privacy: .public)")
         }

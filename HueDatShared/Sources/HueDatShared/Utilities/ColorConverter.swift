@@ -99,3 +99,18 @@ public struct ColorConverter {
         return Color(red: r, green: g, blue: b)
     }
 }
+
+public extension HueGroupedLight {
+    /// Current visual color of the group, hue-only (fixed brightness 75 so dim
+    /// rooms don't derive near-black tints — brightness is expressed separately
+    /// in the UI). xy preferred, mirek fallback, nil when the group reports neither.
+    var displayColor: Color? {
+        if let xy = color?.xy {
+            return ColorConverter.xyToRGB(x: xy.x, y: xy.y, brightness: 75)
+        }
+        if let mirek = colorTemperature?.mirek {
+            return ColorConverter.mirekToRGB(mirek: mirek, brightness: 75)
+        }
+        return nil
+    }
+}

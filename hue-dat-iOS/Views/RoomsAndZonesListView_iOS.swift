@@ -11,6 +11,8 @@ import Combine
 
 struct RoomsAndZonesListView_iOS: View {
     var bridgeManager: BridgeManager
+    @Binding var navigationPath: NavigationPath
+    let zoomNamespace: Namespace.ID
     @State private var hasLoadedData = false
     @State private var showSettings = false
     @State private var showNetworkErrorAlert = false
@@ -19,6 +21,12 @@ struct RoomsAndZonesListView_iOS: View {
     @State private var zonesCount = 0
     @State private var searchText = ""
 
+    // Haptic triggers (counters so repeated events re-fire)
+    @State private var toggleHapticCount = 0
+    @State private var toggleErrorCount = 0
+    @State private var refreshHapticCount = 0
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Namespace var animation
 
     // Search functionality
@@ -94,6 +102,7 @@ struct RoomsAndZonesListView_iOS: View {
             Image(systemName: "square.3.layers.3d.slash")
                 .font(.largeTitle)
                 .foregroundStyle(.secondary)
+                .symbolEffect(.breathe, options: .repeat(.continuous), isActive: !reduceMotion)
             Text("No rooms or zones found")
                 .font(.headline)
                 .foregroundStyle(.secondary)
@@ -103,7 +112,7 @@ struct RoomsAndZonesListView_iOS: View {
                     await refreshData(forceRefresh: true)
                 }
             }
-            .buttonStyle(.bordered)
+            .buttonStyle(.glass)
         }
         .padding()
     }
@@ -120,7 +129,11 @@ struct RoomsAndZonesListView_iOS: View {
         .listStyle(.plain)
         .refreshable {
             await refreshData(forceRefresh: true)
+            refreshHapticCount += 1
         }
+        .sensoryFeedback(.impact(weight: .medium), trigger: toggleHapticCount)
+        .sensoryFeedback(.error, trigger: toggleErrorCount)
+        .sensoryFeedback(.impact(flexibility: .soft), trigger: refreshHapticCount)
     }
 
     @ViewBuilder
@@ -135,7 +148,7 @@ struct RoomsAndZonesListView_iOS: View {
                         .disabled(isLoading)
                 }
             } header: {
-                sectionHeader("ROOMS (\(roomsCount))")
+                sectionHeader("ROOMS", count: roomsCount)
             }
             .id("rooms-section")
         }
@@ -148,7 +161,7 @@ struct RoomsAndZonesListView_iOS: View {
                         .disabled(isLoading)
                 }
             } header: {
-                sectionHeader("ZONES (\(zonesCount))")
+                sectionHeader("ZONES", count: zonesCount)
             }
             .id("zones-section")
         }
@@ -195,7 +208,7 @@ struct RoomsAndZonesListView_iOS: View {
                         groupRow(for: room, isLoading: false)
                     }
                 } header: {
-                    sectionHeader("ROOMS (\(results.rooms.count))")
+                    sectionHeader("ROOMS", count: results.rooms.count)
                 }
             }
 
@@ -205,7 +218,7 @@ struct RoomsAndZonesListView_iOS: View {
                         groupRow(for: zone, isLoading: false)
                     }
                 } header: {
-                    sectionHeader("ZONES (\(results.zones.count))")
+                    sectionHeader("ZONES", count: results.zones.count)
                 }
             }
 
@@ -215,24 +228,57 @@ struct RoomsAndZonesListView_iOS: View {
                         sceneResultRow(sceneResult)
                     }
                 } header: {
-                    sectionHeader("SCENES (\(results.scenes.count))")
+                    sectionHeader("SCENES", count: results.scenes.count)
                 }
             }
         }
     }
 
-    private func groupRow(for group: some GroupedLightContainer, isLoading: Bool) -> some View {
-        ZStack {
-            NavigationLink(value: group) {
-                EmptyView()
+    private func groupRow<G: GroupedLightContainer>(for group: G, isLoading: Bool) -> some View {
+        Button {
+            navigationPath.append(group)
+        } label: {
+            GroupRowView_iOS(group: group, isLoading: isLoading) {
+                togglePower(for: group)
             }
-            .opacity(0)
-
-            GroupRowView_iOS(group: group, isLoading: isLoading)
         }
+        .buttonStyle(PressableRowStyle())
+        .matchedTransitionSource(id: group.id, in: zoomNamespace)
         .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 6, trailing: 16))
         .listRowSeparator(.hidden)
         .listRowBackground(Color.clear)
+    }
+
+    private func togglePower<G: GroupedLightContainer>(for group: G) {
+        guard let lightId = group.services?.first(where: { $0.rtype == "grouped_light" })?.rid,
+              let light = group.groupedLights?.first else { return }
+        let oldValue = light.on?.on ?? false
+        let newValue = !oldValue
+        toggleHapticCount += 1
+
+        // Optimistic update: rows render straight from bridgeManager.rooms/zones,
+        // SSE echo confirms (no post-action refresh, per project convention)
+        if G.isRoom {
+            bridgeManager.updateLocalRoomState(roomId: group.id, on: newValue)
+        } else {
+            bridgeManager.updateLocalZoneState(zoneId: group.id, on: newValue)
+        }
+
+        Task {
+            let result = await bridgeManager.setGroupedLightPower(id: lightId, on: newValue)
+            if case .failure = result {
+                if G.isRoom {
+                    bridgeManager.updateLocalRoomState(roomId: group.id, on: oldValue)
+                } else {
+                    bridgeManager.updateLocalZoneState(zoneId: group.id, on: oldValue)
+                }
+                toggleErrorCount += 1
+                toastMessage = "Couldn't toggle \(group.metadata.name)"
+                withAnimation {
+                    showToast = true
+                }
+            }
+        }
     }
 
     private func sceneResultRow(_ sceneResult: SceneSearchResult) -> some View {
@@ -269,11 +315,19 @@ struct RoomsAndZonesListView_iOS: View {
         .listRowSeparator(.hidden)
     }
 
-    private func sectionHeader(_ title: String) -> some View {
-        Text(title)
-            .font(.caption)
-            .fontWeight(.semibold)
-            .foregroundStyle(.secondary)
+    private func sectionHeader(_ title: String, count: Int) -> some View {
+        HStack(spacing: 6) {
+            Text(title)
+                .font(.caption)
+                .fontWeight(.semibold)
+                .foregroundStyle(.secondary)
+            Text("\(count)")
+                .font(.caption2.bold())
+                .foregroundStyle(.secondary)
+                .padding(.horizontal, 6)
+                .padding(.vertical, 2)
+                .background(.quaternary, in: .capsule)
+        }
     }
 
     var body: some View {
@@ -558,8 +612,25 @@ struct RoomsAndZonesListView_iOS: View {
     }
 }
 
+/// Scales the whole row down slightly while pressed (3% is interaction
+/// feedback, not ambient motion — no reduce-motion gate needed).
+private struct PressableRowStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed ? 0.97 : 1.0)
+            .animation(.spring(duration: 0.25), value: configuration.isPressed)
+    }
+}
+
 #Preview {
-    NavigationStack {
-        RoomsAndZonesListView_iOS(bridgeManager: BridgeManager())
+    @Previewable @State var path = NavigationPath()
+    @Previewable @Namespace var namespace
+
+    NavigationStack(path: $path) {
+        RoomsAndZonesListView_iOS(
+            bridgeManager: BridgeManager(),
+            navigationPath: $path,
+            zoomNamespace: namespace
+        )
     }
 }

@@ -13,6 +13,7 @@ struct ContentView: View {
     @State private var bridgeManager = BridgeManager()
     @Environment(\.scenePhase) private var scenePhase
     @State private var navigationPath = NavigationPath()
+    @Namespace private var zoomNamespace
     @State private var showConnectionFailedAlert = false
     @State private var connectionFailureMessage = ""
     @State private var isValidatingConnection = false
@@ -33,7 +34,11 @@ struct ContentView: View {
             NavigationStack(path: $navigationPath) {
                 Group {
                     if isConnectionValidated && bridgeManager.connectedBridge != nil {
-                        RoomsAndZonesListView_iOS(bridgeManager: bridgeManager)
+                        RoomsAndZonesListView_iOS(
+                            bridgeManager: bridgeManager,
+                            navigationPath: $navigationPath,
+                            zoomNamespace: zoomNamespace
+                        )
                     } else {
                         MainMenuView_iOS(bridgeManager: bridgeManager)
                     }
@@ -41,10 +46,12 @@ struct ContentView: View {
                 .navigationDestination(for: HueRoom.self) { room in
                     GroupDetailView_iOS<HueRoom>(groupId: room.id)
                         .environment(bridgeManager)
+                        .navigationTransition(.zoom(sourceID: room.id, in: zoomNamespace))
                 }
                 .navigationDestination(for: HueZone.self) { zone in
                     GroupDetailView_iOS<HueZone>(groupId: zone.id)
                         .environment(bridgeManager)
+                        .navigationTransition(.zoom(sourceID: zone.id, in: zoomNamespace))
                 }
             }
             .opacity(isValidatingConnection ? 0 : 1)
