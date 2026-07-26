@@ -8,12 +8,11 @@
 
 /* Begin PBXBuildFile section */
 		551B08942EC3DAF800018F3B /* AppIcon.icon in Resources */ = {isa = PBXBuildFile; fileRef = 551B08932EC3DAF800018F3B /* AppIcon.icon */; };
-		551B08952EC3DAF800018F3B /* AppIcon.icon in Resources */ = {isa = PBXBuildFile; fileRef = 551B08932EC3DAF800018F3B /* AppIcon.icon */; };
+		551B08962EC3DAF800018F3B /* AppIcon.icon in Resources */ = {isa = PBXBuildFile; fileRef = 551B08932EC3DAF800018F3B /* AppIcon.icon */; };
 		5538528D2EC6A65700A20A8E /* HueDatShared in Frameworks */ = {isa = PBXBuildFile; productRef = 5538528C2EC6A65700A20A8E /* HueDatShared */; };
 		55911FF02EB1DCEC005CED54 /* hue dat Watch App.app in Embed Watch Content */ = {isa = PBXBuildFile; fileRef = 55911FEF2EB1DCEC005CED54 /* hue dat Watch App.app */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		55A147482ECEB9840059EA7B /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 55A147472ECEB9840059EA7B /* Assets.xcassets */; };
 		55A147492ECEB9840059EA7B /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 55A147472ECEB9840059EA7B /* Assets.xcassets */; };
-		55A1474A2ECEB9840059EA7B /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 55A147472ECEB9840059EA7B /* Assets.xcassets */; };
 		55A1474B2ECEB9840059EA7B /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 55A147472ECEB9840059EA7B /* Assets.xcassets */; };
 		55D7800F2EC785CF00237E9F /* AppIcon.icon in Resources */ = {isa = PBXBuildFile; fileRef = 551B08932EC3DAF800018F3B /* AppIcon.icon */; };
 		55F135E12ECC08CB0010F7E1 /* HueDatShared in Frameworks */ = {isa = PBXBuildFile; productRef = 55F135E02ECC08CB0010F7E1 /* HueDatShared */; };
@@ -47,7 +46,6 @@
 /* Begin PBXFileReference section */
 		551B08932EC3DAF800018F3B /* AppIcon.icon */ = {isa = PBXFileReference; lastKnownFileType = folder.iconcomposer.icon; path = AppIcon.icon; sourceTree = "<group>"; };
 		5538526A2EC6A63B00A20A8E /* hue dat macOS.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "hue dat macOS.app"; sourceTree = BUILT_PRODUCTS_DIR; };
-		55911FE92EB1DCEC005CED54 /* hue dat.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "hue dat.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		55911FEF2EB1DCEC005CED54 /* hue dat Watch App.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "hue dat Watch App.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		55A147472ECEB9840059EA7B /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		55F135C82ECC08B90010F7E1 /* hue dat iOS.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "hue dat iOS.app"; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -117,7 +115,6 @@
 		55911FEA2EB1DCEC005CED54 /* Products */ = {
 			isa = PBXGroup;
 			children = (
-				55911FE92EB1DCEC005CED54 /* hue dat.app */,
 				55911FEF2EB1DCEC005CED54 /* hue dat Watch App.app */,
 				5538526A2EC6A63B00A20A8E /* hue dat macOS.app */,
 				55F135C82ECC08B90010F7E1 /* hue dat iOS.app */,
@@ -161,25 +158,6 @@
 			productReference = 5538526A2EC6A63B00A20A8E /* hue dat macOS.app */;
 			productType = "com.apple.product-type.application";
 		};
-		55911FE82EB1DCEC005CED54 /* hue dat */ = {
-			isa = PBXNativeTarget;
-			buildConfigurationList = 559120002EB1DCED005CED54 /* Build configuration list for PBXNativeTarget "hue dat" */;
-			buildPhases = (
-				55911FE72EB1DCEC005CED54 /* Resources */,
-				55911FFF2EB1DCED005CED54 /* Embed Watch Content */,
-			);
-			buildRules = (
-			);
-			dependencies = (
-				55911FF22EB1DCEC005CED54 /* PBXTargetDependency */,
-			);
-			name = "hue dat";
-			packageProductDependencies = (
-			);
-			productName = "hue dat";
-			productReference = 55911FE92EB1DCEC005CED54 /* hue dat.app */;
-			productType = "com.apple.product-type.application.watchapp2-container";
-		};
 		55911FEE2EB1DCEC005CED54 /* hue dat Watch App */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = 55911FFC2EB1DCED005CED54 /* Build configuration list for PBXNativeTarget "hue dat Watch App" */;
@@ -210,10 +188,12 @@
 				55F135C42ECC08B90010F7E1 /* Sources */,
 				55F135C52ECC08B90010F7E1 /* Frameworks */,
 				55F135C62ECC08B90010F7E1 /* Resources */,
+				55911FFF2EB1DCED005CED54 /* Embed Watch Content */,
 			);
 			buildRules = (
 			);
 			dependencies = (
+				55911FF22EB1DCEC005CED54 /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
 				55F135C92ECC08B90010F7E1 /* hue-dat-iOS */,
@@ -239,9 +219,6 @@
 					553852692EC6A63B00A20A8E = {
 						CreatedOnToolsVersion = 26.1.1;
 					};
-					55911FE82EB1DCEC005CED54 = {
-						CreatedOnToolsVersion = 26.0.1;
-					};
 					55911FEE2EB1DCEC005CED54 = {
 						CreatedOnToolsVersion = 26.0.1;
 					};
@@ -264,7 +241,6 @@
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
-				55911FE82EB1DCEC005CED54 /* hue dat */,
 				55911FEE2EB1DCEC005CED54 /* hue dat Watch App */,
 				553852692EC6A63B00A20A8E /* hue dat macOS */,
 				55F135C72ECC08B90010F7E1 /* hue dat iOS */,
@@ -282,15 +258,6 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
-		55911FE72EB1DCEC005CED54 /* Resources */ = {
-			isa = PBXResourcesBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-				551B08952EC3DAF800018F3B /* AppIcon.icon in Resources */,
-				55A1474A2ECEB9840059EA7B /* Assets.xcassets in Resources */,
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
 		55911FED2EB1DCEC005CED54 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -304,6 +271,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				551B08962EC3DAF800018F3B /* AppIcon.icon in Resources */,
 				55A147482ECEB9840059EA7B /* Assets.xcassets in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -327,7 +295,7 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "# Kill dev-build instances before launching new build (leave the /Applications copy running)\npkill -f \"DerivedData.*hue dat macOS.app\" 2>/dev/null || true\n";
+			shellScript = "# Kill dev-build instances before launching new build (leave the /Applications copy running)\nif [ \"$CONFIGURATION\" = \"Debug\" ]; then\n  pkill -f \"DerivedData.*Firefly.app\" 2>/dev/null || true\nfi\n";
 			showEnvVarsInLog = 0;
 		};
 /* End PBXShellScriptBuildPhase section */
@@ -390,18 +358,19 @@
 				ENABLE_RESOURCE_ACCESS_USB = NO;
 				ENABLE_USER_SELECTED_FILES = readonly;
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_CFBundleDisplayName = "Hue Dat";
+				INFOPLIST_FILE = "hue-dat-macOS-Info.plist";
+				INFOPLIST_KEY_CFBundleDisplayName = Firefly;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";
 				INFOPLIST_KEY_LSUIElement = YES;
-				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				INFOPLIST_KEY_NSHumanReadableCopyright = "© 2026 Dave Tanquary";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 26.0;
 				MARKETING_VERSION = 1.1.2;
-				PRODUCT_BUNDLE_IDENTIFIER = "com.dtanquary.hue-dat-macOS";
-				PRODUCT_NAME = "$(TARGET_NAME)";
+				PRODUCT_BUNDLE_IDENTIFIER = "com.dtanquary.hue-dat";
+				PRODUCT_NAME = Firefly;
 				REGISTER_APP_GROUPS = YES;
 				SDKROOT = macosx;
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
@@ -438,18 +407,19 @@
 				ENABLE_RESOURCE_ACCESS_USB = NO;
 				ENABLE_USER_SELECTED_FILES = readonly;
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_CFBundleDisplayName = "Hue Dat";
+				INFOPLIST_FILE = "hue-dat-macOS-Info.plist";
+				INFOPLIST_KEY_CFBundleDisplayName = Firefly;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";
 				INFOPLIST_KEY_LSUIElement = YES;
-				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				INFOPLIST_KEY_NSHumanReadableCopyright = "© 2026 Dave Tanquary";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 26.0;
 				MARKETING_VERSION = 1.1.2;
-				PRODUCT_BUNDLE_IDENTIFIER = "com.dtanquary.hue-dat-macOS";
-				PRODUCT_NAME = "$(TARGET_NAME)";
+				PRODUCT_BUNDLE_IDENTIFIER = "com.dtanquary.hue-dat";
+				PRODUCT_NAME = Firefly;
 				REGISTER_APP_GROUPS = YES;
 				SDKROOT = macosx;
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
@@ -590,11 +560,12 @@
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = "hue-dat-Watch-App-Info.plist";
-				INFOPLIST_KEY_CFBundleDisplayName = "hue dat";
-				INFOPLIST_KEY_LSApplicationCategoryType = "";
-				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				INFOPLIST_KEY_CFBundleDisplayName = Firefly;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";
+				INFOPLIST_KEY_NSHumanReadableCopyright = "© 2026 Dave Tanquary";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown";
-				INFOPLIST_KEY_WKWatchOnly = YES;
+				INFOPLIST_KEY_WKCompanionAppBundleIdentifier = "com.dtanquary.hue-dat";
+				INFOPLIST_KEY_WKRunsIndependentlyOfCompanionApp = YES;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -628,11 +599,12 @@
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = "hue-dat-Watch-App-Info.plist";
-				INFOPLIST_KEY_CFBundleDisplayName = "hue dat";
-				INFOPLIST_KEY_LSApplicationCategoryType = "";
-				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				INFOPLIST_KEY_CFBundleDisplayName = Firefly;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";
+				INFOPLIST_KEY_NSHumanReadableCopyright = "© 2026 Dave Tanquary";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown";
-				INFOPLIST_KEY_WKWatchOnly = YES;
+				INFOPLIST_KEY_WKCompanionAppBundleIdentifier = "com.dtanquary.hue-dat";
+				INFOPLIST_KEY_WKRunsIndependentlyOfCompanionApp = YES;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -654,51 +626,6 @@
 			};
 			name = Release;
 		};
-		559120012EB1DCED005CED54 /* Debug */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 7;
-				DEVELOPMENT_TEAM = A3T6R9W85M;
-				INFOPLIST_KEY_CFBundleDisplayName = "hue dat";
-				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
-				MARKETING_VERSION = 1.1.2;
-				PRODUCT_BUNDLE_IDENTIFIER = "com.dtanquary.hue-dat";
-				PRODUCT_NAME = "$(TARGET_NAME)";
-				SDKROOT = iphoneos;
-				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
-				SUPPORTS_MACCATALYST = NO;
-				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = YES;
-				SWIFT_APPROACHABLE_CONCURRENCY = YES;
-				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
-				SWIFT_VERSION = 5.0;
-				TARGETED_DEVICE_FAMILY = 2;
-			};
-			name = Debug;
-		};
-		559120022EB1DCED005CED54 /* Release */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 7;
-				DEVELOPMENT_TEAM = A3T6R9W85M;
-				INFOPLIST_KEY_CFBundleDisplayName = "hue dat";
-				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
-				MARKETING_VERSION = 1.1.2;
-				PRODUCT_BUNDLE_IDENTIFIER = "com.dtanquary.hue-dat";
-				PRODUCT_NAME = "$(TARGET_NAME)";
-				SDKROOT = iphoneos;
-				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
-				SUPPORTS_MACCATALYST = NO;
-				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = YES;
-				SWIFT_APPROACHABLE_CONCURRENCY = YES;
-				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
-				SWIFT_VERSION = 5.0;
-				TARGETED_DEVICE_FAMILY = 2;
-				VALIDATE_PRODUCT = YES;
-			};
-			name = Release;
-		};
 		55F135D02ECC08BA0010F7E1 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -709,6 +636,8 @@
 				DEVELOPMENT_TEAM = A3T6R9W85M;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "hue-dat-iOS-Info.plist";
+				INFOPLIST_KEY_CFBundleDisplayName = Firefly;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
@@ -721,7 +650,7 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.1.2;
-				PRODUCT_BUNDLE_IDENTIFIER = "com.dtanquary.hue-dat-iOS";
+				PRODUCT_BUNDLE_IDENTIFIER = "com.dtanquary.hue-dat";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = iphoneos;
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
@@ -747,6 +676,8 @@
 				DEVELOPMENT_TEAM = A3T6R9W85M;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "hue-dat-iOS-Info.plist";
+				INFOPLIST_KEY_CFBundleDisplayName = Firefly;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
@@ -759,7 +690,7 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.1.2;
-				PRODUCT_BUNDLE_IDENTIFIER = "com.dtanquary.hue-dat-iOS";
+				PRODUCT_BUNDLE_IDENTIFIER = "com.dtanquary.hue-dat";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = iphoneos;
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
@@ -802,15 +733,6 @@
 			buildConfigurations = (
 				55911FFD2EB1DCED005CED54 /* Debug */,
 				55911FFE2EB1DCED005CED54 /* Release */,
-			);
-			defaultConfigurationIsVisible = 0;
-			defaultConfigurationName = Release;
-		};
-		559120002EB1DCED005CED54 /* Build configuration list for PBXNativeTarget "hue dat" */ = {
-			isa = XCConfigurationList;
-			buildConfigurations = (
-				559120012EB1DCED005CED54 /* Debug */,
-				559120022EB1DCED005CED54 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

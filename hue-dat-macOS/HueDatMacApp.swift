@@ -53,8 +53,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         debugLog("🚀 applicationDidFinishLaunching - starting up")
         debugLog("Log file: \(DebugLogger.shared.logFilePath)")
         debugLog("Previous log: \(DebugLogger.shared.previousLogFilePath)")
+        #if DEBUG
         DebugLogger.shared.installCrashHandlers()
         DebugLogger.shared.installExceptionHandler()
+        #endif
 
         // Initialize bridge manager on main thread
         bridgeManager = BridgeManager()
@@ -66,7 +68,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
 
         if let button = statusItem?.button {
-            button.image = NSImage(systemSymbolName: "lightbulb.led.fill", accessibilityDescription: "HueDat")
+            // Custom firefly template icon (MenuBarIcon.imageset, derived from
+            // AppIcon.icon/Assets/firefly.svg)
+            button.image = NSImage(named: "MenuBarIcon")
+            button.image?.accessibilityDescription = "Firefly"
             button.action = #selector(handleStatusItemClick(_:))
             button.target = self
             button.sendAction(on: [.leftMouseUp, .rightMouseUp])
@@ -400,7 +405,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         let menu = NSMenu()
 
         menu.addItem(NSMenuItem(
-            title: "About HueDat",
+            title: "About Firefly",
             action: #selector(showAboutDialog),
             keyEquivalent: ""
         ))
@@ -408,7 +413,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         menu.addItem(NSMenuItem.separator())
 
         menu.addItem(NSMenuItem(
-            title: "Quit HueDat",
+            title: "Quit Firefly",
             action: #selector(NSApplication.terminate(_:)),
             keyEquivalent: "q"
         ))
