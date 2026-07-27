@@ -12,10 +12,10 @@
     {
       "layers" : [
         {
-          "image-name" : "bulb.png",
-          "name" : "bulb",
+          "image-name" : "firefly.png",
+          "name" : "firefly",
           "position" : {
-            "scale" : 1.27,
+            "scale" : 1,
             "translation-in-points" : [
               0,
               0
@@ -24,25 +24,13 @@
         },
         {
           "hidden" : true,
-          "image-name" : "bulb.svg",
-          "name" : "bulb",
+          "image-name" : "firefly.svg",
+          "name" : "firefly-source",
           "position" : {
-            "scale" : 5,
+            "scale" : 1,
             "translation-in-points" : [
               0,
               0
-            ]
-          }
-        },
-        {
-          "hidden" : true,
-          "image-name" : "00016-893956853.png",
-          "name" : "00016-893956853",
-          "position" : {
-            "scale" : 1.2,
-            "translation-in-points" : [
-              0,
-              -70.40000000000009
             ]
           }
         }
@@ -53,7 +41,7 @@
         "opacity" : 0.5
       },
       "translucency" : {
-        "enabled" : true,
+        "enabled" : false,
         "value" : 0.5
       }
     }

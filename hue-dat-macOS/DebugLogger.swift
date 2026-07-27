@@ -103,6 +103,9 @@ class DebugLogger {
 
     // MARK: - Crash auto-relaunch
 
+    // Debug-only: spawning /bin/sh from a crash handler is blocked by the App Store
+    // sandbox and a review flag; production builds rely on launch-at-login instead.
+    #if DEBUG
     // Pre-built at install time so crash handlers never touch Bundle/String/Date APIs.
     private static let startEpoch = time(nil)
     private static let relaunchArgv: [UnsafeMutablePointer<CChar>?] = {
@@ -178,6 +181,7 @@ class DebugLogger {
         default:      return "UNKNOWN(\(sig))"
         }
     }
+    #endif
 }
 
 // Convenience global function

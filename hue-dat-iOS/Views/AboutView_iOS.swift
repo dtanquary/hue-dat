@@ -105,7 +105,7 @@ private extension AboutView_iOS {
             appIconPlaceholder
             
             VStack(spacing: 4) {
-                Text("Hue Dat")
+                Text("Firefly")
                     .font(.largeTitle)
                     .fontWeight(.bold)
                 
@@ -153,7 +153,7 @@ private extension AboutView_iOS {
             Label("What is this?", systemImage: "questionmark.circle.fill")
                 .font(.headline)
             
-            Text("A minimalistic way to access basic room, zone, and scene functionalities for Philips Hue lights.\n\nThis application also includes versions for WatchOS and MacOS which were my original primary focus.\n\nThe iPhone and iPad versions are relatively pointless. They were more an exercise in 'can I make a cool iOS app'.")
+            Text("A minimalistic way to access basic room, zone, and scene functionalities for Philips Hue lights.\n\nFirefly is available for iPhone, iPad, Apple Watch, and Mac — control your lights from whichever device is closest.")
                 .font(.body)
                 .multilineTextAlignment(isCompact ? .leading : .leading)
                 .fixedSize(horizontal: false, vertical: true)
@@ -230,7 +230,12 @@ private extension AboutView_iOS {
                 .font(.caption)
                 .foregroundStyle(.secondary)
 
-            Text("© 2025 HueDat Contributors")
+            Text("Philips Hue is a trademark of Signify. Firefly is not affiliated with or endorsed by Signify.")
+                .font(.caption2)
+                .foregroundStyle(.tertiary)
+                .multilineTextAlignment(.center)
+
+            Text("© 2026 Dave Tanquary")
                 .font(.caption)
                 .foregroundStyle(.tertiary)
                 .padding(.top, 8)

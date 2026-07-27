@@ -25,7 +25,7 @@ struct MainMenuView: View {
                         .progressViewStyle(.circular)
                         .scaleEffect(3.0)
                 }
-                .navigationTitle("Hue Control")
+                .navigationTitle("Firefly")
                 .navigationBarTitleDisplayMode(.automatic)
             } else {
                 // Not connected - show discovery
@@ -79,7 +79,7 @@ struct MainMenuView: View {
                 .background {
                     backgroundView
                 }
-                .navigationTitle("Hue Control")
+                .navigationTitle("Firefly")
                 .navigationBarTitleDisplayMode(.automatic)
             }
         }

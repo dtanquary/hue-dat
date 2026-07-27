@@ -45,9 +45,10 @@
 
 /* Begin PBXFileReference section */
 		551B08932EC3DAF800018F3B /* AppIcon.icon */ = {isa = PBXFileReference; lastKnownFileType = folder.iconcomposer.icon; path = AppIcon.icon; sourceTree = "<group>"; };
-		5538526A2EC6A63B00A20A8E /* hue dat macOS.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "hue dat macOS.app"; sourceTree = BUILT_PRODUCTS_DIR; };
+		5538526A2EC6A63B00A20A8E /* hue dat macOS.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; name = "hue dat macOS.app"; path = Firefly.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		55911FEF2EB1DCEC005CED54 /* hue dat Watch App.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "hue dat Watch App.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		55A147472ECEB9840059EA7B /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		55BE5433301626C4000978C2 /* hue dat Watch App.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = "hue dat Watch App.entitlements"; sourceTree = "<group>"; };
 		55F135C82ECC08B90010F7E1 /* hue dat iOS.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "hue dat iOS.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		55FBB8292EC6953C008B438C /* HueDatShared */ = {isa = PBXFileReference; lastKnownFileType = wrapper; path = HueDatShared; sourceTree = "<group>"; };
 		55FBB82A2EC69573008B438C /* Package.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = Package.swift; path = HueDatShared/Package.swift; sourceTree = "<group>"; };
@@ -102,6 +103,7 @@
 		55911FE22EB1DCEB005CED54 = {
 			isa = PBXGroup;
 			children = (
+				55BE5433301626C4000978C2 /* hue dat Watch App.entitlements */,
 				55A147472ECEB9840059EA7B /* Assets.xcassets */,
 				55911FF32EB1DCEC005CED54 /* hue-dat-Watch-App */,
 				5538526B2EC6A63B00A20A8E /* hue-dat-macOS */,
@@ -553,6 +555,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = NO;
+				CODE_SIGN_ENTITLEMENTS = "hue dat Watch App.entitlements";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 7;
 				DEVELOPMENT_ASSET_PATHS = "";
@@ -592,6 +595,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = NO;
+				CODE_SIGN_ENTITLEMENTS = "hue dat Watch App.entitlements";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 7;
 				DEVELOPMENT_ASSET_PATHS = "";

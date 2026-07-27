@@ -13,5 +13,13 @@
 			<key>NSAllowsArbitraryLoads</key>
 			<false/>
 	</dict>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>Firefly connects to your Philips Hue Bridge on your local network to discover and control your lights.</string>
+	<key>NSBonjourServices</key>
+	<array>
+		<string>_hue._tcp</string>
+	</array>
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
 </dict>
 </plist>

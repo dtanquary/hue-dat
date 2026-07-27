@@ -6,6 +6,8 @@ This file provides guidance to Claude Code when working with this repository.
 
 Multi-platform Philips Hue controller with native watchOS and macOS apps. Core functionality shared through **HueDatShared** Swift package.
 
+**App Store identity:** Ships as **Firefly**. All app targets share bundle ID `com.dtanquary.hue-dat` (universal purchase, one listing). The watch app is embedded in the iOS target ("Embed Watch Content" phase) but remains fully standalone (`WKRunsIndependentlyOfCompanionApp`) — installable from the watch App Store with no iPhone. There is no separate watch-container target.
+
 **Platforms:**
 - **watchOS**: Standalone app with Digital Crown, haptic feedback, small-screen UI
 - **macOS**: Menu bar app with floating panel (320×480pt)
@@ -21,17 +23,19 @@ Multi-platform Philips Hue controller with native watchOS and macOS apps. Core f
 # Open project
 open hue-dat.xcodeproj
 
-# Build watchOS (Simulator)
-xcodebuild -project hue-dat.xcodeproj -scheme "hue dat Watch App" -destination 'platform=watchOS Simulator,name=Apple Watch Series 11 (46mm)' build
+# Build watchOS (Simulator) — use the generic destination; named watch-sim
+# destinations fail to resolve now that the watch app declares a companion
+xcodebuild -project hue-dat.xcodeproj -scheme "hue dat Watch App" -destination 'generic/platform=watchOS Simulator' build
 
 # Build macOS
 xcodebuild -project hue-dat.xcodeproj -scheme "hue dat macOS" -destination 'platform=macOS' build
 
-# Build iOS (Simulator)
-xcodebuild -project hue-dat.xcodeproj -scheme "hue dat iOS" -sdk iphonesimulator -destination 'platform=iOS Simulator,name=iPhone 17,OS=26.1' build
+# Build iOS (Simulator) — do NOT pass -sdk: it would override the SDK for the
+# embedded watch-app dependency and break its WatchKit import
+xcodebuild -project hue-dat.xcodeproj -scheme "hue dat iOS" -destination 'platform=iOS Simulator,name=iPhone 17,OS=26.1' build
 ```
 
-**Build Scripts:** macOS target includes pre-build script to kill existing app instances (prevents duplicate menu bar icons during development).
+**Build Scripts:** macOS target includes pre-build script to kill existing app instances (prevents duplicate menu bar icons during development). Debug-configuration only. The crash auto-relaunch signal handlers are likewise `#if DEBUG` — Release/App Store builds ship without them.
 
 ## Architecture
 
@@ -43,7 +47,8 @@ xcodebuild -project hue-dat.xcodeproj -scheme "hue dat iOS" -sdk iphonesimulator
 ### Core Services
 
 **1. BridgeDiscoveryService** - Network discovery
-- Uses `https://discovery.meethue.com` API (mDNS commented out)
+- mDNS-first: `NWBrowser` for `_hue._tcp` Bonjour, falls back to `https://discovery.meethue.com`
+- iOS/watch Info.plists must keep `NSBonjourServices` + `NSLocalNetworkUsageDescription` for this
 - 15-minute caching strategy
 
 **2. BridgeRegistrationService** - Bridge pairing

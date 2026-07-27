@@ -1,0 +1,49 @@
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="dusk" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#2B2D5E"/>
+      <stop offset="0.55" stop-color="#191B3F"/>
+      <stop offset="1" stop-color="#0C0D24"/>
+    </linearGradient>
+    <radialGradient id="halo" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#FFF3B0" stop-opacity="0.95"/>
+      <stop offset="0.25" stop-color="#FFE45C" stop-opacity="0.55"/>
+      <stop offset="0.6" stop-color="#F5C842" stop-opacity="0.18"/>
+      <stop offset="1" stop-color="#F5C842" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="core" cx="0.5" cy="0.42" r="0.6">
+      <stop offset="0" stop-color="#FFFDF0"/>
+      <stop offset="0.5" stop-color="#FFEE8C"/>
+      <stop offset="1" stop-color="#F8CE4B"/>
+    </radialGradient>
+    <filter id="soft" x="-60%" y="-60%" width="220%" height="220%">
+      <feGaussianBlur stdDeviation="10"/>
+    </filter>
+  </defs>
+
+  <rect width="1024" height="1024" fill="url(#dusk)"/>
+
+  <!-- distant companions -->
+  <circle cx="268" cy="292" r="10" fill="#FFE99C" opacity="0.55" filter="url(#soft)"/>
+  <circle cx="784" cy="238" r="7" fill="#FFE99C" opacity="0.4" filter="url(#soft)"/>
+  <circle cx="736" cy="742" r="8" fill="#FFE99C" opacity="0.35" filter="url(#soft)"/>
+
+  <!-- big soft halo -->
+  <circle cx="512" cy="548" r="330" fill="url(#halo)"/>
+
+  <!-- wings: two faint strokes above the body -->
+  <g stroke="#C9CBEE" stroke-width="26" stroke-linecap="round" fill="none" opacity="0.5">
+    <path d="M 462 402 Q 380 330 322 342"/>
+    <path d="M 562 402 Q 644 330 702 342"/>
+  </g>
+
+  <!-- glowing body: teardrop -->
+  <path d="M 512 380
+           C 578 380 616 452 616 540
+           C 616 646 566 706 512 706
+           C 458 706 408 646 408 540
+           C 408 452 446 380 512 380 Z"
+        fill="url(#core)"/>
+  <ellipse cx="512" cy="452" rx="72" ry="52" fill="#3A3D6E"/>
+  <circle cx="512" cy="404" r="46" fill="#2E3160"/>
+</svg>

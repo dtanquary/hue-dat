@@ -16,7 +16,7 @@
             <BuildableReference
                BuildableIdentifier = "primary"
                BlueprintIdentifier = "553852692EC6A63B00A20A8E"
-               BuildableName = "hue dat macOS.app"
+               BuildableName = "Firefly.app"
                BlueprintName = "hue dat macOS"
                ReferencedContainer = "container:hue-dat.xcodeproj">
             </BuildableReference>
@@ -45,7 +45,7 @@
          <BuildableReference
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "553852692EC6A63B00A20A8E"
-            BuildableName = "hue dat macOS.app"
+            BuildableName = "Firefly.app"
             BlueprintName = "hue dat macOS"
             ReferencedContainer = "container:hue-dat.xcodeproj">
          </BuildableReference>
@@ -62,7 +62,7 @@
          <BuildableReference
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "553852692EC6A63B00A20A8E"
-            BuildableName = "hue dat macOS.app"
+            BuildableName = "Firefly.app"
             BlueprintName = "hue dat macOS"
             ReferencedContainer = "container:hue-dat.xcodeproj">
          </BuildableReference>

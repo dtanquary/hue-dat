@@ -21,34 +21,6 @@
                ReferencedContainer = "container:hue-dat.xcodeproj">
             </BuildableReference>
          </BuildActionEntry>
-         <BuildActionEntry
-            buildForTesting = "YES"
-            buildForRunning = "YES"
-            buildForProfiling = "YES"
-            buildForArchiving = "YES"
-            buildForAnalyzing = "YES">
-            <BuildableReference
-               BuildableIdentifier = "primary"
-               BlueprintIdentifier = "553852692EC6A63B00A20A8E"
-               BuildableName = "hue dat macOS.app"
-               BlueprintName = "hue dat macOS"
-               ReferencedContainer = "container:hue-dat.xcodeproj">
-            </BuildableReference>
-         </BuildActionEntry>
-         <BuildActionEntry
-            buildForTesting = "YES"
-            buildForRunning = "YES"
-            buildForProfiling = "YES"
-            buildForArchiving = "YES"
-            buildForAnalyzing = "YES">
-            <BuildableReference
-               BuildableIdentifier = "primary"
-               BlueprintIdentifier = "55911FE82EB1DCEC005CED54"
-               BuildableName = "hue dat.app"
-               BlueprintName = "hue dat"
-               ReferencedContainer = "container:hue-dat.xcodeproj">
-            </BuildableReference>
-         </BuildActionEntry>
       </BuildActionEntries>
    </BuildAction>
    <TestAction

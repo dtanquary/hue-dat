@@ -35,7 +35,7 @@ struct AboutView_macOS: View {
                 // Right column: Text content (left-justified)
                 VStack(alignment: .leading, spacing: 0) {
                     // App name with large title style
-                    Text("HueDat")
+                    Text("Firefly")
                         .font(.largeTitle)
                         .fontWeight(.bold)
 
@@ -52,10 +52,16 @@ struct AboutView_macOS: View {
                     .padding(.bottom, 20)
 
                     // Description
-                    Text("HueDat is a native macOS and watchOS app for controlling Philips Hue lights. Control your lights directly from your menu bar without requiring the official Hue app.")
+                    Text("Firefly is a native macOS, iOS, and watchOS app for controlling Philips Hue lights, directly from your menu bar.")
                         .font(.body)
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
+
+                    Text("Philips Hue is a trademark of Signify. Firefly is not affiliated with or endorsed by Signify.")
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .padding(.top, 12)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
